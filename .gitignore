@@ -10,14 +10,10 @@ obj/
 *.userosscache
 *.sln.docstates
 
-# Visual Studio
+# Visual Studio / Rider
 .vs/
 *.vssscc
-
-# Rider
 .idea/
-
-# User-specific files
 *.rsuser
 *.userprefs
 
@@ -29,6 +25,7 @@ x86/
 bld/
 [Bb]in/
 [Oo]bj/
+[Oo]ut/
 [Ll]og/
 [Ll]ogs/
 
@@ -41,6 +38,11 @@ packages/
 # Publish
 publish/
 
+# Logs and temp
+tunnel-*.txt
+*.log
+*.tmp
+
 # OS generated
 .DS_Store
 Thumbs.db
@@ -51,6 +53,9 @@ appsettings.Token.json
 appsettings.Mode.json
 appsettings.Development.json
 *.local.json
+**/appsettings.Token.json
+**/appsettings.Mode.json
+**/appsettings.*.local.json
 
 # Secrets
 secrets.json
