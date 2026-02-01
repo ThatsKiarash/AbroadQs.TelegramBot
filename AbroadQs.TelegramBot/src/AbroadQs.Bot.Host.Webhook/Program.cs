@@ -307,6 +307,33 @@ app.MapGet("/api/dashboard/status", async (HttpContext ctx, UpdateLogService log
     });
 }).WithName("DashboardStatus");
 
+// API: لیست کاربران ربات (از SQL Server)
+app.MapGet("/api/users", async (HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var userRepo = scope.ServiceProvider.GetService<ITelegramUserRepository>();
+        if (userRepo == null)
+            return Results.Json(new List<object>());
+        var users = await userRepo.ListAllAsync(ctx.RequestAborted).ConfigureAwait(false);
+        var payload = users.Select(u => new
+        {
+            telegramUserId = u.TelegramUserId,
+            username = u.Username,
+            firstName = u.FirstName,
+            lastName = u.LastName,
+            firstSeenAt = u.FirstSeenAt,
+            lastSeenAt = u.LastSeenAt
+        });
+        return Results.Json(payload);
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { error = ex.Message }, statusCode: 500);
+    }
+}).WithName("UsersList");
+
 // تست: اگر این 200 برگردونه، مسیرهای API درست ثبت شدن
 app.MapGet("/api/ping", () => Results.Json(new { ok = true })).WithName("Ping");
 

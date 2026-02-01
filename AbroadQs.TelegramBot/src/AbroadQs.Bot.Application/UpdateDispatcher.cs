@@ -1,4 +1,5 @@
 using AbroadQs.Bot.Contracts;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Telegram.Bot.Types;
 
@@ -13,12 +14,14 @@ public sealed class UpdateDispatcher
     private readonly IEnumerable<IUpdateHandler> _handlers;
     private readonly ILogger<UpdateDispatcher> _logger;
     private readonly IProcessingContext? _processingContext;
+    private readonly IServiceScopeFactory? _scopeFactory;
 
-    public UpdateDispatcher(IEnumerable<IUpdateHandler> handlers, ILogger<UpdateDispatcher> logger, IProcessingContext? processingContext = null)
+    public UpdateDispatcher(IEnumerable<IUpdateHandler> handlers, ILogger<UpdateDispatcher> logger, IProcessingContext? processingContext = null, IServiceScopeFactory? scopeFactory = null)
     {
         _handlers = handlers?.OrderBy(h => h.Command == null ? 1 : 0).ToList() ?? [];
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _processingContext = processingContext;
+        _scopeFactory = scopeFactory;
     }
 
     public async Task DispatchAsync(Update update, CancellationToken cancellationToken = default)
@@ -28,6 +31,19 @@ public sealed class UpdateDispatcher
         {
             _logger.LogWarning("Update {UpdateId} produced no context (no Message/CallbackQuery?), skipping", update.Id);
             return;
+        }
+
+        // Save/update user on every interaction
+        if (context.UserId.HasValue && _scopeFactory != null)
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var userRepo = scope.ServiceProvider.GetService<ITelegramUserRepository>();
+                if (userRepo != null)
+                    await userRepo.SaveOrUpdateAsync(context.UserId.Value, context.Username, context.FirstName, context.LastName, cancellationToken).ConfigureAwait(false);
+            }
+            catch { /* non-fatal */ }
         }
 
         foreach (var handler in _handlers)

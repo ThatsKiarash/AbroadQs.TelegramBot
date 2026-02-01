@@ -1,0 +1,83 @@
+# Server: RabbitMQ + Redis + SQL Server + Bot Host
+# Run: docker-compose -f docker-compose.server.yml up -d
+
+networks:
+  abroadqs:
+    driver: bridge
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: abroadqs-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    restart: unless-stopped
+    networks: [abroadqs]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: abroadqs-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks: [abroadqs]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: abroadqs-sqlserver
+    ports:
+      - "1433:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "YourStrong@Pass123"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    restart: unless-stopped
+    networks: [abroadqs]
+
+  bot:
+    build:
+      context: .
+      dockerfile: src/AbroadQs.Bot.Host.Webhook/Dockerfile
+    networks: [abroadqs]
+    container_name: abroadqs-bot
+    ports:
+      - "5252:5252"
+    environment:
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=AbroadQsBot;User Id=sa;Password=YourStrong@Pass123;TrustServerCertificate=True;"
+      RabbitMQ__HostName: rabbitmq
+      RabbitMQ__Port: 5672
+      RabbitMQ__UserName: guest
+      RabbitMQ__Password: guest
+      Redis__Configuration: redis:6379
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      sqlserver:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  rabbitmq-data:
+  redis-data:
+  sqlserver-data:

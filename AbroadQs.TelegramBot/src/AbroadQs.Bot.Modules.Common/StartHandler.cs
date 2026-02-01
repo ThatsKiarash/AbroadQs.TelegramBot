@@ -1,5 +1,4 @@
 using AbroadQs.Bot.Contracts;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace AbroadQs.Bot.Modules.Common;
 
@@ -7,13 +6,11 @@ public sealed class StartHandler : IUpdateHandler
 {
     private readonly IResponseSender _sender;
     private readonly IUserLastCommandStore _lastCommandStore;
-    private readonly IServiceProvider _serviceProvider;
 
-    public StartHandler(IResponseSender sender, IUserLastCommandStore lastCommandStore, IServiceProvider serviceProvider)
+    public StartHandler(IResponseSender sender, IUserLastCommandStore lastCommandStore)
     {
         _sender = sender ?? throw new ArgumentNullException(nameof(sender));
         _lastCommandStore = lastCommandStore ?? throw new ArgumentNullException(nameof(lastCommandStore));
-        _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
     }
 
     public string? Command => "start";
@@ -28,12 +25,6 @@ public sealed class StartHandler : IUpdateHandler
         {
             lastCmd = await _lastCommandStore.GetLastCommandAsync(context.UserId.Value, cancellationToken).ConfigureAwait(false);
             await _lastCommandStore.SetLastCommandAsync(context.UserId.Value, "start", cancellationToken).ConfigureAwait(false);
-            using (var scope = _serviceProvider.CreateScope())
-            {
-                var userRepo = scope.ServiceProvider.GetService<ITelegramUserRepository>();
-                if (userRepo != null)
-                    await userRepo.SaveOrUpdateAsync(context.UserId.Value, context.Username, context.FirstName, context.LastName, cancellationToken).ConfigureAwait(false);
-            }
         }
 
         var name = context.FirstName ?? context.Username ?? "User";

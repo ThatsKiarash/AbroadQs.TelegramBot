@@ -44,4 +44,21 @@ public sealed class TelegramUserRepository : ITelegramUserRepository
         if (_processingContext != null)
             _processingContext.SqlAccessed = true;
     }
+
+    public async Task<IReadOnlyList<AbroadQs.Bot.Contracts.TelegramUserDto>> ListAllAsync(CancellationToken cancellationToken = default)
+    {
+        var list = await _db.TelegramUsers
+            .AsNoTracking()
+            .OrderByDescending(x => x.LastSeenAt)
+            .Select(x => new AbroadQs.Bot.Contracts.TelegramUserDto(
+                x.TelegramUserId,
+                x.Username,
+                x.FirstName,
+                x.LastName,
+                x.FirstSeenAt,
+                x.LastSeenAt))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return list;
+    }
 }

@@ -12,8 +12,8 @@
         <aside class="dashboard-sidebar" id="dashboardSidebar">
             <div class="sidebar-brand">ABROADQS OPS</div>
             <nav class="nav flex-column sidebar-nav">
-                <a href="#" class="nav-link">Overview</a>
-                <a href="#" class="nav-link">Users</a>
+                <a href="#" class="nav-link" data-tab="bot-operations">Overview</a>
+                <a href="#" class="nav-link active" data-tab="users">Users</a>
                 <a href="#" class="nav-link">Identity Verification</a>
                 <a href="#" class="nav-link">Identity Settings</a>
                 <a href="#" class="nav-link">Tickets</a>
@@ -22,7 +22,7 @@
                 <a href="#" class="nav-link">User Wallets</a>
                 <a href="#" class="nav-link">Master Wallet</a>
                 <a href="#" class="nav-link">System Fees</a>
-                <a href="#" class="nav-link active">Bot Operations</a>
+                <a href="#" class="nav-link" data-tab="bot-operations">Bot Operations</a>
                 <a href="#" class="nav-link">Channel Settings</a>
                 <a href="#" class="nav-link">Channel Posts</a>
                 <a href="#" class="nav-link">Analytics</a>
@@ -38,7 +38,39 @@
                 </div>
             </header>
             <main class="dashboard-main">
-                <section class="dashboard-section">
+                <section class="dashboard-section" id="section-users" style="display: block;">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <div>
+                            <h1 class="h4 mb-1">Bot Users</h1>
+                            <p class="text-muted mb-0">Users who have interacted with the Telegram bot.</p>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="btnRefreshUsers">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-clockwise" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg> Refresh
+                        </button>
+                    </div>
+                    <div class="card shadow-sm">
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover mb-0">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Telegram ID</th>
+                                            <th>Username</th>
+                                            <th>First Name</th>
+                                            <th>Last Name</th>
+                                            <th>First Seen</th>
+                                            <th>Last Seen</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="usersTableBody">
+                                        <tr><td colspan="6" class="text-center text-muted">Loading...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                <section class="dashboard-section" id="section-bot-operations" style="display: none;">
                     <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-4">
                         <div>
                             <h1 class="h4 mb-1">Telegram Bot Management</h1>
@@ -256,6 +288,47 @@
         backdrop.addEventListener('click', function() {
             closeSidebar();
         });
+
+        // Tab switching (Users / Bot Operations)
+        document.querySelectorAll('.sidebar-nav [data-tab]').forEach(function(link) {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                var tab = this.getAttribute('data-tab');
+                document.querySelectorAll('.sidebar-nav .nav-link').forEach(function(l) { l.classList.remove('active'); });
+                this.classList.add('active');
+                document.querySelectorAll('.dashboard-section[id^="section-"]').forEach(function(s) {
+                    s.style.display = s.id === 'section-' + tab ? 'block' : 'none';
+                });
+                if (tab === 'users') loadUsers();
+            });
+        });
+
+        // Load users list
+        function loadUsers() {
+            fetch(base + '/api/users')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    var tbody = document.getElementById('usersTableBody');
+                    if (Array.isArray(data)) {
+                        if (data.length === 0) {
+                            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No users yet. Users will appear after they interact with the bot.</td></tr>';
+                        } else {
+                            tbody.innerHTML = data.map(function(u) {
+                                var firstSeen = u.firstSeenAt ? new Date(u.firstSeenAt).toLocaleString('en-GB', {dateStyle:'short', timeStyle:'short'}) : '—';
+                                var lastSeen = u.lastSeenAt ? new Date(u.lastSeenAt).toLocaleString('en-GB', {dateStyle:'short', timeStyle:'short'}) : '—';
+                                return '<tr><td><code>' + escapeHtml(String(u.telegramUserId)) + '</code></td><td>' + (u.username ? '@' + escapeHtml(u.username) : '—') + '</td><td>' + escapeHtml(u.firstName || '—') + '</td><td>' + escapeHtml(u.lastName || '—') + '</td><td><small>' + escapeHtml(firstSeen) + '</small></td><td><small>' + escapeHtml(lastSeen) + '</small></td></tr>';
+                            }).join('');
+                        }
+                    } else {
+                        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Error loading users</td></tr>';
+                    }
+                })
+                .catch(function() {
+                    document.getElementById('usersTableBody').innerHTML = '<tr><td colspan="6" class="text-center text-danger">Error loading users</td></tr>';
+                });
+        }
+
+        document.getElementById('btnRefreshUsers').addEventListener('click', loadUsers);
 
         document.addEventListener('click', function(event) {
             if (!sidebar.classList.contains('sidebar-open')) return;
@@ -587,6 +660,7 @@
         loadWebhookInfo();
         loadConnectionStatus();
         loadBotStatus();
+        loadUsers();
         refreshWebhookMessages();
         setInterval(refreshWebhookMessages, 10000);
         setInterval(loadConnectionStatus, 15000);
