@@ -1,0 +1,41 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build",
+            "command": "dotnet",
+            "type": "process",
+            "args": [
+                "build",
+                "${workspaceFolder}/AbroadQs.TelegramBot/src/AbroadQs.Bot.Host.Webhook/AbroadQs.Bot.Host.Webhook.csproj",
+                "/property:GenerateFullPaths=true",
+                "/consoleloggerparameters:NoSummary;ForceNoAlign"
+            ],
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "publish",
+            "command": "dotnet",
+            "type": "process",
+            "args": [
+                "publish",
+                "${workspaceFolder}/AbroadQs.TelegramBot/src/AbroadQs.Bot.Host.Webhook/AbroadQs.Bot.Host.Webhook.csproj",
+                "/property:GenerateFullPaths=true",
+                "/consoleloggerparameters:NoSummary;ForceNoAlign"
+            ],
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "watch",
+            "command": "dotnet",
+            "type": "process",
+            "args": [
+                "watch",
+                "run",
+                "--project",
+                "${workspaceFolder}/AbroadQs.TelegramBot/src/AbroadQs.Bot.Host.Webhook/AbroadQs.Bot.Host.Webhook.csproj"
+            ],
+            "problemMatcher": "$msCompile"
+        }
+    ]
+}

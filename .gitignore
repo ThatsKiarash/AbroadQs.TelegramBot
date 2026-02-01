@@ -1,0 +1,58 @@
+# .NET
+bin/
+obj/
+*.dll
+*.pdb
+*.exe
+*.cache
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Visual Studio
+.vs/
+*.vssscc
+
+# Rider
+.idea/
+
+# User-specific files
+*.rsuser
+*.userprefs
+
+# Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# NuGet Packages
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+
+# Publish
+publish/
+
+# OS generated
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Application settings (sensitive)
+appsettings.Token.json
+appsettings.Mode.json
+appsettings.Development.json
+*.local.json
+
+# Secrets
+secrets.json
+*.pfx
+*.key

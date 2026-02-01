@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AbroadQs.Bot.Application/AbroadQs.Bot.Application.csproj" />
+    <Project Path="src/AbroadQs.Bot.Contracts/AbroadQs.Bot.Contracts.csproj" />
+    <Project Path="src/AbroadQs.Bot.Data/AbroadQs.Bot.Data.csproj" />
+    <Project Path="src/AbroadQs.Bot.Host.Webhook/AbroadQs.Bot.Host.Webhook.csproj" />
+    <Project Path="src/AbroadQs.Bot.Modules.Common/AbroadQs.Bot.Modules.Common.csproj" />
+    <Project Path="src/AbroadQs.Bot.Modules.Example/AbroadQs.Bot.Modules.Example.csproj" />
+    <Project Path="src/AbroadQs.Bot.Telegram/AbroadQs.Bot.Telegram.csproj" />
+    <Project Path="src/AbroadQs.ReverseProxy/AbroadQs.ReverseProxy.csproj" />
+    <Project Path="src/AbroadQs.TunnelServer/AbroadQs.TunnelServer.csproj" />
+    <Project Path="src/AbroadQs.TunnelClient/AbroadQs.TunnelClient.csproj" />
+  </Folder>
+</Solution>
