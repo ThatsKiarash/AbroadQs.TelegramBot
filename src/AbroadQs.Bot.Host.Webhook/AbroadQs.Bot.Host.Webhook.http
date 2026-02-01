@@ -1,0 +1,6 @@
+@AbroadQs.Bot.Host.Webhook_HostAddress = http://localhost:5252
+
+GET {{AbroadQs.Bot.Host.Webhook_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

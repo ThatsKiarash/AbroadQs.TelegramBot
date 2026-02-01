@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bot Operations - AbroadQs</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="/css/site.css" />
+</head>
+<body class="dashboard-body">
+    <div class="dashboard-wrapper">
+        <aside class="dashboard-sidebar" id="dashboardSidebar">
+            <div class="sidebar-brand">ABROADQS OPS</div>
+            <nav class="nav flex-column sidebar-nav">
+                <a href="#" class="nav-link">Overview</a>
+                <a href="#" class="nav-link">Users</a>
+                <a href="#" class="nav-link">Identity Verification</a>
+                <a href="#" class="nav-link">Identity Settings</a>
+                <a href="#" class="nav-link">Tickets</a>
+                <a href="#" class="nav-link">Exchange Rates</a>
+                <a href="#" class="nav-link">Exchange Requests</a>
+                <a href="#" class="nav-link">User Wallets</a>
+                <a href="#" class="nav-link">Master Wallet</a>
+                <a href="#" class="nav-link">System Fees</a>
+                <a href="#" class="nav-link active">Bot Operations</a>
+                <a href="#" class="nav-link">Channel Settings</a>
+                <a href="#" class="nav-link">Channel Posts</a>
+                <a href="#" class="nav-link">Analytics</a>
+            </nav>
+        </aside>
+        <div class="sidebar-backdrop" id="sidebarBackdrop" aria-hidden="true"></div>
+        <div class="dashboard-content">
+            <header class="dashboard-topbar">
+                <button class="btn btn-outline-primary d-lg-none sidebar-toggle" type="button" id="sidebarToggle" aria-label="Menu">Menu</button>
+                <div class="topbar-title">Support Control Center</div>
+                <div class="topbar-actions">
+                    <span class="text-muted">Telegram Bot Dashboard</span>
+                </div>
+            </header>
+            <main class="dashboard-main">
+                <section class="dashboard-section">
+                    <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-4">
+                        <div>
+                            <h1 class="h4 mb-1">Telegram Bot Management</h1>
+                            <p class="text-muted mb-0">Store credentials, sync webhook endpoints, and validate connectivity.</p>
+                        </div>
+                        <div class="text-muted small" id="webhookSyncedLabel"></div>
+                    </div>
+
+                    <div class="row g-4">
+                        <div class="col-12 col-xl-7">
+                            <div class="card shadow-sm">
+                                <div class="card-body">
+                                    <h2 class="h5 mb-3">Credentials</h2>
+                                    <form id="credentialsForm" class="vstack gap-3 mb-3">
+                                        <div>
+                                            <label for="botToken" class="form-label">Bot Token</label>
+                                            <div class="input-group">
+                                                <input type="password" id="botToken" class="form-control" autocomplete="off" placeholder="123456789:ABCdef..." aria-label="Bot token" />
+                                                <button type="button" class="btn btn-outline-secondary" id="btnToggleTokenVisibility" title="Show / hide token" aria-label="Toggle token visibility">
+                                                    <svg id="iconTokenEye" xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/></svg>
+                                                    <svg id="iconTokenEyeSlash" xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16" style="display:none;"><path d="M13.359 11.238C15.06 9.72 16 8 16 8s-3-5.5-8-5.5a7.028 7.028 0 0 0-2.79.588l.77.771A5.944 5.944 0 0 1 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.134 13.134 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755-.165.165-.337.328-.517.486l.708.709z"/><path d="M11.297 9.176a3.5 3.5 0 0 0-4.474-4.474l.823.823a2.5 2.5 0 0 1 2.829 2.829l.82.82zM4.88 4.82a7.028 7.028 0 0 0-2.79.588l.77.771A5.944 5.944 0 0 1 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.134 13.134 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755-.165.165-.337.328-.517.486l.708.709a7.028 7.028 0 0 0 2.79-.588l-.77-.771a5.944 5.944 0 0 1-2.829 2.829l-.77-.77z"/><path d="M3.35 5.47c-.18.16-.353.322-.518.487A13.134 13.134 0 0 0 1.172 8l.195.288c.335.48.83 1.12 1.465 1.755C4.121 11.332 5.881 12.5 8 12.5c.716 0 1.39-.133 2.02-.36l.77.772A7.029 7.029 0 0 1 8 13.5C3 13.5 0 8 0 8s.939-1.721 2.641-3.238l.708.709zm10.296 8.884-12-12 .708-.708 12 12-.708.708z"/></svg>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label class="form-label">Update mode</label>
+                                            <div class="d-flex flex-wrap gap-3 mb-1">
+                                                <div class="form-check form-check-inline">
+                                                    <input class="form-check-input" type="radio" name="updateMode" id="updateModeWebhook" value="Webhook" />
+                                                    <label class="form-check-label" for="updateModeWebhook">Webhook</label>
+                                                </div>
+                                                <div class="form-check form-check-inline">
+                                                    <input class="form-check-input" type="radio" name="updateMode" id="updateModeGetUpdates" value="GetUpdates" />
+                                                    <label class="form-check-label" for="updateModeGetUpdates">Get Updates (long polling)</label>
+                                                </div>
+                                            </div>
+                                            <small class="form-text text-muted">Webhook: Telegram sends updates to your URL. Get Updates: bot polls for updates (no public URL needed). Restart required after change.</small>
+                                        </div>
+                                        <div id="tunnelHint" class="form-text text-info mt-1">وقتی ربات لوکال است، Tunnel Client را اجرا کن تا درخواست‌ها به ماشین تو برسند: <code>dotnet run --project src/AbroadQs.TunnelClient -- --url https://webhook.abroadqs.com --local 5252</code></div>
+                                        <div>
+                                            <label class="form-label">Webhook endpoint</label>
+                                            <div class="d-flex flex-wrap gap-3 mb-2">
+                                                <div class="form-check form-check-inline">
+                                                    <input class="form-check-input" type="radio" name="webhookSource" id="webhookSourceServer" value="server" checked />
+                                                    <label class="form-check-label" for="webhookSourceServer">Server (published)</label>
+                                                </div>
+                                                <div class="form-check form-check-inline">
+                                                    <input class="form-check-input" type="radio" name="webhookSource" id="webhookSourceTunnel" value="tunnel" />
+                                                    <label class="form-check-label" for="webhookSourceTunnel">Tunnel (like ngrok)</label>
+                                                </div>
+                                                <div class="form-check form-check-inline">
+                                                    <input class="form-check-input" type="radio" name="webhookSource" id="webhookSourceNgrok" value="ngrok" />
+                                                    <label class="form-check-label" for="webhookSourceNgrok">Ngrok</label>
+                                                </div>
+                                            </div>
+                                            <input type="url" id="webhookUrl" class="form-control" autocomplete="off" placeholder="https://webhook.abroadqs.com/webhook" aria-label="Webhook URL" />
+                                            <small class="form-text text-muted" id="webhookUrlHint">Webhook URL (HTTPS). For published: use your server URL. For tunnel: fixed URL; run Tunnel Client when developing locally.</small>
+                                        </div>
+                                        <div>
+                                            <label for="baseUrl" class="form-label">Base URL (for Mini App)</label>
+                                            <input type="url" id="baseUrl" class="form-control" autocomplete="off" placeholder="https://example.com" />
+                                            <small class="form-text text-muted">Used when Webhook URL is empty. (Base URL for Mini App)</small>
+                                        </div>
+                                        <button type="submit" class="btn btn-primary">Save configuration</button>
+                                    </form>
+                                    <div class="d-flex flex-wrap gap-2">
+                                        <button type="button" class="btn btn-outline-secondary" id="btnTestToken">Test token</button>
+                                        <button type="button" class="btn btn-outline-primary" id="btnSetWebhook">Set webhook</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-xl-5">
+                            <div class="card shadow-sm h-100">
+                                <div class="card-body">
+                                    <h2 class="h5 mb-3">Connection Status</h2>
+                                    <div id="statusCard" class="small">
+                                        <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary border-opacity-25">
+                                            <span class="text-muted">Token</span>
+                                            <span id="statusToken" class="badge bg-secondary">—</span>
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary border-opacity-25">
+                                            <span class="text-muted">Update mode</span>
+                                            <span id="statusUpdateMode" class="badge bg-secondary">—</span>
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary border-opacity-25">
+                                            <span class="text-muted">Webhook</span>
+                                            <span id="statusWebhook" class="badge bg-secondary">—</span>
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary border-opacity-25">
+                                            <span class="text-muted">Bot</span>
+                                            <span id="statusBot" class="badge bg-secondary">—</span>
+                                        </div>
+                                        <div class="mt-2 text-muted" id="statusBotTime" style="font-size:0.75rem;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-4 mt-2">
+                        <div class="col-12">
+                            <div class="card shadow-sm">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <h2 class="h5 mb-0">Recent Webhook Messages</h2>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" id="btnRefreshLogs">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-clockwise" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg> Refresh
+                                    </button>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                                        <table class="table table-sm table-hover">
+                                            <thead class="table-dark sticky-top">
+                                                <tr>
+                                                    <th style="width: 150px;">Time</th>
+                                                    <th style="width: 100px;">Status</th>
+                                                    <th>Payload Preview</th>
+                                                    <th style="width: 200px;">Error</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="webhookMessagesTable">
+                                                <tr><td colspan="4" class="text-center text-muted">Loading...</td></tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script>
+        const base = window.location.origin;
+
+        var sidebar = document.getElementById('dashboardSidebar');
+        var backdrop = document.getElementById('sidebarBackdrop');
+
+        function closeSidebar() {
+            sidebar.classList.remove('sidebar-open');
+            backdrop.classList.remove('show');
+            backdrop.setAttribute('aria-hidden', 'true');
+        }
+
+        function openSidebar() {
+            sidebar.classList.add('sidebar-open');
+            backdrop.classList.add('show');
+            backdrop.setAttribute('aria-hidden', 'false');
+        }
+
+        function toggleSidebar() {
+            if (sidebar.classList.contains('sidebar-open')) {
+                closeSidebar();
+            } else {
+                openSidebar();
+            }
+        }
+
+        document.getElementById('sidebarToggle').addEventListener('click', function() {
+            toggleSidebar();
+        });
+
+        // Toggle token visibility (password <-> text); when showing, load full token if currently masked
+        (function() {
+            var input = document.getElementById('botToken');
+            var btn = document.getElementById('btnToggleTokenVisibility');
+            var iconEye = document.getElementById('iconTokenEye');
+            var iconEyeSlash = document.getElementById('iconTokenEyeSlash');
+            btn.addEventListener('click', async function() {
+                if (input.type === 'password') {
+                    // If value is masked (e.g. 9276***VBfc), fetch full token from server
+                    if ((input.value || '').indexOf('***') !== -1) {
+                        try {
+                            var r = await fetch(base + '/api/settings/token?reveal=true');
+                            var data = await r.json().catch(function() { return {}; });
+                            if (r.ok && data.token) {
+                                input.value = data.token;
+                            }
+                        } catch (_) {}
+                    }
+                    input.type = 'text';
+                    iconEye.style.display = 'none';
+                    iconEyeSlash.style.display = '';
+                    btn.setAttribute('title', 'Hide token');
+                } else {
+                    input.type = 'password';
+                    iconEye.style.display = '';
+                    iconEyeSlash.style.display = 'none';
+                    btn.setAttribute('title', 'Show token');
+                }
+            });
+        })();
+
+        backdrop.addEventListener('click', function() {
+            closeSidebar();
+        });
+
+        document.addEventListener('click', function(event) {
+            if (!sidebar.classList.contains('sidebar-open')) return;
+            if (sidebar.contains(event.target)) return;
+            if (event.target.closest('#sidebarToggle')) return;
+            closeSidebar();
+        });
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text ?? '';
+            return div.innerHTML;
+        }
+
+        // Load webhook info (URL + last sync for label)
+        async function loadWebhookInfo() {
+            try {
+                const r = await fetch(base + '/api/webhook/info');
+                const data = await r.json().catch(() => ({}));
+                if (r.ok && data.url) {
+                    document.getElementById('webhookUrl').value = data.url;
+                }
+            } catch (_) {}
+            try {
+                const s = await fetch(base + '/api/dashboard/status');
+                const st = await s.json().catch(() => ({}));
+                if (s.ok && st.webhookSyncedAt) {
+                    const d = new Date(st.webhookSyncedAt);
+                    document.getElementById('webhookSyncedLabel').textContent = 'Webhook synced: ' + d.toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' });
+                }
+            } catch (_) {}
+        }
+
+        // Load token into input (so it stays after refresh)
+        async function loadTokenIntoInput() {
+            try {
+                const r = await fetch(base + '/api/settings/token');
+                const data = await r.json().catch(function() { return {}; });
+                var input = document.getElementById('botToken');
+                if (r.ok && data.set && data.masked) {
+                    input.value = data.masked;
+                    input.placeholder = 'Token is set (replace to change)';
+                } else {
+                    input.value = '';
+                    input.placeholder = '123456789:ABCdef...';
+                }
+            } catch (_) {
+                document.getElementById('botToken').value = '';
+            }
+        }
+
+        // Load update mode (Webhook / GetUpdates)
+        async function loadUpdateMode() {
+            try {
+                const r = await fetch(base + '/api/settings/update-mode');
+                const data = await r.json().catch(function() { return {}; });
+                if (r.ok && data.mode) {
+                    var mode = (data.mode || 'Webhook').trim();
+                    document.getElementById('updateModeWebhook').checked = (mode !== 'GetUpdates');
+                    document.getElementById('updateModeGetUpdates').checked = (mode === 'GetUpdates');
+                }
+            } catch (_) {}
+        }
+
+        // Load connection status (Token / Webhook / Bot)
+        async function loadConnectionStatus() {
+            var tokenEl = document.getElementById('statusToken');
+            var webhookEl = document.getElementById('statusWebhook');
+            var botEl = document.getElementById('statusBot');
+            var botTimeEl = document.getElementById('statusBotTime');
+            try {
+                const r = await fetch(base + '/api/dashboard/status');
+                const st = await r.json().catch(() => ({}));
+                if (!r.ok) {
+                    tokenEl.textContent = '—';
+                    var modeEl = document.getElementById('statusUpdateMode');
+                    if (modeEl) modeEl.textContent = '—';
+                    webhookEl.textContent = '—';
+                    botEl.textContent = '—';
+                    botTimeEl.textContent = '';
+                    return;
+                }
+                tokenEl.textContent = st.tokenSet ? 'Set' : 'Not set';
+                tokenEl.className = 'badge ' + (st.tokenSet ? 'bg-success' : 'bg-secondary');
+                var modeEl = document.getElementById('statusUpdateMode');
+                if (modeEl) {
+                    modeEl.textContent = st.updateMode || 'Webhook';
+                    modeEl.className = 'badge bg-info';
+                }
+                webhookEl.textContent = st.webhookSyncedAt ? 'Synced' : 'Not set';
+                webhookEl.className = 'badge ' + (st.webhookSyncedAt ? 'bg-success' : 'bg-secondary');
+                if (st.lastEventAt) {
+                    var active = st.lastEventStatus === 'Received';
+                    botEl.textContent = active ? 'Connected' : 'Last error';
+                    botEl.className = 'badge ' + (active ? 'bg-success' : 'bg-danger');
+                    botTimeEl.textContent = 'Last activity: ' + new Date(st.lastEventAt).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' });
+                    if (st.lastEventError && !active) botTimeEl.textContent += ' — ' + (st.lastEventError.length > 60 ? st.lastEventError.substring(0, 60) + '…' : st.lastEventError);
+                } else {
+                    botEl.textContent = 'No activity yet';
+                    botEl.className = 'badge bg-secondary';
+                    botTimeEl.textContent = 'Send a message to the bot to see activity.';
+                }
+            } catch (_) {
+                tokenEl.textContent = '—';
+                var modeEl = document.getElementById('statusUpdateMode');
+                if (modeEl) modeEl.textContent = '—';
+                webhookEl.textContent = '—';
+                botEl.textContent = '—';
+                botTimeEl.textContent = '';
+            }
+        }
+
+        // Save configuration (token + update mode)
+        document.getElementById('credentialsForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const token = (document.getElementById('botToken').value || '').trim();
+            if (!token) {
+                Swal.fire({ icon: 'warning', title: 'Bot token is required.', timer: 2000, showConfirmButton: false });
+                return;
+            }
+            const mode = document.getElementById('updateModeGetUpdates').checked ? 'GetUpdates' : 'Webhook';
+            try {
+                const r = await fetch(base + '/api/settings/token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token })
+                });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok) throw new Error(data.detail || data.message || 'Error');
+                const modeRes = await fetch(base + '/api/settings/update-mode', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode })
+                });
+                const modeData = await modeRes.json().catch(() => ({}));
+                if (!modeRes.ok) { /* mode save failed non-fatal */ }
+                Swal.fire({ icon: 'success', title: 'ذخیره شد.', text: 'برای اینکه ربات جواب بدهد، حتماً برنامه را یک بار ریستارت کنید (توکن و حالت فقط موقع استارت بارگذاری می‌شوند).', timer: 8000, showConfirmButton: true });
+                loadTokenIntoInput();
+                loadUpdateMode();
+                loadWebhookInfo();
+                loadConnectionStatus();
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Error', text: err.message });
+            }
+        });
+
+        document.getElementById('btnTestToken').addEventListener('click', async function() {
+            try {
+                const r = await fetch(base + '/api/bot/me');
+                const data = await r.json().catch(() => ({}));
+                if (r.ok) {
+                    var lines = [
+                        '<strong>Name:</strong> ' + (data.firstName || '') + (data.lastName ? ' ' + data.lastName : ''),
+                        '<strong>Username:</strong> ' + (data.username ? '@' + data.username : '—'),
+                        '<strong>Bot ID:</strong> ' + (data.id ?? '—'),
+                        '<strong>Is Bot:</strong> ' + (data.isBot ? 'Yes' : 'No'),
+                        (data.languageCode ? '<strong>Language:</strong> ' + data.languageCode : '')
+                    ].filter(Boolean);
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Bot Information',
+                        html: '<div class="text-start" style="line-height:1.8;">' + lines.join('<br>') + '</div>',
+                        confirmButtonText: 'OK'
+                    });
+                } else {
+                    Swal.fire({ icon: 'error', title: 'Invalid token', text: data.detail || 'Could not find bot with this token.' });
+                }
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Error', text: err.message });
+            }
+        });
+
+        document.getElementById('btnSetWebhook').addEventListener('click', async function() {
+            const url = (document.getElementById('webhookUrl').value || '').trim();
+            if (!url) {
+                Swal.fire({ icon: 'warning', title: 'Webhook URL is required.', timer: 2000, showConfirmButton: false });
+                return;
+            }
+            if (!url.startsWith('https://')) {
+                Swal.fire({ icon: 'warning', title: 'URL must start with https://', timer: 2000, showConfirmButton: false });
+                return;
+            }
+            try {
+                const r = await fetch(base + '/api/webhook/set', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok) throw new Error(data.detail || data.message || 'Error');
+                Swal.fire({ icon: 'success', title: 'Webhook updated successfully.', timer: 2500, showConfirmButton: false });
+                loadWebhookInfo();
+                loadConnectionStatus();
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Error', text: err.message });
+            }
+        });
+
+        function refreshWebhookMessages() {
+            fetch(base + '/api/webhook/logs')
+                .then(function(r) { return r.json(); })
+                .then(function(list) {
+                    const tbody = document.getElementById('webhookMessagesTable');
+                    if (Array.isArray(list) && list.length > 0) {
+                        tbody.innerHTML = list.map(function(msg) {
+                            const statusClass = msg.status === 'Received' ? 'success' : (msg.status === 'Error' ? 'danger' : 'info');
+                            const statusLabel = msg.status === 'Received' ? 'Received' : (msg.status === 'Error' ? 'Error' : msg.status);
+                            const timeStr = msg.time ? new Date(msg.time).toLocaleString() : '';
+                            return '<tr><td><small>' + escapeHtml(timeStr) + '</small></td><td><span class="badge bg-' + statusClass + '">' + escapeHtml(statusLabel) + '</span></td><td><code style="font-size:0.85rem;white-space:pre-wrap;word-break:break-all;">' + escapeHtml(msg.payloadPreview || '') + '</code></td><td>' + (msg.error ? '<small class="text-danger">' + escapeHtml(msg.error) + '</small>' : '-') + '</td></tr>';
+                        }).join('');
+                    } else {
+                        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No webhook messages yet</td></tr>';
+                    }
+                })
+                .catch(function() {
+                    document.getElementById('webhookMessagesTable').innerHTML = '<tr><td colspan="4" class="text-center text-danger">Error loading messages</td></tr>';
+                });
+        }
+
+        document.getElementById('btnRefreshLogs').addEventListener('click', refreshWebhookMessages);
+
+        var PUBLIC_WEBHOOK_URL = 'https://webhook.abroadqs.com/webhook';
+        function updateWebhookUrlHint() {
+            var isNgrok = document.getElementById('webhookSourceNgrok').checked;
+            var isTunnel = document.getElementById('webhookSourceTunnel').checked;
+            var input = document.getElementById('webhookUrl');
+            var hint = document.getElementById('webhookUrlHint');
+            if (isTunnel) {
+                input.value = PUBLIC_WEBHOOK_URL;
+                input.placeholder = PUBLIC_WEBHOOK_URL;
+                hint.textContent = 'Fixed tunnel URL. When running locally, run Tunnel Client.';
+            } else if (isNgrok) {
+                input.placeholder = 'https://xxxx-xx-xx-xx-xx.ngrok-free.app/webhook';
+                hint.textContent = 'Your Ngrok public URL (HTTPS). Use the URL Ngrok gives you.';
+            } else {
+                input.placeholder = PUBLIC_WEBHOOK_URL;
+                hint.textContent = 'Server webhook URL (HTTPS). Use this URL when published on the server.';
+            }
+        }
+        document.getElementById('webhookSourceServer').addEventListener('change', updateWebhookUrlHint);
+        document.getElementById('webhookSourceTunnel').addEventListener('change', updateWebhookUrlHint);
+        document.getElementById('webhookSourceNgrok').addEventListener('change', updateWebhookUrlHint);
+
+        loadTokenIntoInput();
+        loadUpdateMode();
+        loadWebhookInfo();
+        loadConnectionStatus();
+        refreshWebhookMessages();
+        setInterval(refreshWebhookMessages, 10000);
+        setInterval(loadConnectionStatus, 15000);
+    </script>
+</body>
+</html>
