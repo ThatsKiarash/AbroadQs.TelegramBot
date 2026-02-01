@@ -4,6 +4,7 @@
 
 set -e
 REPO_DIR="${REPO_DIR:-/root/AbroadQs.TelegramBot}"
+PROJECT_DIR="${REPO_DIR}/AbroadQs.TelegramBot"
 REPO_URL="${REPO_URL:-https://github.com/ThatsKiarash/AbroadQs.TelegramBot.git}"
 
 echo "=== AbroadQs Bot Server Deploy ==="
@@ -16,7 +17,12 @@ if [ -d "$REPO_DIR" ]; then
 else
   echo "Cloning repo..."
   git clone "$REPO_URL" "$REPO_DIR"
-  cd "$REPO_DIR"
+fi
+
+cd "$PROJECT_DIR"
+if [ ! -f "docker-compose.server.yml" ]; then
+  echo "Error: docker-compose.server.yml not found. Repo structure may have changed."
+  exit 1
 fi
 
 # 2. Stop old containers
