@@ -25,6 +25,21 @@ public sealed class BotUpdateContext
     public string? CommandArguments => ParseCommandArguments(MessageText);
 
     /// <summary>
+    /// True when the update is from an inline button press (callback_query).
+    /// </summary>
+    public bool IsCallbackQuery { get; init; }
+
+    /// <summary>
+    /// Telegram message id of the message with the inline keyboard (for editing). Only set when IsCallbackQuery.
+    /// </summary>
+    public int? CallbackMessageId { get; init; }
+
+    /// <summary>
+    /// Callback query id to pass to AnswerCallbackQueryAsync. Only set when IsCallbackQuery.
+    /// </summary>
+    public string? CallbackQueryId { get; init; }
+
+    /// <summary>
     /// Optional: raw update object from Telegram.Bot for advanced handlers that need it.
     /// Set by the host; handlers can cast to Telegram.Bot.Types.Update if they reference Telegram.Bot.
     /// </summary>

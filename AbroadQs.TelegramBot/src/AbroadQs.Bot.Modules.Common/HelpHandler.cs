@@ -21,7 +21,8 @@ public sealed class HelpHandler : IUpdateHandler
         const string text = """
             <b>راهنما</b>
 
-            /start - شروع و خوش‌آمد
+            /start - شروع و خوش‌آمد (با دکمه تنظیمات)
+            /settings یا /menu - تنظیم زبان و نام و نام‌خانوادگی
             /help - این راهنما
             /echo متن - (ماژول نمونه) بازگرداندن همان متن
 

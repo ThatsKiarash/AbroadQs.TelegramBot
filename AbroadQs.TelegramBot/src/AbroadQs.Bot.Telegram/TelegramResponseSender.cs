@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
+using Telegram.Bot.Types.ReplyMarkups;
 
 namespace AbroadQs.Bot.Telegram;
 
@@ -88,6 +89,87 @@ public sealed class TelegramResponseSender : IResponseSender
         {
             _logger.LogError(ex, "Failed to send message to chat {ChatId}", chatId);
             throw;
+        }
+    }
+
+    public async Task SendTextMessageWithInlineKeyboardAsync(long chatId, string text, IReadOnlyList<IReadOnlyList<InlineButton>> inlineKeyboard, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var rows = inlineKeyboard.Select(row => row.Select(b =>
+            {
+                if (!string.IsNullOrEmpty(b.Url))
+                    return InlineKeyboardButton.WithUrl(b.Text, b.Url);
+                return InlineKeyboardButton.WithCallbackData(b.Text, b.CallbackData ?? "");
+            }).ToList()).ToList();
+            var markup = new InlineKeyboardMarkup(rows);
+
+            var result = await _client.SendMessage(
+                new ChatId(chatId),
+                text,
+                parseMode: ParseMode.Html,
+                replyMarkup: markup,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            if (result != null)
+            {
+                _logger.LogInformation("Message with inline keyboard sent to chat {ChatId}, messageId: {MessageId}", chatId, result.MessageId);
+                if (_processingContext != null)
+                    _processingContext.ResponseSent = true;
+                await SaveOutgoingMessageAsync(result, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                _logger.LogWarning("Message with keyboard not sent to chat {ChatId} - bot client returned null", chatId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send message with keyboard to chat {ChatId}", chatId);
+            throw;
+        }
+    }
+
+    public async Task EditMessageTextWithInlineKeyboardAsync(long chatId, int messageId, string text, IReadOnlyList<IReadOnlyList<InlineButton>> inlineKeyboard, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var rows = inlineKeyboard.Select(row => row.Select(b =>
+            {
+                if (!string.IsNullOrEmpty(b.Url))
+                    return InlineKeyboardButton.WithUrl(b.Text, b.Url);
+                return InlineKeyboardButton.WithCallbackData(b.Text, b.CallbackData ?? "");
+            }).ToList()).ToList();
+            var markup = new InlineKeyboardMarkup(rows);
+
+            await _client.EditMessageText(
+                new ChatId(chatId),
+                messageId,
+                text,
+                parseMode: ParseMode.Html,
+                replyMarkup: markup,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            _logger.LogInformation("Message edited in chat {ChatId}, messageId {MessageId}", chatId, messageId);
+            if (_processingContext != null)
+                _processingContext.ResponseSent = true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to edit message {MessageId} in chat {ChatId}", messageId, chatId);
+            throw;
+        }
+    }
+
+    public async Task AnswerCallbackQueryAsync(string callbackQueryId, string? message = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await _client.AnswerCallbackQuery(callbackQueryId, message, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to answer callback query {CallbackQueryId}", callbackQueryId);
         }
     }
 

@@ -29,8 +29,9 @@ public sealed class StartHandler : IUpdateHandler
 
         var name = context.FirstName ?? context.Username ?? "User";
         var lastLine = lastCmd != null ? $"\n(آخرین دستور قبلی: /{Escape(lastCmd)})" : "";
-        var text = $"<b>سلام {Escape(name)}!</b>\n\nبه ربات AbroadQs خوش آمدید.\n\nدستور /help را برای راهنما بزنید.{lastLine}";
-        await _sender.SendTextMessageAsync(context.ChatId, text, cancellationToken).ConfigureAwait(false);
+        var text = $"<b>سلام {Escape(name)}!</b>\n\nبه ربات AbroadQs خوش آمدید.\n\nاز دکمه زیر برای تنظیم زبان و نام و نام‌خانوادگی استفاده کنید.{lastLine}";
+        var keyboard = new[] { new[] { new InlineButton("⚙️ تنظیمات", "menu:main") } };
+        await _sender.SendTextMessageWithInlineKeyboardAsync(context.ChatId, text, keyboard, cancellationToken).ConfigureAwait(false);
         return true;
     }
 

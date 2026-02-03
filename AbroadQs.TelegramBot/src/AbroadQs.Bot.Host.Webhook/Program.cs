@@ -71,9 +71,13 @@ if (!string.IsNullOrWhiteSpace(redisConfig))
     builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(
         _ => StackExchange.Redis.ConnectionMultiplexer.Connect(redisConfig));
     builder.Services.AddScoped<IUserLastCommandStore, RedisUserLastCommandStore>();
+    builder.Services.AddScoped<IUserConversationStateStore, RedisUserConversationStateStore>();
 }
 else
+{
     builder.Services.AddSingleton<IUserLastCommandStore, NoOpUserLastCommandStore>();
+    builder.Services.AddSingleton<IUserConversationStateStore, NoOpUserConversationStateStore>();
+}
 
 // SQL Server (optional: if connection string is set, users and settings are persisted)
 if (!string.IsNullOrWhiteSpace(connStr))
@@ -83,6 +87,10 @@ if (!string.IsNullOrWhiteSpace(connStr))
     builder.Services.AddScoped<ISettingsRepository, SettingsRepository>();
     builder.Services.AddScoped<IMessageRepository, MessageRepository>();
     builder.Services.AddScoped<IUserMessageStateRepository, UserMessageStateRepository>();
+}
+else
+{
+    builder.Services.AddSingleton<ITelegramUserRepository, NoOpTelegramUserRepository>();
 }
 
 builder.Services.AddEndpointsApiExplorer();
@@ -369,6 +377,7 @@ app.MapGet("/api/users", async (HttpContext ctx) =>
             username = u.Username,
             firstName = u.FirstName,
             lastName = u.LastName,
+            preferredLanguage = u.PreferredLanguage,
             firstSeenAt = u.FirstSeenAt,
             lastSeenAt = u.LastSeenAt
         });

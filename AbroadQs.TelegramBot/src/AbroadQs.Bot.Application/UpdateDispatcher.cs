@@ -101,6 +101,9 @@ public sealed class UpdateDispatcher
         string? username = null;
         string? firstName = null;
         string? lastName = null;
+        bool isCallbackQuery = false;
+        int? callbackMessageId = null;
+        string? callbackQueryId = null;
 
         if (update.Message != null)
         {
@@ -119,6 +122,9 @@ public sealed class UpdateDispatcher
             username = update.CallbackQuery.From.Username;
             firstName = update.CallbackQuery.From.FirstName;
             lastName = update.CallbackQuery.From.LastName;
+            isCallbackQuery = true;
+            callbackMessageId = update.CallbackQuery.Message?.MessageId;
+            callbackQueryId = update.CallbackQuery.Id;
         }
         else
         {
@@ -134,6 +140,9 @@ public sealed class UpdateDispatcher
             Username = username,
             FirstName = firstName,
             LastName = lastName,
+            IsCallbackQuery = isCallbackQuery,
+            CallbackMessageId = callbackMessageId,
+            CallbackQueryId = callbackQueryId,
             RawUpdate = update
         };
     }

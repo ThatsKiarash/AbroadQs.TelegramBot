@@ -17,6 +17,8 @@ public static class CommonModuleExtensions
     {
         services.AddScoped<IUpdateHandler, StartHandler>();
         services.AddScoped<IUpdateHandler, HelpHandler>();
+        services.AddScoped<IUpdateHandler, SettingsMenuHandler>();
+        services.AddScoped<IUpdateHandler, ProfileStateHandler>();
         services.AddScoped<IUpdateHandler, UnknownCommandHandler>();
         return services;
     }

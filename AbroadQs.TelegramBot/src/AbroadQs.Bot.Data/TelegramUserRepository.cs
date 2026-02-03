@@ -55,10 +55,41 @@ public sealed class TelegramUserRepository : ITelegramUserRepository
                 x.Username,
                 x.FirstName,
                 x.LastName,
+                x.PreferredLanguage,
                 x.FirstSeenAt,
                 x.LastSeenAt))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
         return list;
+    }
+
+    public async Task<AbroadQs.Bot.Contracts.TelegramUserDto?> GetByTelegramUserIdAsync(long telegramUserId, CancellationToken cancellationToken = default)
+    {
+        var entity = await _db.TelegramUsers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.TelegramUserId == telegramUserId, cancellationToken)
+            .ConfigureAwait(false);
+        if (entity == null) return null;
+        return new AbroadQs.Bot.Contracts.TelegramUserDto(
+            entity.TelegramUserId,
+            entity.Username,
+            entity.FirstName,
+            entity.LastName,
+            entity.PreferredLanguage,
+            entity.FirstSeenAt,
+            entity.LastSeenAt);
+    }
+
+    public async Task UpdateProfileAsync(long telegramUserId, string? firstName, string? lastName, string? preferredLanguage, CancellationToken cancellationToken = default)
+    {
+        var entity = await _db.TelegramUsers.FirstOrDefaultAsync(x => x.TelegramUserId == telegramUserId, cancellationToken).ConfigureAwait(false);
+        if (entity == null) return;
+        if (firstName != null) entity.FirstName = firstName;
+        if (lastName != null) entity.LastName = lastName;
+        if (preferredLanguage != null) entity.PreferredLanguage = preferredLanguage;
+        entity.LastSeenAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        if (_processingContext != null)
+            _processingContext.SqlAccessed = true;
     }
 }
