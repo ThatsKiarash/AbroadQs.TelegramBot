@@ -60,10 +60,11 @@
                                             <th>Last Name</th>
                                             <th>First Seen</th>
                                             <th>Last Seen</th>
+                                            <th>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody id="usersTableBody">
-                                        <tr><td colspan="6" class="text-center text-muted">Loading...</td></tr>
+                                        <tr><td colspan="7" class="text-center text-muted">Loading...</td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -107,7 +108,7 @@
                                                     <label class="form-check-label" for="updateModeGetUpdates">Get Updates (long polling)</label>
                                                 </div>
                                             </div>
-                                            <small class="form-text text-muted">Webhook: Telegram sends updates to your URL. Get Updates: bot polls for updates (no public URL needed). Restart required after change.</small>
+                                            <small class="form-text text-muted">Webhook: Telegram sends updates to your URL (must be public HTTPS). Get Updates: bot polls for updates (no public URL needed). For local testing, use Get Updates so the bot receives and replies to messages. Restart required after change.</small>
                                         </div>
                                         <div>
                                             <label class="form-label">Webhook endpoint</label>
@@ -126,7 +127,7 @@
                                                 </div>
                                             </div>
                                             <input type="url" id="webhookUrl" class="form-control" autocomplete="off" placeholder="https://webhook.abroadqs.com/webhook" aria-label="Webhook URL" />
-                                            <small class="form-text text-muted" id="webhookUrlHint">Webhook URL (HTTPS). For published: use your server URL. For tunnel: fixed URL; run Tunnel Client when developing locally.</small>
+                                            <small class="form-text text-muted" id="webhookUrlHint">Webhook URL (HTTPS). For published: use your server URL.</small>
                                         </div>
                                         <div>
                                             <label for="baseUrl" class="form-label">Base URL (for Mini App)</label>
@@ -179,6 +180,18 @@
                                             <span class="text-muted">Bot</span>
                                             <span id="statusBot" class="badge bg-secondary">—</span>
                                         </div>
+                                        <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary border-opacity-25">
+                                            <span class="text-muted">Redis</span>
+                                            <span id="statusRedis" class="badge bg-secondary">—</span>
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary border-opacity-25">
+                                            <span class="text-muted">RabbitMQ</span>
+                                            <span id="statusRabbitMq" class="badge bg-secondary">—</span>
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary border-opacity-25">
+                                            <span class="text-muted">SQL Server</span>
+                                            <span id="statusSql" class="badge bg-secondary">—</span>
+                                        </div>
                                         <div class="mt-2 text-muted" id="statusBotTime" style="font-size:0.75rem;"></div>
                                     </div>
                                 </div>
@@ -223,6 +236,24 @@
         </div>
     </div>
 
+    <!-- Modal for User Messages -->
+    <div class="modal fade" id="messagesModal" tabindex="-1" aria-labelledby="messagesModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="messagesModalLabel">User Messages</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="messagesModalContent">
+                        <div class="text-center text-muted">Loading...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
         const base = window.location.origin;
@@ -311,24 +342,98 @@
                     var tbody = document.getElementById('usersTableBody');
                     if (Array.isArray(data)) {
                         if (data.length === 0) {
-                            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No users yet. Users will appear after they interact with the bot.</td></tr>';
+                            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No users yet. Users will appear after they interact with the bot.</td></tr>';
                         } else {
                             tbody.innerHTML = data.map(function(u) {
                                 var firstSeen = u.firstSeenAt ? new Date(u.firstSeenAt).toLocaleString('en-GB', {dateStyle:'short', timeStyle:'short'}) : '—';
                                 var lastSeen = u.lastSeenAt ? new Date(u.lastSeenAt).toLocaleString('en-GB', {dateStyle:'short', timeStyle:'short'}) : '—';
-                                return '<tr><td><code>' + escapeHtml(String(u.telegramUserId)) + '</code></td><td>' + (u.username ? '@' + escapeHtml(u.username) : '—') + '</td><td>' + escapeHtml(u.firstName || '—') + '</td><td>' + escapeHtml(u.lastName || '—') + '</td><td><small>' + escapeHtml(firstSeen) + '</small></td><td><small>' + escapeHtml(lastSeen) + '</small></td></tr>';
+                                return '<tr><td><code>' + escapeHtml(String(u.telegramUserId)) + '</code></td><td>' + (u.username ? '@' + escapeHtml(u.username) : '—') + '</td><td>' + escapeHtml(u.firstName || '—') + '</td><td>' + escapeHtml(u.lastName || '—') + '</td><td><small>' + escapeHtml(firstSeen) + '</small></td><td><small>' + escapeHtml(lastSeen) + '</small></td><td><button class="btn btn-sm btn-outline-primary" onclick="viewUserMessages(' + u.telegramUserId + ')">Messages</button></td></tr>';
                             }).join('');
                         }
                     } else {
-                        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Error loading users</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Error loading users</td></tr>';
                     }
                 })
                 .catch(function() {
-                    document.getElementById('usersTableBody').innerHTML = '<tr><td colspan="6" class="text-center text-danger">Error loading users</td></tr>';
+                    document.getElementById('usersTableBody').innerHTML = '<tr><td colspan="7" class="text-center text-danger">Error loading users</td></tr>';
                 });
         }
 
         document.getElementById('btnRefreshUsers').addEventListener('click', loadUsers);
+
+        // View user messages
+        window.viewUserMessages = function(userId) {
+            var modal = new bootstrap.Modal(document.getElementById('messagesModal'));
+            document.getElementById('messagesModalLabel').textContent = 'Messages for User ' + userId;
+            document.getElementById('messagesModalContent').innerHTML = '<div class="text-center text-muted">Loading...</div>';
+            modal.show();
+            
+            fetch(base + '/api/messages/conversation/' + userId + '?limit=100')
+                .then(function(r) { return r.json(); })
+                .then(function(messages) {
+                    var content = document.getElementById('messagesModalContent');
+                    if (Array.isArray(messages) && messages.length > 0) {
+                        var html = '<div class="table-responsive"><table class="table table-sm table-hover"><thead class="table-dark"><tr><th>Time</th><th>From</th><th>Type</th><th>Text</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+                        messages.reverse().forEach(function(m) {
+                            var timeStr = m.sentAt ? new Date(m.sentAt).toLocaleString('en-GB', {dateStyle:'short', timeStyle:'short'}) : '—';
+                            var fromBadge = m.isFromBot ? '<span class="badge bg-primary">Bot</span>' : '<span class="badge bg-success">User</span>';
+                            var statusBadges = [];
+                            if (m.editedAt) statusBadges.push('<span class="badge bg-warning text-dark">Edited</span>');
+                            if (m.deletedAt) statusBadges.push('<span class="badge bg-danger">Deleted</span>');
+                            if (m.hasInlineKeyboard) statusBadges.push('<span class="badge bg-info">Keyboard</span>');
+                            if (m.shouldEdit) statusBadges.push('<span class="badge bg-secondary">Should Edit</span>');
+                            if (m.shouldDelete) statusBadges.push('<span class="badge bg-danger">Should Delete</span>');
+                            if (m.shouldKeepForEdit) statusBadges.push('<span class="badge bg-warning">Keep for Edit</span>');
+                            var statusHtml = statusBadges.length > 0 ? statusBadges.join(' ') : '—';
+                            var textPreview = m.text ? (m.text.length > 50 ? escapeHtml(m.text.substring(0, 50)) + '...' : escapeHtml(m.text)) : '—';
+                            html += '<tr><td><small>' + escapeHtml(timeStr) + '</small></td><td>' + fromBadge + '</td><td><small>' + escapeHtml(m.messageType || '—') + '</small></td><td>' + textPreview + '</td><td>' + statusHtml + '</td><td><button class="btn btn-sm btn-outline-info" onclick="viewMessageState(' + userId + ',' + m.id + ')">State</button></td></tr>';
+                        });
+                        html += '</tbody></table></div>';
+                        content.innerHTML = html;
+                    } else {
+                        content.innerHTML = '<div class="text-center text-muted">No messages found for this user.</div>';
+                    }
+                })
+                .catch(function() {
+                    document.getElementById('messagesModalContent').innerHTML = '<div class="text-center text-danger">Error loading messages</div>';
+                });
+        };
+
+        // View message state
+        window.viewMessageState = function(userId, messageId) {
+            fetch(base + '/api/messages/user/' + userId + '/state')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    var lines = [];
+                    if (data.lastMessage) {
+                        lines.push('<strong>Last Bot Message:</strong>');
+                        lines.push('ID: ' + data.lastMessage.id);
+                        lines.push('Telegram ID: ' + data.lastMessage.telegramMessageId);
+                        lines.push('Text: ' + (data.lastMessage.text || '—'));
+                        lines.push('Sent: ' + new Date(data.lastMessage.sentAt).toLocaleString());
+                        if (data.lastMessage.editedAt) lines.push('Edited: ' + new Date(data.lastMessage.editedAt).toLocaleString());
+                        if (data.lastMessage.deletedAt) lines.push('Deleted: ' + new Date(data.lastMessage.deletedAt).toLocaleString());
+                    }
+                    if (data.state) {
+                        lines.push('<br><strong>State:</strong>');
+                        lines.push('Should Edit: ' + (data.state.shouldEdit ? 'Yes' : 'No'));
+                        lines.push('Should Reply: ' + (data.state.shouldReply ? 'Yes' : 'No'));
+                        lines.push('Should Keep Static: ' + (data.state.shouldKeepStatic ? 'Yes' : 'No'));
+                        lines.push('Delete Next Messages: ' + (data.state.deleteNextMessages ? 'Yes' : 'No'));
+                        lines.push('Last Action: ' + (data.state.lastAction || '—'));
+                        if (data.state.lastActionAt) lines.push('Last Action At: ' + new Date(data.state.lastActionAt).toLocaleString());
+                    }
+                    Swal.fire({
+                        icon: 'info',
+                        title: 'Message State',
+                        html: '<div class="text-start" style="line-height:1.8;">' + lines.join('<br>') + '</div>',
+                        confirmButtonText: 'OK'
+                    });
+                })
+                .catch(function() {
+                    Swal.fire({ icon: 'error', title: 'Error', text: 'Failed to load message state' });
+                });
+        };
 
         document.addEventListener('click', function(event) {
             if (!sidebar.classList.contains('sidebar-open')) return;
@@ -393,12 +498,15 @@
             } catch (_) {}
         }
 
-        // Load connection status (Token / Webhook / Bot)
+        // Load connection status (Token / Webhook / Bot / Services)
         async function loadConnectionStatus() {
             var tokenEl = document.getElementById('statusToken');
             var webhookEl = document.getElementById('statusWebhook');
             var botEl = document.getElementById('statusBot');
             var botTimeEl = document.getElementById('statusBotTime');
+            var redisEl = document.getElementById('statusRedis');
+            var rabbitMqEl = document.getElementById('statusRabbitMq');
+            var sqlEl = document.getElementById('statusSql');
             try {
                 const r = await fetch(base + '/api/dashboard/status');
                 const st = await r.json().catch(() => ({}));
@@ -408,6 +516,9 @@
                     if (modeEl) modeEl.textContent = '—';
                     webhookEl.textContent = '—';
                     botEl.textContent = '—';
+                    redisEl.textContent = '—';
+                    rabbitMqEl.textContent = '—';
+                    sqlEl.textContent = '—';
                     botTimeEl.textContent = '';
                     return;
                 }
@@ -420,6 +531,19 @@
                 }
                 webhookEl.textContent = st.webhookSyncedAt ? 'Synced' : 'Not set';
                 webhookEl.className = 'badge ' + (st.webhookSyncedAt ? 'bg-success' : 'bg-secondary');
+                
+                // Redis status
+                redisEl.textContent = st.redisConnected ? 'Connected' : 'Not configured';
+                redisEl.className = 'badge ' + (st.redisConnected ? 'bg-success' : 'bg-secondary');
+                
+                // RabbitMQ status
+                rabbitMqEl.textContent = st.rabbitMqConfigured ? 'Configured' : 'Not configured';
+                rabbitMqEl.className = 'badge ' + (st.rabbitMqConfigured ? 'bg-success' : 'bg-secondary');
+                
+                // SQL Server status
+                sqlEl.textContent = st.sqlConnected ? 'Connected' : 'Not configured';
+                sqlEl.className = 'badge ' + (st.sqlConnected ? 'bg-success' : 'bg-secondary');
+                
                 if (st.lastEventAt) {
                     var active = st.lastEventStatus === 'Received';
                     botEl.textContent = active ? 'Connected' : 'Last error';
@@ -437,6 +561,9 @@
                 if (modeEl) modeEl.textContent = '—';
                 webhookEl.textContent = '—';
                 botEl.textContent = '—';
+                redisEl.textContent = '—';
+                rabbitMqEl.textContent = '—';
+                sqlEl.textContent = '—';
                 botTimeEl.textContent = '';
             }
         }
@@ -591,7 +718,7 @@
             if (isTunnel) {
                 input.value = PUBLIC_WEBHOOK_URL;
                 input.placeholder = PUBLIC_WEBHOOK_URL;
-                hint.textContent = 'Fixed tunnel URL. When running locally, run Tunnel Client.';
+                hint.textContent = 'Fixed tunnel URL.';
             } else if (isNgrok) {
                 input.placeholder = 'https://xxxx-xx-xx-xx-xx.ngrok-free.app/webhook';
                 hint.textContent = 'Your Ngrok public URL (HTTPS). Use the URL Ngrok gives you.';

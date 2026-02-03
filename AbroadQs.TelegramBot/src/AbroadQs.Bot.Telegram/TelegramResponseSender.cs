@@ -1,4 +1,6 @@
 using AbroadQs.Bot.Contracts;
+using AbroadQs.Bot.Data;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Telegram.Bot;
 using Telegram.Bot.Types;
@@ -14,12 +16,14 @@ public sealed class TelegramResponseSender : IResponseSender
     private readonly ITelegramBotClient _client;
     private readonly ILogger<TelegramResponseSender> _logger;
     private readonly IProcessingContext? _processingContext;
+    private readonly IServiceScopeFactory? _scopeFactory;
 
-    public TelegramResponseSender(ITelegramBotClient client, ILogger<TelegramResponseSender> logger, IProcessingContext? processingContext = null)
+    public TelegramResponseSender(ITelegramBotClient client, ILogger<TelegramResponseSender> logger, IProcessingContext? processingContext = null, IServiceScopeFactory? scopeFactory = null)
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _processingContext = processingContext;
+        _scopeFactory = scopeFactory;
     }
 
     public async Task SendTextMessageAsync(long chatId, string text, CancellationToken cancellationToken = default)
@@ -38,6 +42,9 @@ public sealed class TelegramResponseSender : IResponseSender
                 _logger.LogInformation("Message sent successfully to chat {ChatId}, messageId: {MessageId}", chatId, result.MessageId);
                 if (_processingContext != null)
                     _processingContext.ResponseSent = true;
+                
+                // Save outgoing message and update user message state
+                await SaveOutgoingMessageAsync(result, cancellationToken).ConfigureAwait(false);
             }
             else
             {
@@ -68,6 +75,9 @@ public sealed class TelegramResponseSender : IResponseSender
                 _logger.LogInformation("Message sent successfully to chat {ChatId}, messageId: {MessageId}", chatId, result.MessageId);
                 if (_processingContext != null)
                     _processingContext.ResponseSent = true;
+                
+                // Save outgoing message and update user message state
+                await SaveOutgoingMessageAsync(result, cancellationToken).ConfigureAwait(false);
             }
             else
             {
@@ -78,6 +88,35 @@ public sealed class TelegramResponseSender : IResponseSender
         {
             _logger.LogError(ex, "Failed to send message to chat {ChatId}", chatId);
             throw;
+        }
+    }
+
+    private async Task SaveOutgoingMessageAsync(Message message, CancellationToken cancellationToken)
+    {
+        if (_scopeFactory == null) return;
+
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var messageRepo = scope.ServiceProvider.GetService<IMessageRepository>();
+            var stateRepo = scope.ServiceProvider.GetService<IUserMessageStateRepository>();
+            
+            if (messageRepo != null)
+            {
+                var messageInfo = MessageRepository.ToOutgoingMessageInfo(message);
+                var messageId = await messageRepo.SaveOutgoingMessageAsync(messageInfo, cancellationToken).ConfigureAwait(false);
+                
+                // Update user message state (use ChatId as TelegramUserId for private chats)
+                if (stateRepo != null)
+                {
+                    var userId = message.Chat.Type == ChatType.Private ? message.Chat.Id : (message.From?.Id ?? message.Chat.Id);
+                    await stateRepo.SetLastBotMessageAsync(userId, messageId, message.MessageId, cancellationToken).ConfigureAwait(false);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to save outgoing message {MessageId}", message.MessageId);
         }
     }
 }

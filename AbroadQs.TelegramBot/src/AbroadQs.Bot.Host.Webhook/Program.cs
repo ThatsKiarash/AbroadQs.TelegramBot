@@ -81,6 +81,8 @@ if (!string.IsNullOrWhiteSpace(connStr))
     builder.Services.AddDbContext<ApplicationDbContext>(o => o.UseSqlServer(connStr));
     builder.Services.AddScoped<ITelegramUserRepository, TelegramUserRepository>();
     builder.Services.AddScoped<ISettingsRepository, SettingsRepository>();
+    builder.Services.AddScoped<IMessageRepository, MessageRepository>();
+    builder.Services.AddScoped<IUserMessageStateRepository, UserMessageStateRepository>();
 }
 
 builder.Services.AddEndpointsApiExplorer();
@@ -141,6 +143,21 @@ else if (string.Equals(updateMode, "GetUpdates", StringComparison.OrdinalIgnoreC
         }
     }
     catch (Exception ex) { app.Logger.LogWarning(ex, "DeleteWebhook at startup failed."); }
+}
+else
+{
+    // Webhook mode but no URL (e.g. local dev): remove any existing webhook so updates don't go to old server
+    try
+    {
+        using var scope = app.Services.CreateScope();
+        var client = scope.ServiceProvider.GetRequiredService<ITelegramBotClient>();
+        if (client is not PlaceholderTelegramBotClient)
+        {
+            await client.DeleteWebhook().ConfigureAwait(false);
+            app.Logger.LogInformation("Webhook mode but no URL set; webhook removed. Set a webhook URL or use GetUpdates for local testing.");
+        }
+    }
+    catch (Exception ex) { app.Logger.LogWarning(ex, "DeleteWebhook failed."); }
 }
 
 if (app.Environment.IsDevelopment())
@@ -296,6 +313,32 @@ app.MapGet("/api/dashboard/status", async (HttpContext ctx, UpdateLogService log
     var updateMode = await ReadUpdateModeAsync(ctx.RequestServices, ctx.RequestAborted).ConfigureAwait(false);
 
     var lastLog = logService.GetRecentLogs(1).FirstOrDefault();
+    
+    // Check Redis connection
+    bool redisConnected = false;
+    try
+    {
+        var redis = ctx.RequestServices.GetService<StackExchange.Redis.IConnectionMultiplexer>();
+        redisConnected = redis?.IsConnected ?? false;
+    }
+    catch { }
+    
+    // Check RabbitMQ connection (check if service is registered)
+    bool rabbitMqConfigured = ctx.RequestServices.GetService<IRabbitMqPublisher>() != null;
+    
+    // Check SQL Server connection
+    bool sqlConnected = false;
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var db = scope.ServiceProvider.GetService<ApplicationDbContext>();
+        if (db != null)
+        {
+            sqlConnected = await db.Database.CanConnectAsync(ctx.RequestAborted).ConfigureAwait(false);
+        }
+    }
+    catch { }
+    
     return Results.Json(new
     {
         tokenSet,
@@ -303,7 +346,10 @@ app.MapGet("/api/dashboard/status", async (HttpContext ctx, UpdateLogService log
         webhookSyncedAt,
         lastEventAt = lastLog?.Time,
         lastEventStatus = lastLog?.Status,
-        lastEventError = lastLog?.Error
+        lastEventError = lastLog?.Error,
+        redisConnected,
+        rabbitMqConfigured,
+        sqlConnected
     });
 }).WithName("DashboardStatus");
 
@@ -333,6 +379,139 @@ app.MapGet("/api/users", async (HttpContext ctx) =>
         return Results.Json(new { error = ex.Message }, statusCode: 500);
     }
 }).WithName("UsersList");
+
+// API: لیست پیام‌های یک کاربر
+app.MapGet("/api/messages/user/{userId:long}", async (long userId, HttpContext ctx, int? limit = null) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var messageRepo = scope.ServiceProvider.GetService<IMessageRepository>();
+        if (messageRepo == null)
+            return Results.Json(new List<object>());
+        var messages = await messageRepo.GetUserMessagesAsync(userId, limit ?? 50, ctx.RequestAborted).ConfigureAwait(false);
+        var payload = messages.Select(m => new
+        {
+            id = m.Id,
+            telegramMessageId = m.TelegramMessageId,
+            telegramChatId = m.TelegramChatId,
+            telegramUserId = m.TelegramUserId,
+            isFromBot = m.IsFromBot,
+            text = m.Text,
+            messageType = m.MessageType,
+            sentAt = m.SentAt,
+            editedAt = m.EditedAt,
+            deletedAt = m.DeletedAt,
+            replyToMessageId = m.ReplyToMessageId,
+            forwardFromChatId = m.ForwardFromChatId,
+            forwardFromMessageId = m.ForwardFromMessageId,
+            hasReplyKeyboard = m.HasReplyKeyboard,
+            hasInlineKeyboard = m.HasInlineKeyboard,
+            inlineKeyboardId = m.InlineKeyboardId,
+            shouldEdit = m.ShouldEdit,
+            shouldDelete = m.ShouldDelete,
+            shouldForward = m.ShouldForward,
+            shouldKeepForEdit = m.ShouldKeepForEdit,
+            deleteNextMessages = m.DeleteNextMessages
+        });
+        return Results.Json(payload);
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { error = ex.Message }, statusCode: 500);
+    }
+}).WithName("UserMessages");
+
+// API: مکالمه بین کاربر و ربات
+app.MapGet("/api/messages/conversation/{userId:long}", async (long userId, HttpContext ctx, int? limit = null) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var messageRepo = scope.ServiceProvider.GetService<IMessageRepository>();
+        if (messageRepo == null)
+            return Results.Json(new List<object>());
+        var messages = await messageRepo.GetConversationAsync(userId, limit ?? 100, ctx.RequestAborted).ConfigureAwait(false);
+        var payload = messages.Select(m => new
+        {
+            id = m.Id,
+            telegramMessageId = m.TelegramMessageId,
+            telegramChatId = m.TelegramChatId,
+            telegramUserId = m.TelegramUserId,
+            isFromBot = m.IsFromBot,
+            text = m.Text,
+            messageType = m.MessageType,
+            sentAt = m.SentAt,
+            editedAt = m.EditedAt,
+            deletedAt = m.DeletedAt,
+            replyToMessageId = m.ReplyToMessageId,
+            forwardFromChatId = m.ForwardFromChatId,
+            forwardFromMessageId = m.ForwardFromMessageId,
+            hasReplyKeyboard = m.HasReplyKeyboard,
+            hasInlineKeyboard = m.HasInlineKeyboard,
+            inlineKeyboardId = m.InlineKeyboardId,
+            shouldEdit = m.ShouldEdit,
+            shouldDelete = m.ShouldDelete,
+            shouldForward = m.ShouldForward,
+            shouldKeepForEdit = m.ShouldKeepForEdit,
+            deleteNextMessages = m.DeleteNextMessages
+        });
+        return Results.Json(payload);
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { error = ex.Message }, statusCode: 500);
+    }
+}).WithName("ConversationMessages");
+
+// API: آخرین پیام ربات برای کاربر و وضعیت آن
+app.MapGet("/api/messages/user/{userId:long}/state", async (long userId, HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var messageRepo = scope.ServiceProvider.GetService<IMessageRepository>();
+        var stateRepo = scope.ServiceProvider.GetService<IUserMessageStateRepository>();
+        
+        var lastMessage = messageRepo != null ? await messageRepo.GetLastBotMessageAsync(userId, ctx.RequestAborted).ConfigureAwait(false) : null;
+        var state = stateRepo != null ? await stateRepo.GetUserMessageStateAsync(userId, ctx.RequestAborted).ConfigureAwait(false) : null;
+        
+        return Results.Json(new
+        {
+            lastMessage = lastMessage != null ? new
+            {
+                id = lastMessage.Id,
+                telegramMessageId = lastMessage.TelegramMessageId,
+                text = lastMessage.Text,
+                sentAt = lastMessage.SentAt,
+                editedAt = lastMessage.EditedAt,
+                deletedAt = lastMessage.DeletedAt,
+                hasInlineKeyboard = lastMessage.HasInlineKeyboard,
+                inlineKeyboardId = lastMessage.InlineKeyboardId,
+                shouldEdit = lastMessage.ShouldEdit,
+                shouldDelete = lastMessage.ShouldDelete,
+                shouldForward = lastMessage.ShouldForward,
+                shouldKeepForEdit = lastMessage.ShouldKeepForEdit,
+                deleteNextMessages = lastMessage.DeleteNextMessages
+            } : null,
+            state = state != null ? new
+            {
+                lastBotMessageId = state.LastBotMessageId,
+                lastBotTelegramMessageId = state.LastBotTelegramMessageId,
+                shouldEdit = state.ShouldEdit,
+                shouldReply = state.ShouldReply,
+                shouldKeepStatic = state.ShouldKeepStatic,
+                deleteNextMessages = state.DeleteNextMessages,
+                lastAction = state.LastAction,
+                lastActionAt = state.LastActionAt
+            } : null
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { error = ex.Message }, statusCode: 500);
+    }
+}).WithName("UserMessageState");
 
 // تست: اگر این 200 برگردونه، مسیرهای API درست ثبت شدن
 app.MapGet("/api/ping", () => Results.Json(new { ok = true })).WithName("Ping");
@@ -374,7 +553,7 @@ app.MapPost("/api/settings/token", async (HttpContext ctx) =>
     }
     catch { /* اگر DB خطا داد، فایل قبلاً ذخیره شده؛ داشبورد از فایل می‌خواند */ }
 
-    return Results.Json(new { success = true, message = "توکن ذخیره شد. رفرش کن؛ اگر پاک شد، SQL Server را چک کن (Docker)." });
+    return Results.Json(new { success = true, message = "Token saved. Refresh the page; if it disappears, check SQL Server (Docker)." });
 }).WithName("TokenSet");
 
 // API: حالت به‌روزرسانی (Webhook یا GetUpdates) — اول از دیتابیس، بعد از config/فایل
@@ -429,7 +608,7 @@ app.MapPost("/api/settings/update-mode", async (HttpContext ctx) =>
         }
     }
 
-    return Results.Json(new { success = true, mode, webhookDeleted = webhookDeleteMessage, message = "حالت ذخیره شد. برای اعمال، برنامه را یک بار ریستارت کنید." });
+    return Results.Json(new { success = true, mode, webhookDeleted = webhookDeleteMessage, message = "Update mode saved. Restart the application to apply changes." });
 }).WithName("UpdateModeSet");
 
 // سرویس وضعیت ربات

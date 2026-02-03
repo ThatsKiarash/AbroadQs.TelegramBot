@@ -1,4 +1,5 @@
 using AbroadQs.Bot.Contracts;
+using AbroadQs.Bot.Data;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Telegram.Bot.Types;
@@ -33,7 +34,7 @@ public sealed class UpdateDispatcher
             return;
         }
 
-        // Save/update user on every interaction
+        // Save/update user and message on every interaction
         if (context.UserId.HasValue && _scopeFactory != null)
         {
             try
@@ -42,8 +43,28 @@ public sealed class UpdateDispatcher
                 var userRepo = scope.ServiceProvider.GetService<ITelegramUserRepository>();
                 if (userRepo != null)
                     await userRepo.SaveOrUpdateAsync(context.UserId.Value, context.Username, context.FirstName, context.LastName, cancellationToken).ConfigureAwait(false);
+
+                // Save incoming message
+                var messageRepo = scope.ServiceProvider.GetService<IMessageRepository>();
+                if (messageRepo != null && update.Message != null)
+                {
+                    var messageInfo = MessageRepository.ToIncomingMessageInfo(update.Message);
+                    await messageRepo.SaveIncomingMessageAsync(messageInfo, update.Id, cancellationToken).ConfigureAwait(false);
+                }
+                // Handle edited message
+                else if (messageRepo != null && update.EditedMessage != null)
+                {
+                    await messageRepo.UpdateMessageAsync(
+                        update.EditedMessage.MessageId,
+                        update.EditedMessage.Chat.Id,
+                        info => { info.IsEdited = true; info.EditedAt = DateTimeOffset.UtcNow; },
+                        cancellationToken).ConfigureAwait(false);
+                }
             }
-            catch { /* non-fatal */ }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to save user/message for update {UpdateId}", update.Id);
+            }
         }
 
         foreach (var handler in _handlers)

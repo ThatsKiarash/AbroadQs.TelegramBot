@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\AbroadQs.Bot.Contracts\AbroadQs.Bot.Contracts.csproj" />
     <ProjectReference Include="..\AbroadQs.Bot.Telegram\AbroadQs.Bot.Telegram.csproj" />
+    <ProjectReference Include="..\AbroadQs.Bot.Data\AbroadQs.Bot.Data.csproj" />
   </ItemGroup>
 
   <ItemGroup>
