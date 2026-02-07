@@ -53,6 +53,18 @@ services:
     restart: unless-stopped
     networks: [abroadqs]
 
+  tunnel:
+    build:
+      context: .
+      dockerfile: src/AbroadQs.TunnelServer/Dockerfile
+    networks: [abroadqs]
+    container_name: abroadqs-tunnel
+    ports:
+      - "9080:9080"
+    environment:
+      Tunnel__BackendUrl: "http://bot:5252"
+    restart: unless-stopped
+
   bot:
     build:
       context: .
