@@ -60,7 +60,7 @@ services:
     networks: [abroadqs]
     container_name: abroadqs-tunnel
     ports:
-      - "9080:9080"
+      - "127.0.0.1:9080:9080"
     environment:
       Tunnel__BackendUrl: "http://bot:5252"
     restart: unless-stopped
