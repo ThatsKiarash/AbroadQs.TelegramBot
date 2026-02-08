@@ -70,8 +70,16 @@ if (!string.IsNullOrWhiteSpace(redisConfig))
 {
     builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(
         _ => StackExchange.Redis.ConnectionMultiplexer.Connect(redisConfig));
-    builder.Services.AddScoped<IUserLastCommandStore, RedisUserLastCommandStore>();
-    builder.Services.AddScoped<IUserConversationStateStore, RedisUserConversationStateStore>();
+    builder.Services.AddScoped<IUserLastCommandStore>(sp =>
+        new RedisUserLastCommandStore(
+            sp.GetRequiredService<StackExchange.Redis.IConnectionMultiplexer>(),
+            sp.GetRequiredService<ILogger<RedisUserLastCommandStore>>(),
+            sp.GetService<IProcessingContext>()));
+    builder.Services.AddScoped<IUserConversationStateStore>(sp =>
+        new RedisUserConversationStateStore(
+            sp.GetRequiredService<StackExchange.Redis.IConnectionMultiplexer>(),
+            sp.GetRequiredService<ILogger<RedisUserConversationStateStore>>(),
+            sp.GetService<IProcessingContext>()));
 }
 else
 {
