@@ -29,6 +29,17 @@ public interface IResponseSender
     Task EditMessageTextWithInlineKeyboardAsync(long chatId, int messageId, string text, IReadOnlyList<IReadOnlyList<InlineButton>> inlineKeyboard, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Edit an existing message's text (no keyboard change). Used for reply-keyboard messages where only text needs updating.
+    /// </summary>
+    Task EditMessageTextAsync(long chatId, int messageId, string text, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Silently update the reply keyboard by sending a phantom message with the new keyboard and immediately deleting it.
+    /// The keyboard persists after the phantom is deleted. Does NOT save the phantom as a bot message.
+    /// </summary>
+    Task UpdateReplyKeyboardSilentAsync(long chatId, IReadOnlyList<IReadOnlyList<string>> keyboard, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Delete a message from a chat. Used e.g. to remove language-selection prompts after the user picks a language.
     /// </summary>
     Task DeleteMessageAsync(long chatId, int messageId, CancellationToken cancellationToken = default);

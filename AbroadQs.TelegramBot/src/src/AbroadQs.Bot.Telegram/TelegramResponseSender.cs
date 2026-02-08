@@ -198,6 +198,61 @@ public sealed class TelegramResponseSender : IResponseSender
         }
     }
 
+    public async Task EditMessageTextAsync(long chatId, int messageId, string text, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await _client.EditMessageText(
+                new ChatId(chatId),
+                messageId,
+                text,
+                parseMode: ParseMode.Html,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            _logger.LogInformation("Message text edited in chat {ChatId}, messageId {MessageId}", chatId, messageId);
+            if (_processingContext != null)
+                _processingContext.ResponseSent = true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to edit message text {MessageId} in chat {ChatId}", messageId, chatId);
+            throw;
+        }
+    }
+
+    public async Task UpdateReplyKeyboardSilentAsync(long chatId, IReadOnlyList<IReadOnlyList<string>> keyboard, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var rows = keyboard.Select(row => new KeyboardButton[row.Count]).ToList();
+            for (int r = 0; r < keyboard.Count; r++)
+                for (int c = 0; c < keyboard[r].Count; c++)
+                    rows[r][c] = new KeyboardButton(keyboard[r][c]);
+
+            var markup = new ReplyKeyboardMarkup(rows) { ResizeKeyboard = true };
+
+            // Send phantom message to set the new keyboard
+            var result = await _client.SendMessage(
+                new ChatId(chatId),
+                "\u200B", // zero-width space
+                replyMarkup: markup,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            // Immediately delete the phantom — keyboard persists on the client
+            if (result != null)
+            {
+                await _client.DeleteMessage(new ChatId(chatId), result.MessageId, cancellationToken: cancellationToken).ConfigureAwait(false);
+                _logger.LogInformation("Reply keyboard silently updated in chat {ChatId}", chatId);
+            }
+            // Do NOT call SaveOutgoingMessageAsync — this is a phantom message
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to silently update reply keyboard in chat {ChatId}", chatId);
+            // Swallow — keyboard update is best-effort
+        }
+    }
+
     public async Task DeleteMessageAsync(long chatId, int messageId, CancellationToken cancellationToken = default)
     {
         try

@@ -78,7 +78,7 @@ public sealed class StartHandler : IUpdateHandler
         // Delete user's /start message
         try { if (context.IncomingMessageId.HasValue) await _sender.DeleteMessageAsync(context.ChatId, context.IncomingMessageId.Value, cancellationToken).ConfigureAwait(false); } catch { }
 
-        // Get old bot message ID for smooth transition (send new → delete old)
+        // Get old bot message ID
         int? oldBotMsgId = null;
         if (_msgStateRepo != null)
         {
@@ -90,10 +90,9 @@ public sealed class StartHandler : IUpdateHandler
             catch { }
         }
 
-        // Load buttons from DB for the chosen stage
         if (isNewUser)
         {
-            // Welcome stage → inline keyboard (language selection)
+            // Welcome stage → inline keyboard (language selection) — always send new
             var keyboard = await BuildInlineKeyboardAsync(userId, stageKey, isFa, cancellationToken).ConfigureAwait(false);
             if (keyboard.Count == 0)
                 keyboard = new List<IReadOnlyList<InlineButton>>
@@ -101,17 +100,32 @@ public sealed class StartHandler : IUpdateHandler
                     new[] { new InlineButton("فارسی 🇮🇷", "lang:fa"), new InlineButton("English 🇬🇧", "lang:en") }
                 };
             await _sender.SendTextMessageWithInlineKeyboardAsync(context.ChatId, text, keyboard, cancellationToken).ConfigureAwait(false);
+            // Delete old bot msg after
+            if (oldBotMsgId.HasValue)
+                try { await _sender.DeleteMessageAsync(context.ChatId, oldBotMsgId.Value, cancellationToken).ConfigureAwait(false); } catch { }
         }
         else
         {
-            // Main menu → reply keyboard (persistent buttons at bottom)
+            // Returning user → reply-kb → reply-kb: edit text + update keyboard
             var keyboard = await BuildReplyKeyboardAsync(userId, stageKey, isFa, cancellationToken).ConfigureAwait(false);
-            await _sender.SendTextMessageWithReplyKeyboardAsync(context.ChatId, text, keyboard, cancellationToken).ConfigureAwait(false);
+            if (oldBotMsgId.HasValue)
+            {
+                try
+                {
+                    await _sender.EditMessageTextAsync(context.ChatId, oldBotMsgId.Value, text, cancellationToken).ConfigureAwait(false);
+                    await _sender.UpdateReplyKeyboardSilentAsync(context.ChatId, keyboard, cancellationToken).ConfigureAwait(false);
+                }
+                catch
+                {
+                    // Edit failed — fall back to send new
+                    await _sender.SendTextMessageWithReplyKeyboardAsync(context.ChatId, text, keyboard, cancellationToken).ConfigureAwait(false);
+                }
+            }
+            else
+            {
+                await _sender.SendTextMessageWithReplyKeyboardAsync(context.ChatId, text, keyboard, cancellationToken).ConfigureAwait(false);
+            }
         }
-
-        // Delete old bot message AFTER new one is sent (smooth transition)
-        if (oldBotMsgId.HasValue)
-            try { await _sender.DeleteMessageAsync(context.ChatId, oldBotMsgId.Value, cancellationToken).ConfigureAwait(false); } catch { }
 
         return true;
     }
