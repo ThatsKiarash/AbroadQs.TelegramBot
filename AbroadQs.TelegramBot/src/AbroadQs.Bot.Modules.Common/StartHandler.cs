@@ -73,34 +73,38 @@ public sealed class StartHandler : IUpdateHandler
         }
 
         // Load buttons from DB for the chosen stage
-        var keyboard = await BuildKeyboardAsync(userId, stageKey, isFa, cancellationToken).ConfigureAwait(false);
-
-        // If no buttons defined in DB, add defaults
-        if (keyboard.Count == 0)
+        if (isNewUser)
         {
-            if (isNewUser)
+            // Welcome stage → inline keyboard (language selection)
+            var keyboard = await BuildInlineKeyboardAsync(userId, stageKey, isFa, cancellationToken).ConfigureAwait(false);
+            if (keyboard.Count == 0)
                 keyboard = new List<IReadOnlyList<InlineButton>>
                 {
                     new[] { new InlineButton("فارسی 🇮🇷", "lang:fa"), new InlineButton("English 🇬🇧", "lang:en") }
                 };
-            else
-                keyboard = new List<IReadOnlyList<InlineButton>>
-                {
-                    new[] { new InlineButton(isFa ? "📋 ثبت درخواست" : "📋 Submit Request", "stage:new_request") },
-                    new[] { new InlineButton(isFa ? "💰 امور مالی" : "💰 Finance", "stage:finance"), new InlineButton(isFa ? "💡 پیشنهادات من" : "💡 My Suggestions", "stage:my_suggestions"), new InlineButton(isFa ? "✉️ پیام های من" : "✉️ My Messages", "stage:my_messages") },
-                    new[] { new InlineButton(isFa ? "👤 پروفایل من" : "👤 My Profile", "stage:profile"), new InlineButton(isFa ? "ℹ️ درباره ما" : "ℹ️ About Us", "stage:about_us"), new InlineButton(isFa ? "🎫 تیکت ها" : "🎫 Tickets", "stage:tickets") },
-                    new[] { new InlineButton(isFa ? "⚙️ تنظیمات" : "⚙️ Settings", "stage:settings") }
-                };
+            await _sender.SendTextMessageWithInlineKeyboardAsync(context.ChatId, text, keyboard, cancellationToken).ConfigureAwait(false);
         }
-
-        await _sender.SendTextMessageWithInlineKeyboardAsync(context.ChatId, text, keyboard, cancellationToken).ConfigureAwait(false);
+        else
+        {
+            // Main menu → reply keyboard (persistent buttons at bottom)
+            var keyboard = await BuildReplyKeyboardAsync(userId, stageKey, isFa, cancellationToken).ConfigureAwait(false);
+            if (keyboard.Count == 0)
+                keyboard = new List<IReadOnlyList<string>>
+                {
+                    new[] { isFa ? "📋 ثبت درخواست" : "📋 Submit Request" },
+                    new[] { isFa ? "💰 امور مالی" : "💰 Finance", isFa ? "💡 پیشنهادات من" : "💡 My Suggestions", isFa ? "✉️ پیام های من" : "✉️ My Messages" },
+                    new[] { isFa ? "👤 پروفایل من" : "👤 My Profile", isFa ? "ℹ️ درباره ما" : "ℹ️ About Us", isFa ? "🎫 تیکت ها" : "🎫 Tickets" },
+                    new[] { isFa ? "⚙️ تنظیمات" : "⚙️ Settings" }
+                };
+            await _sender.SendTextMessageWithReplyKeyboardAsync(context.ChatId, text, keyboard, cancellationToken).ConfigureAwait(false);
+        }
         return true;
     }
 
-    private async Task<List<IReadOnlyList<InlineButton>>> BuildKeyboardAsync(long userId, string stageKey, bool isFa, CancellationToken cancellationToken)
+    private async Task<List<BotStageButtonDto>> GetVisibleButtonsAsync(long userId, string stageKey, CancellationToken cancellationToken)
     {
         var allButtons = await _stageRepo.GetButtonsAsync(stageKey, cancellationToken).ConfigureAwait(false);
-        if (allButtons.Count == 0) return new List<IReadOnlyList<InlineButton>>();
+        if (allButtons.Count == 0) return new List<BotStageButtonDto>();
 
         var userPerms = await _permRepo.GetUserPermissionsAsync(userId, cancellationToken).ConfigureAwait(false);
         var permSet = new HashSet<string>(userPerms, StringComparer.OrdinalIgnoreCase);
@@ -112,10 +116,14 @@ public sealed class StartHandler : IUpdateHandler
             if (!string.IsNullOrEmpty(btn.RequiredPermission) && !permSet.Contains(btn.RequiredPermission)) continue;
             visibleButtons.Add(btn);
         }
+        return visibleButtons;
+    }
 
+    private async Task<List<IReadOnlyList<InlineButton>>> BuildInlineKeyboardAsync(long userId, string stageKey, bool isFa, CancellationToken cancellationToken)
+    {
+        var visibleButtons = await GetVisibleButtonsAsync(userId, stageKey, cancellationToken).ConfigureAwait(false);
         var keyboard = new List<IReadOnlyList<InlineButton>>();
-        var rows = visibleButtons.GroupBy(b => b.Row).OrderBy(g => g.Key);
-        foreach (var row in rows)
+        foreach (var row in visibleButtons.GroupBy(b => b.Row).OrderBy(g => g.Key))
         {
             var rowButtons = new List<InlineButton>();
             foreach (var btn in row.OrderBy(b => b.Column))
@@ -132,6 +140,24 @@ public sealed class StartHandler : IUpdateHandler
             }
             if (rowButtons.Count > 0)
                 keyboard.Add(rowButtons);
+        }
+        return keyboard;
+    }
+
+    private async Task<List<IReadOnlyList<string>>> BuildReplyKeyboardAsync(long userId, string stageKey, bool isFa, CancellationToken cancellationToken)
+    {
+        var visibleButtons = await GetVisibleButtonsAsync(userId, stageKey, cancellationToken).ConfigureAwait(false);
+        var keyboard = new List<IReadOnlyList<string>>();
+        foreach (var row in visibleButtons.GroupBy(b => b.Row).OrderBy(g => g.Key))
+        {
+            var rowTexts = new List<string>();
+            foreach (var btn in row.OrderBy(b => b.Column))
+            {
+                var btnText = isFa ? (btn.TextFa ?? btn.TextEn ?? "?") : (btn.TextEn ?? btn.TextFa ?? "?");
+                rowTexts.Add(btnText);
+            }
+            if (rowTexts.Count > 0)
+                keyboard.Add(rowTexts);
         }
         return keyboard;
     }

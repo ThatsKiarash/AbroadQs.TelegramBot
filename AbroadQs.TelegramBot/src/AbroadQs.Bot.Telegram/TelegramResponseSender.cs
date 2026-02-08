@@ -130,6 +130,43 @@ public sealed class TelegramResponseSender : IResponseSender
         }
     }
 
+    public async Task SendTextMessageWithReplyKeyboardAsync(long chatId, string text, IReadOnlyList<IReadOnlyList<string>> keyboard, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var rows = keyboard.Select(row => new KeyboardButton[row.Count]).ToList();
+            for (int r = 0; r < keyboard.Count; r++)
+                for (int c = 0; c < keyboard[r].Count; c++)
+                    rows[r][c] = new KeyboardButton(keyboard[r][c]);
+
+            var markup = new ReplyKeyboardMarkup(rows) { ResizeKeyboard = true };
+
+            var result = await _client.SendMessage(
+                new ChatId(chatId),
+                text,
+                parseMode: ParseMode.Html,
+                replyMarkup: markup,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            if (result != null)
+            {
+                _logger.LogInformation("Message with reply keyboard sent to chat {ChatId}, messageId: {MessageId}", chatId, result.MessageId);
+                if (_processingContext != null)
+                    _processingContext.ResponseSent = true;
+                await SaveOutgoingMessageAsync(result, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                _logger.LogWarning("Message with reply keyboard not sent to chat {ChatId} - bot client returned null", chatId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send message with reply keyboard to chat {ChatId}", chatId);
+            throw;
+        }
+    }
+
     public async Task EditMessageTextWithInlineKeyboardAsync(long chatId, int messageId, string text, IReadOnlyList<IReadOnlyList<InlineButton>> inlineKeyboard, CancellationToken cancellationToken = default)
     {
         try

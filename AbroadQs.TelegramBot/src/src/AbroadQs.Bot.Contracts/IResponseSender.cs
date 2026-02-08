@@ -19,9 +19,19 @@ public interface IResponseSender
     Task SendTextMessageWithInlineKeyboardAsync(long chatId, string text, IReadOnlyList<IReadOnlyList<InlineButton>> inlineKeyboard, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Send a message with a reply keyboard (persistent buttons at the bottom of the chat). Each inner list is one row of button labels.
+    /// </summary>
+    Task SendTextMessageWithReplyKeyboardAsync(long chatId, string text, IReadOnlyList<IReadOnlyList<string>> keyboard, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Edit an existing message's text and inline keyboard. Use when handling a callback to update the same message.
     /// </summary>
     Task EditMessageTextWithInlineKeyboardAsync(long chatId, int messageId, string text, IReadOnlyList<IReadOnlyList<InlineButton>> inlineKeyboard, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Delete a message from a chat. Used e.g. to remove language-selection prompts after the user picks a language.
+    /// </summary>
+    Task DeleteMessageAsync(long chatId, int messageId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Answer a callback query so Telegram removes the loading state. Call when handling a callback.

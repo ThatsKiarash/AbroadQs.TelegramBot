@@ -5,6 +5,7 @@ namespace AbroadQs.Bot.Modules.Common;
 /// <summary>
 /// Handles callbacks like "stage:xxx" — loads the stage from DB, checks permissions, and displays it.
 /// Also handles "lang:xx" callbacks for language selection.
+/// Also handles plain text messages that match main_menu reply keyboard buttons.
 /// </summary>
 public sealed class DynamicStageHandler : IUpdateHandler
 {
@@ -39,11 +40,16 @@ public sealed class DynamicStageHandler : IUpdateHandler
             return data.StartsWith("stage:", StringComparison.OrdinalIgnoreCase)
                 || data.StartsWith("lang:", StringComparison.OrdinalIgnoreCase);
         }
-        // Also handle /settings and /menu commands
+        // Handle /settings and /menu commands
         var cmd = context.Command;
         if (string.Equals(cmd, "settings", StringComparison.OrdinalIgnoreCase)
             || string.Equals(cmd, "menu", StringComparison.OrdinalIgnoreCase))
             return true;
+
+        // Handle plain text messages (potential reply keyboard button presses)
+        if (!context.IsCallbackQuery && !string.IsNullOrEmpty(data) && string.IsNullOrEmpty(cmd))
+            return true;
+
         return false;
     }
 
@@ -67,17 +73,17 @@ public sealed class DynamicStageHandler : IUpdateHandler
                 // Delete the language-selection message so the chat stays clean
                 if (editMessageId.HasValue)
                     await _sender.DeleteMessageAsync(userId, editMessageId.Value, cancellationToken).ConfigureAwait(false);
-                // Send fresh main_menu (not edit) so user sees the main keyboard
-                await ShowStageAsync(userId, "main_menu", null, code, cancellationToken).ConfigureAwait(false);
+                // Send fresh main_menu with reply keyboard
+                await ShowMainMenuAsync(userId, code, cancellationToken).ConfigureAwait(false);
             }
             return true;
         }
 
-        // /settings or /menu → show main_menu stage
+        // /settings or /menu → show main_menu stage with reply keyboard
         if (string.Equals(context.Command, "settings", StringComparison.OrdinalIgnoreCase)
             || string.Equals(context.Command, "menu", StringComparison.OrdinalIgnoreCase))
         {
-            await ShowStageAsync(userId, "main_menu", editMessageId, null, cancellationToken).ConfigureAwait(false);
+            await ShowMainMenuAsync(userId, null, cancellationToken).ConfigureAwait(false);
             return true;
         }
 
@@ -87,20 +93,139 @@ public sealed class DynamicStageHandler : IUpdateHandler
             var stageKey = data["stage:".Length..].Trim();
             if (stageKey.Length > 0)
             {
+                // If navigating back to main_menu, show reply keyboard
+                if (string.Equals(stageKey, "main_menu", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Delete the inline message first
+                    if (editMessageId.HasValue)
+                        await _sender.DeleteMessageAsync(userId, editMessageId.Value, cancellationToken).ConfigureAwait(false);
+                    await ShowMainMenuAsync(userId, null, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+
                 // Special handling for profile stage: set conversation state
                 if (string.Equals(stageKey, "profile", StringComparison.OrdinalIgnoreCase))
                 {
                     await _stateStore.SetStateAsync(userId, "awaiting_profile_name", cancellationToken).ConfigureAwait(false);
                 }
-                await ShowStageAsync(userId, stageKey, editMessageId, null, cancellationToken).ConfigureAwait(false);
+                await ShowStageInlineAsync(userId, stageKey, editMessageId, null, cancellationToken).ConfigureAwait(false);
             }
             return true;
+        }
+
+        // Handle plain text messages — match against main_menu reply keyboard buttons
+        if (!context.IsCallbackQuery && !string.IsNullOrEmpty(data) && string.IsNullOrEmpty(context.Command))
+        {
+            var matched = await HandleReplyKeyboardButtonAsync(userId, data, cancellationToken).ConfigureAwait(false);
+            return matched;
         }
 
         return false;
     }
 
-    private async Task ShowStageAsync(long userId, string stageKey, int? editMessageId, string? langOverride, CancellationToken cancellationToken)
+    /// <summary>
+    /// Match a plain text message against main_menu buttons (both Fa and En).
+    /// If matched, navigate to the target stage.
+    /// </summary>
+    private async Task<bool> HandleReplyKeyboardButtonAsync(long userId, string text, CancellationToken cancellationToken)
+    {
+        var allButtons = await _stageRepo.GetButtonsAsync("main_menu", cancellationToken).ConfigureAwait(false);
+        if (allButtons.Count == 0) return false;
+
+        foreach (var btn in allButtons)
+        {
+            if (!btn.IsEnabled) continue;
+            var matchFa = btn.TextFa?.Trim();
+            var matchEn = btn.TextEn?.Trim();
+            if (string.Equals(text, matchFa, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(text, matchEn, StringComparison.OrdinalIgnoreCase))
+            {
+                // Determine target stage
+                var targetStage = btn.TargetStageKey;
+                if (string.IsNullOrEmpty(targetStage) && !string.IsNullOrEmpty(btn.CallbackData))
+                {
+                    var cb = btn.CallbackData.Trim();
+                    if (cb.StartsWith("stage:", StringComparison.OrdinalIgnoreCase))
+                        targetStage = cb["stage:".Length..].Trim();
+                }
+
+                if (!string.IsNullOrEmpty(targetStage))
+                {
+                    // Special handling for profile stage
+                    if (string.Equals(targetStage, "profile", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await _stateStore.SetStateAsync(userId, "awaiting_profile_name", cancellationToken).ConfigureAwait(false);
+                    }
+                    await ShowStageInlineAsync(userId, targetStage, null, null, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+
+                // If button has a URL, we can't navigate; ignore
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Show main_menu with reply keyboard (persistent buttons at bottom of chat).
+    /// </summary>
+    private async Task ShowMainMenuAsync(long userId, string? langOverride, CancellationToken cancellationToken)
+    {
+        var user = await _userRepo.GetByTelegramUserIdAsync(userId, cancellationToken).ConfigureAwait(false);
+        var lang = langOverride ?? user?.PreferredLanguage ?? "fa";
+        var isFa = lang == "fa";
+
+        var stage = await _stageRepo.GetByKeyAsync("main_menu", cancellationToken).ConfigureAwait(false);
+        var text = stage != null && stage.IsEnabled
+            ? (isFa ? (stage.TextFa ?? stage.TextEn ?? "main_menu") : (stage.TextEn ?? stage.TextFa ?? "main_menu"))
+            : (isFa ? "منوی اصلی\nیکی از گزینه‌های زیر را انتخاب کنید:" : "Main Menu\nSelect an option below:");
+
+        // Build reply keyboard from DB buttons
+        var allButtons = await _stageRepo.GetButtonsAsync("main_menu", cancellationToken).ConfigureAwait(false);
+        var userPerms = await _permRepo.GetUserPermissionsAsync(userId, cancellationToken).ConfigureAwait(false);
+        var permSet = new HashSet<string>(userPerms, StringComparer.OrdinalIgnoreCase);
+
+        var visibleButtons = new List<BotStageButtonDto>();
+        foreach (var btn in allButtons)
+        {
+            if (!btn.IsEnabled) continue;
+            if (!string.IsNullOrEmpty(btn.RequiredPermission) && !permSet.Contains(btn.RequiredPermission)) continue;
+            visibleButtons.Add(btn);
+        }
+
+        var keyboard = new List<IReadOnlyList<string>>();
+        foreach (var row in visibleButtons.GroupBy(b => b.Row).OrderBy(g => g.Key))
+        {
+            var rowTexts = new List<string>();
+            foreach (var btn in row.OrderBy(b => b.Column))
+            {
+                var btnText = isFa ? (btn.TextFa ?? btn.TextEn ?? "?") : (btn.TextEn ?? btn.TextFa ?? "?");
+                rowTexts.Add(btnText);
+            }
+            if (rowTexts.Count > 0)
+                keyboard.Add(rowTexts);
+        }
+
+        // Fallback if no buttons in DB
+        if (keyboard.Count == 0)
+        {
+            keyboard = new List<IReadOnlyList<string>>
+            {
+                new[] { isFa ? "📋 ثبت درخواست" : "📋 Submit Request" },
+                new[] { isFa ? "💰 امور مالی" : "💰 Finance", isFa ? "💡 پیشنهادات من" : "💡 My Suggestions", isFa ? "✉️ پیام های من" : "✉️ My Messages" },
+                new[] { isFa ? "👤 پروفایل من" : "👤 My Profile", isFa ? "ℹ️ درباره ما" : "ℹ️ About Us", isFa ? "🎫 تیکت ها" : "🎫 Tickets" },
+                new[] { isFa ? "⚙️ تنظیمات" : "⚙️ Settings" }
+            };
+        }
+
+        await _sender.SendTextMessageWithReplyKeyboardAsync(userId, text, keyboard, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Show any non-main_menu stage with inline keyboard (as before).
+    /// </summary>
+    private async Task ShowStageInlineAsync(long userId, string stageKey, int? editMessageId, string? langOverride, CancellationToken cancellationToken)
     {
         var user = await _userRepo.GetByTelegramUserIdAsync(userId, cancellationToken).ConfigureAwait(false);
         var lang = langOverride ?? user?.PreferredLanguage ?? "fa";
@@ -114,7 +239,6 @@ public sealed class DynamicStageHandler : IUpdateHandler
             return;
         }
 
-        // Check if stage is enabled
         if (!stage.IsEnabled)
         {
             var disabled = isFa ? "این بخش در حال حاضر غیرفعال است." : "This section is currently disabled.";
@@ -122,7 +246,6 @@ public sealed class DynamicStageHandler : IUpdateHandler
             return;
         }
 
-        // Check stage-level permission
         if (!string.IsNullOrEmpty(stage.RequiredPermission))
         {
             var hasAccess = await _permRepo.UserHasPermissionAsync(userId, stage.RequiredPermission, cancellationToken).ConfigureAwait(false);
@@ -134,10 +257,9 @@ public sealed class DynamicStageHandler : IUpdateHandler
             }
         }
 
-        // Build text
         var text = isFa ? (stage.TextFa ?? stage.TextEn ?? stageKey) : (stage.TextEn ?? stage.TextFa ?? stageKey);
 
-        // Load and filter buttons
+        // Build inline keyboard
         var allButtons = await _stageRepo.GetButtonsAsync(stageKey, cancellationToken).ConfigureAwait(false);
         var userPerms = await _permRepo.GetUserPermissionsAsync(userId, cancellationToken).ConfigureAwait(false);
         var permSet = new HashSet<string>(userPerms, StringComparer.OrdinalIgnoreCase);
@@ -150,17 +272,14 @@ public sealed class DynamicStageHandler : IUpdateHandler
             visibleButtons.Add(btn);
         }
 
-        // Group by row and build keyboard
         var keyboard = new List<IReadOnlyList<InlineButton>>();
-        var rows = visibleButtons.GroupBy(b => b.Row).OrderBy(g => g.Key);
-        foreach (var row in rows)
+        foreach (var row in visibleButtons.GroupBy(b => b.Row).OrderBy(g => g.Key))
         {
             var rowButtons = new List<InlineButton>();
             foreach (var btn in row.OrderBy(b => b.Column))
             {
                 var btnText = isFa ? (btn.TextFa ?? btn.TextEn ?? "?") : (btn.TextEn ?? btn.TextFa ?? "?");
                 var callbackData = btn.CallbackData;
-                // If TargetStageKey is set and CallbackData is empty, auto-generate callback
                 if (string.IsNullOrEmpty(callbackData) && !string.IsNullOrEmpty(btn.TargetStageKey))
                     callbackData = $"stage:{btn.TargetStageKey}";
 
@@ -173,7 +292,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
                 keyboard.Add(rowButtons);
         }
 
-        // Auto back-button if ParentStageKey is set and not already in buttons
+        // Auto back-button: navigate to parent stage
         if (!string.IsNullOrEmpty(stage.ParentStageKey))
         {
             var hasBack = visibleButtons.Any(b =>
