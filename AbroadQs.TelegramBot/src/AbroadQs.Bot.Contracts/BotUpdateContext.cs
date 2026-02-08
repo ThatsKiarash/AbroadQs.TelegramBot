@@ -25,6 +25,11 @@ public sealed class BotUpdateContext
     public string? CommandArguments => ParseCommandArguments(MessageText);
 
     /// <summary>
+    /// Telegram message ID of the user's incoming message. Used for cleanup (deleting user msgs to keep chat clean).
+    /// </summary>
+    public int? IncomingMessageId { get; init; }
+
+    /// <summary>
     /// True when the update is from an inline button press (callback_query).
     /// </summary>
     public bool IsCallbackQuery { get; init; }

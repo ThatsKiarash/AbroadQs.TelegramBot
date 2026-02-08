@@ -8,17 +8,20 @@ public sealed class StartHandler : IUpdateHandler
     private readonly ITelegramUserRepository _userRepo;
     private readonly IBotStageRepository _stageRepo;
     private readonly IPermissionRepository _permRepo;
+    private readonly IUserMessageStateRepository? _msgStateRepo;
 
     public StartHandler(
         IResponseSender sender,
         ITelegramUserRepository userRepo,
         IBotStageRepository stageRepo,
-        IPermissionRepository permRepo)
+        IPermissionRepository permRepo,
+        IUserMessageStateRepository? msgStateRepo = null)
     {
         _sender = sender;
         _userRepo = userRepo;
         _stageRepo = stageRepo;
         _permRepo = permRepo;
+        _msgStateRepo = msgStateRepo;
     }
 
     public string? Command => "start";
@@ -72,6 +75,9 @@ public sealed class StartHandler : IUpdateHandler
                     : $"<b>Hello {name}!</b>\n\nSelect an option below:");
         }
 
+        // Cleanup previous messages (delete user's /start msg and last bot msg)
+        await CleanupChatAsync(context.ChatId, userId, context.IncomingMessageId, cancellationToken).ConfigureAwait(false);
+
         // Load buttons from DB for the chosen stage
         if (isNewUser)
         {
@@ -91,10 +97,10 @@ public sealed class StartHandler : IUpdateHandler
             if (keyboard.Count == 0)
                 keyboard = new List<IReadOnlyList<string>>
                 {
-                    new[] { isFa ? "📋 ثبت درخواست" : "📋 Submit Request" },
-                    new[] { isFa ? "💰 امور مالی" : "💰 Finance", isFa ? "💡 پیشنهادات من" : "💡 My Suggestions", isFa ? "✉️ پیام های من" : "✉️ My Messages" },
-                    new[] { isFa ? "👤 پروفایل من" : "👤 My Profile", isFa ? "ℹ️ درباره ما" : "ℹ️ About Us", isFa ? "🎫 تیکت ها" : "🎫 Tickets" },
-                    new[] { isFa ? "⚙️ تنظیمات" : "⚙️ Settings" }
+                    new[] { isFa ? "ثبت درخواست" : "Submit Request" },
+                    new[] { isFa ? "امور مالی" : "Finance", isFa ? "پیشنهادات من" : "My Suggestions", isFa ? "پیام های من" : "My Messages" },
+                    new[] { isFa ? "پروفایل من" : "My Profile", isFa ? "درباره ما" : "About Us", isFa ? "تیکت ها" : "Tickets" },
+                    new[] { isFa ? "تنظیمات" : "Settings" }
                 };
             await _sender.SendTextMessageWithReplyKeyboardAsync(context.ChatId, text, keyboard, cancellationToken).ConfigureAwait(false);
         }
@@ -160,6 +166,31 @@ public sealed class StartHandler : IUpdateHandler
                 keyboard.Add(rowTexts);
         }
         return keyboard;
+    }
+
+    /// <summary>
+    /// Delete the user's incoming message and the last bot message to keep the chat clean.
+    /// </summary>
+    private async Task CleanupChatAsync(long chatId, long userId, int? incomingMessageId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Delete user's /start message
+            if (incomingMessageId.HasValue)
+                await _sender.DeleteMessageAsync(chatId, incomingMessageId.Value, cancellationToken).ConfigureAwait(false);
+
+            // Delete previous bot message
+            if (_msgStateRepo != null)
+            {
+                var msgState = await _msgStateRepo.GetUserMessageStateAsync(userId, cancellationToken).ConfigureAwait(false);
+                if (msgState?.LastBotTelegramMessageId is > 0)
+                    await _sender.DeleteMessageAsync(chatId, (int)msgState.LastBotTelegramMessageId, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch
+        {
+            // Swallow cleanup errors
+        }
     }
 
     private static string Escape(string s) =>

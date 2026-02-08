@@ -49,9 +49,9 @@ public sealed class ProfileStateHandler : IUpdateHandler
         var saved = isFa
             ? $"ذخیره شد.\nنام: {Escape(firstName ?? "—")}\nنام خانوادگی: {Escape(lastName ?? "—")}"
             : $"Saved.\nFirst name: {Escape(firstName ?? "—")}\nLast name: {Escape(lastName ?? "—")}";
-        var back = isFa ? "◀ بازگشت به تنظیمات" : "◀ Back to settings";
+        var back = isFa ? "بازگشت" : "Back";
         await _sender.SendTextMessageWithInlineKeyboardAsync(context.ChatId, saved,
-            new[] { new[] { new InlineButton(back, "menu:main") } }, cancellationToken).ConfigureAwait(false);
+            new[] { new[] { new InlineButton(back, "stage:main_menu") } }, cancellationToken).ConfigureAwait(false);
         return true;
     }
 

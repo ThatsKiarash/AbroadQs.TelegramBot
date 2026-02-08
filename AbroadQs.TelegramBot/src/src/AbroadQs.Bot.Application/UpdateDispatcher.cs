@@ -105,6 +105,8 @@ public sealed class UpdateDispatcher
         int? callbackMessageId = null;
         string? callbackQueryId = null;
 
+        int? incomingMessageId = null;
+
         if (update.Message != null)
         {
             chatId = update.Message.Chat.Id;
@@ -113,6 +115,7 @@ public sealed class UpdateDispatcher
             username = update.Message.From?.Username;
             firstName = update.Message.From?.FirstName;
             lastName = update.Message.From?.LastName;
+            incomingMessageId = update.Message.MessageId;
         }
         else if (update.CallbackQuery != null)
         {
@@ -140,6 +143,7 @@ public sealed class UpdateDispatcher
             Username = username,
             FirstName = firstName,
             LastName = lastName,
+            IncomingMessageId = incomingMessageId,
             IsCallbackQuery = isCallbackQuery,
             CallbackMessageId = callbackMessageId,
             CallbackQueryId = callbackQueryId,

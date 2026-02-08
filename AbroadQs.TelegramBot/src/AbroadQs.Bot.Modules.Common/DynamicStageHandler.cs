@@ -14,19 +14,22 @@ public sealed class DynamicStageHandler : IUpdateHandler
     private readonly IPermissionRepository _permRepo;
     private readonly ITelegramUserRepository _userRepo;
     private readonly IUserConversationStateStore _stateStore;
+    private readonly IUserMessageStateRepository? _msgStateRepo;
 
     public DynamicStageHandler(
         IResponseSender sender,
         IBotStageRepository stageRepo,
         IPermissionRepository permRepo,
         ITelegramUserRepository userRepo,
-        IUserConversationStateStore stateStore)
+        IUserConversationStateStore stateStore,
+        IUserMessageStateRepository? msgStateRepo = null)
     {
         _sender = sender;
         _stageRepo = stageRepo;
         _permRepo = permRepo;
         _userRepo = userRepo;
         _stateStore = stateStore;
+        _msgStateRepo = msgStateRepo;
     }
 
     public string? Command => null;
@@ -56,6 +59,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
     public async Task<bool> HandleAsync(BotUpdateContext context, CancellationToken cancellationToken)
     {
         var userId = context.UserId!.Value;
+        var chatId = context.ChatId;
         var data = context.MessageText?.Trim() ?? "";
         var editMessageId = context.IsCallbackQuery ? context.CallbackMessageId : null;
 
@@ -72,17 +76,18 @@ public sealed class DynamicStageHandler : IUpdateHandler
                 await _userRepo.UpdateProfileAsync(userId, null, null, code, cancellationToken).ConfigureAwait(false);
                 // Delete the language-selection message so the chat stays clean
                 if (editMessageId.HasValue)
-                    await _sender.DeleteMessageAsync(userId, editMessageId.Value, cancellationToken).ConfigureAwait(false);
+                    await _sender.DeleteMessageAsync(chatId, editMessageId.Value, cancellationToken).ConfigureAwait(false);
                 // Send fresh main_menu with reply keyboard
                 await ShowMainMenuAsync(userId, code, cancellationToken).ConfigureAwait(false);
             }
             return true;
         }
 
-        // /settings or /menu → show main_menu stage with reply keyboard
+        // /settings or /menu → cleanup + show main_menu
         if (string.Equals(context.Command, "settings", StringComparison.OrdinalIgnoreCase)
             || string.Equals(context.Command, "menu", StringComparison.OrdinalIgnoreCase))
         {
+            await CleanupChatAsync(chatId, userId, context.IncomingMessageId, cancellationToken).ConfigureAwait(false);
             await ShowMainMenuAsync(userId, null, cancellationToken).ConfigureAwait(false);
             return true;
         }
@@ -93,12 +98,11 @@ public sealed class DynamicStageHandler : IUpdateHandler
             var stageKey = data["stage:".Length..].Trim();
             if (stageKey.Length > 0)
             {
-                // If navigating back to main_menu, show reply keyboard
+                // If navigating back to main_menu, delete inline msg + show reply keyboard
                 if (string.Equals(stageKey, "main_menu", StringComparison.OrdinalIgnoreCase))
                 {
-                    // Delete the inline message first
                     if (editMessageId.HasValue)
-                        await _sender.DeleteMessageAsync(userId, editMessageId.Value, cancellationToken).ConfigureAwait(false);
+                        await _sender.DeleteMessageAsync(chatId, editMessageId.Value, cancellationToken).ConfigureAwait(false);
                     await ShowMainMenuAsync(userId, null, cancellationToken).ConfigureAwait(false);
                     return true;
                 }
@@ -116,7 +120,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
         // Handle plain text messages — match against main_menu reply keyboard buttons
         if (!context.IsCallbackQuery && !string.IsNullOrEmpty(data) && string.IsNullOrEmpty(context.Command))
         {
-            var matched = await HandleReplyKeyboardButtonAsync(userId, data, cancellationToken).ConfigureAwait(false);
+            var matched = await HandleReplyKeyboardButtonAsync(chatId, userId, data, context.IncomingMessageId, cancellationToken).ConfigureAwait(false);
             return matched;
         }
 
@@ -125,9 +129,9 @@ public sealed class DynamicStageHandler : IUpdateHandler
 
     /// <summary>
     /// Match a plain text message against main_menu buttons (both Fa and En).
-    /// If matched, navigate to the target stage.
+    /// If matched, cleanup chat and navigate to the target stage.
     /// </summary>
-    private async Task<bool> HandleReplyKeyboardButtonAsync(long userId, string text, CancellationToken cancellationToken)
+    private async Task<bool> HandleReplyKeyboardButtonAsync(long chatId, long userId, string text, int? incomingMessageId, CancellationToken cancellationToken)
     {
         var allButtons = await _stageRepo.GetButtonsAsync("main_menu", cancellationToken).ConfigureAwait(false);
         if (allButtons.Count == 0) return false;
@@ -151,6 +155,9 @@ public sealed class DynamicStageHandler : IUpdateHandler
 
                 if (!string.IsNullOrEmpty(targetStage))
                 {
+                    // Cleanup previous messages before showing new stage
+                    await CleanupChatAsync(chatId, userId, incomingMessageId, cancellationToken).ConfigureAwait(false);
+
                     // Special handling for profile stage
                     if (string.Equals(targetStage, "profile", StringComparison.OrdinalIgnoreCase))
                     {
@@ -160,11 +167,40 @@ public sealed class DynamicStageHandler : IUpdateHandler
                     return true;
                 }
 
-                // If button has a URL, we can't navigate; ignore
                 return false;
             }
         }
         return false;
+    }
+
+    /// <summary>
+    /// Delete the user's incoming message and the last bot message to keep the chat clean.
+    /// Skips cleanup if user is in a form state (e.g. filling profile, submitting request).
+    /// </summary>
+    private async Task CleanupChatAsync(long chatId, long userId, int? incomingMessageId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Don't cleanup if user is in a form state
+            var convState = await _stateStore.GetStateAsync(userId, cancellationToken).ConfigureAwait(false);
+            if (!string.IsNullOrEmpty(convState)) return;
+
+            // Delete user's incoming message
+            if (incomingMessageId.HasValue)
+                await _sender.DeleteMessageAsync(chatId, incomingMessageId.Value, cancellationToken).ConfigureAwait(false);
+
+            // Delete previous bot message
+            if (_msgStateRepo != null)
+            {
+                var msgState = await _msgStateRepo.GetUserMessageStateAsync(userId, cancellationToken).ConfigureAwait(false);
+                if (msgState?.LastBotTelegramMessageId is > 0)
+                    await _sender.DeleteMessageAsync(chatId, (int)msgState.LastBotTelegramMessageId, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch
+        {
+            // Swallow cleanup errors — never let cleanup break the main flow
+        }
     }
 
     /// <summary>
@@ -212,10 +248,10 @@ public sealed class DynamicStageHandler : IUpdateHandler
         {
             keyboard = new List<IReadOnlyList<string>>
             {
-                new[] { isFa ? "📋 ثبت درخواست" : "📋 Submit Request" },
-                new[] { isFa ? "💰 امور مالی" : "💰 Finance", isFa ? "💡 پیشنهادات من" : "💡 My Suggestions", isFa ? "✉️ پیام های من" : "✉️ My Messages" },
-                new[] { isFa ? "👤 پروفایل من" : "👤 My Profile", isFa ? "ℹ️ درباره ما" : "ℹ️ About Us", isFa ? "🎫 تیکت ها" : "🎫 Tickets" },
-                new[] { isFa ? "⚙️ تنظیمات" : "⚙️ Settings" }
+                new[] { isFa ? "ثبت درخواست" : "Submit Request" },
+                new[] { isFa ? "امور مالی" : "Finance", isFa ? "پیشنهادات من" : "My Suggestions", isFa ? "پیام های من" : "My Messages" },
+                new[] { isFa ? "پروفایل من" : "My Profile", isFa ? "درباره ما" : "About Us", isFa ? "تیکت ها" : "Tickets" },
+                new[] { isFa ? "تنظیمات" : "Settings" }
             };
         }
 

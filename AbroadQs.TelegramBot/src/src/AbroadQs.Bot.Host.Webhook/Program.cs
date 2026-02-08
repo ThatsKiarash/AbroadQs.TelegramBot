@@ -405,7 +405,7 @@ app.MapGet("/api/messages/user/{userId:long}", async (long userId, HttpContext c
         var messageRepo = scope.ServiceProvider.GetService<IMessageRepository>();
         if (messageRepo == null)
             return Results.Json(new List<object>());
-        var messages = await messageRepo.GetUserMessagesAsync(userId, limit ?? 50, ctx.RequestAborted).ConfigureAwait(false);
+        var messages = await messageRepo.GetUserMessagesAsync(userId, limit ?? 5, ctx.RequestAborted).ConfigureAwait(false);
         var payload = messages.Select(m => new
         {
             id = m.Id,
@@ -447,7 +447,7 @@ app.MapGet("/api/messages/conversation/{userId:long}", async (long userId, HttpC
         var messageRepo = scope.ServiceProvider.GetService<IMessageRepository>();
         if (messageRepo == null)
             return Results.Json(new List<object>());
-        var messages = await messageRepo.GetConversationAsync(userId, limit ?? 100, ctx.RequestAborted).ConfigureAwait(false);
+        var messages = await messageRepo.GetConversationAsync(userId, limit ?? 5, ctx.RequestAborted).ConfigureAwait(false);
         var payload = messages.Select(m => new
         {
             id = m.Id,
@@ -910,6 +910,30 @@ static async Task SeedDefaultDataAsync(ApplicationDbContext db)
                 "نام و نام خانوادگی خود را در یک خط بفرستید.\nمثلاً: <b>علی احمدی</b>",
                 "Send your first and last name in one line.\nFor example: <b>John Smith</b>",
                 true, null, "settings", 4),
+            ("new_request",
+                "<b>📋 ثبت درخواست</b>\n\nدرخواست جدید خود را ثبت کنید:",
+                "<b>📋 Submit Request</b>\n\nSubmit your new request:",
+                true, null, "main_menu", 5),
+            ("finance",
+                "<b>💰 امور مالی</b>\n\nوضعیت مالی شما:",
+                "<b>💰 Finance</b>\n\nYour financial status:",
+                true, null, "main_menu", 6),
+            ("my_suggestions",
+                "<b>💡 پیشنهادات من</b>\n\nپیشنهادات شما:",
+                "<b>💡 My Suggestions</b>\n\nYour suggestions:",
+                true, null, "main_menu", 7),
+            ("my_messages",
+                "<b>✉️ پیام های من</b>\n\nپیام‌های شما:",
+                "<b>✉️ My Messages</b>\n\nYour messages:",
+                true, null, "main_menu", 8),
+            ("about_us",
+                "<b>ℹ️ درباره ما</b>\n\nاطلاعات درباره AbroadQs:",
+                "<b>ℹ️ About Us</b>\n\nAbout AbroadQs:",
+                true, null, "main_menu", 9),
+            ("tickets",
+                "<b>🎫 تیکت ها</b>\n\nتیکت‌های پشتیبانی شما:",
+                "<b>🎫 Tickets</b>\n\nYour support tickets:",
+                true, null, "main_menu", 10),
         };
 
         foreach (var (key, fa, en, enabled, perm, parent, order) in stages)
@@ -930,11 +954,26 @@ static async Task SeedDefaultDataAsync(ApplicationDbContext db)
         }
 
         var mainMenuStage = db.BotStages.FirstOrDefault(s => s.StageKey == "main_menu");
-        if (mainMenuStage != null && !db.BotStageButtons.Any(b => b.StageId == mainMenuStage.Id))
+        if (mainMenuStage != null)
         {
+            // Always reset main_menu buttons to ensure correct layout
+            var oldMainButtons = db.BotStageButtons.Where(b => b.StageId == mainMenuStage.Id).ToList();
+            if (oldMainButtons.Count > 0)
+                db.BotStageButtons.RemoveRange(oldMainButtons);
+
             db.BotStageButtons.AddRange(
-                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "⚙️ تنظیمات", TextEn = "⚙️ Settings", ButtonType = "callback", TargetStageKey = "settings", Row = 0, Column = 0, IsEnabled = true },
-                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "❓ راهنما", TextEn = "❓ Help", ButtonType = "callback", CallbackData = "stage:help", Row = 1, Column = 0, IsEnabled = true }
+                // Row 0: ثبت درخواست
+                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "ثبت درخواست", TextEn = "Submit Request", ButtonType = "callback", CallbackData = "stage:new_request", Row = 0, Column = 0, IsEnabled = true },
+                // Row 1: امور مالی | پیشنهادات من | پیام های من
+                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "امور مالی", TextEn = "Finance", ButtonType = "callback", CallbackData = "stage:finance", Row = 1, Column = 0, IsEnabled = true },
+                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "پیشنهادات من", TextEn = "My Suggestions", ButtonType = "callback", CallbackData = "stage:my_suggestions", Row = 1, Column = 1, IsEnabled = true },
+                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "پیام های من", TextEn = "My Messages", ButtonType = "callback", CallbackData = "stage:my_messages", Row = 1, Column = 2, IsEnabled = true },
+                // Row 2: پروفایل من | درباره ما | تیکت ها
+                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "پروفایل من", TextEn = "My Profile", ButtonType = "callback", CallbackData = "stage:profile", Row = 2, Column = 0, IsEnabled = true },
+                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "درباره ما", TextEn = "About Us", ButtonType = "callback", CallbackData = "stage:about_us", Row = 2, Column = 1, IsEnabled = true },
+                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "تیکت ها", TextEn = "Tickets", ButtonType = "callback", CallbackData = "stage:tickets", Row = 2, Column = 2, IsEnabled = true },
+                // Row 3: تنظیمات
+                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "تنظیمات", TextEn = "Settings", ButtonType = "callback", TargetStageKey = "settings", Row = 3, Column = 0, IsEnabled = true }
             );
         }
 
@@ -942,8 +981,8 @@ static async Task SeedDefaultDataAsync(ApplicationDbContext db)
         if (settingsStage != null && !db.BotStageButtons.Any(b => b.StageId == settingsStage.Id))
         {
             db.BotStageButtons.AddRange(
-                new BotStageButtonEntity { StageId = settingsStage.Id, TextFa = "🌐 زبان", TextEn = "🌐 Language", ButtonType = "callback", TargetStageKey = "lang_select", Row = 0, Column = 0, IsEnabled = true },
-                new BotStageButtonEntity { StageId = settingsStage.Id, TextFa = "👤 نام و نام‌خانوادگی", TextEn = "👤 Name & Family", ButtonType = "callback", TargetStageKey = "profile", Row = 1, Column = 0, IsEnabled = true }
+                new BotStageButtonEntity { StageId = settingsStage.Id, TextFa = "زبان", TextEn = "Language", ButtonType = "callback", TargetStageKey = "lang_select", Row = 0, Column = 0, IsEnabled = true },
+                new BotStageButtonEntity { StageId = settingsStage.Id, TextFa = "نام و نام‌خانوادگی", TextEn = "Name & Family", ButtonType = "callback", TargetStageKey = "profile", Row = 1, Column = 0, IsEnabled = true }
             );
         }
 
