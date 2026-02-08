@@ -64,8 +64,11 @@ public sealed class DynamicStageHandler : IUpdateHandler
             if (code.Length > 0)
             {
                 await _userRepo.UpdateProfileAsync(userId, null, null, code, cancellationToken).ConfigureAwait(false);
-                // After setting language, show main_menu
-                await ShowStageAsync(userId, "main_menu", editMessageId, code, cancellationToken).ConfigureAwait(false);
+                // Delete the language-selection message so the chat stays clean
+                if (editMessageId.HasValue)
+                    await _sender.DeleteMessageAsync(userId, editMessageId.Value, cancellationToken).ConfigureAwait(false);
+                // Send fresh main_menu (not edit) so user sees the main keyboard
+                await ShowStageAsync(userId, "main_menu", null, code, cancellationToken).ConfigureAwait(false);
             }
             return true;
         }

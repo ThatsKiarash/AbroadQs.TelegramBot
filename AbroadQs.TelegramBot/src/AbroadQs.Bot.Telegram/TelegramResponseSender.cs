@@ -161,6 +161,19 @@ public sealed class TelegramResponseSender : IResponseSender
         }
     }
 
+    public async Task DeleteMessageAsync(long chatId, int messageId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await _client.DeleteMessage(new ChatId(chatId), messageId, cancellationToken: cancellationToken).ConfigureAwait(false);
+            _logger.LogInformation("Message {MessageId} deleted from chat {ChatId}", messageId, chatId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to delete message {MessageId} in chat {ChatId} — swallowed to keep bot alive", messageId, chatId);
+        }
+    }
+
     public async Task AnswerCallbackQueryAsync(string callbackQueryId, string? message = null, CancellationToken cancellationToken = default)
     {
         try

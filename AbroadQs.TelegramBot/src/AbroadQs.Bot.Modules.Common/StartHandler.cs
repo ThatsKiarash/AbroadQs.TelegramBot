@@ -86,6 +86,9 @@ public sealed class StartHandler : IUpdateHandler
             else
                 keyboard = new List<IReadOnlyList<InlineButton>>
                 {
+                    new[] { new InlineButton(isFa ? "📋 ثبت درخواست" : "📋 Submit Request", "stage:new_request") },
+                    new[] { new InlineButton(isFa ? "💰 امور مالی" : "💰 Finance", "stage:finance"), new InlineButton(isFa ? "💡 پیشنهادات من" : "💡 My Suggestions", "stage:my_suggestions"), new InlineButton(isFa ? "✉️ پیام های من" : "✉️ My Messages", "stage:my_messages") },
+                    new[] { new InlineButton(isFa ? "👤 پروفایل من" : "👤 My Profile", "stage:profile"), new InlineButton(isFa ? "ℹ️ درباره ما" : "ℹ️ About Us", "stage:about_us"), new InlineButton(isFa ? "🎫 تیکت ها" : "🎫 Tickets", "stage:tickets") },
                     new[] { new InlineButton(isFa ? "⚙️ تنظیمات" : "⚙️ Settings", "stage:settings") }
                 };
         }
