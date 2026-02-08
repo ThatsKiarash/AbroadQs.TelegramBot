@@ -13,6 +13,8 @@ public sealed class TelegramUserEntity
     public bool IsRegistered { get; set; }
     /// <summary>When the user completed registration.</summary>
     public DateTimeOffset? RegisteredAt { get; set; }
+    /// <summary>Whether the bot should keep the chat clean (delete old messages during navigation). Default: true.</summary>
+    public bool CleanChatMode { get; set; } = true;
     public DateTimeOffset FirstSeenAt { get; set; }
     public DateTimeOffset LastSeenAt { get; set; }
 }

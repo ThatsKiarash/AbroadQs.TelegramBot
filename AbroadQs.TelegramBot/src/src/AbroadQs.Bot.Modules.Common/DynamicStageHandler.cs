@@ -47,7 +47,8 @@ public sealed class DynamicStageHandler : IUpdateHandler
         if (context.IsCallbackQuery && data != null)
         {
             return data.StartsWith("stage:", StringComparison.OrdinalIgnoreCase)
-                || data.StartsWith("lang:", StringComparison.OrdinalIgnoreCase);
+                || data.StartsWith("lang:", StringComparison.OrdinalIgnoreCase)
+                || data.StartsWith("toggle:", StringComparison.OrdinalIgnoreCase);
         }
         var cmd = context.Command;
         if (string.Equals(cmd, "settings", StringComparison.OrdinalIgnoreCase)
@@ -67,8 +68,12 @@ public sealed class DynamicStageHandler : IUpdateHandler
         var data = context.MessageText?.Trim() ?? "";
         var editMessageId = context.IsCallbackQuery ? context.CallbackMessageId : null;
 
-        // Answer callback to remove loading spinner
-        if (context.IsCallbackQuery && context.CallbackQueryId != null)
+        // Load user's clean-chat preference once (used for conditional deletions)
+        var currentUser = await _userRepo.GetByTelegramUserIdAsync(userId, cancellationToken).ConfigureAwait(false);
+        var cleanMode = currentUser?.CleanChatMode ?? true;
+
+        // Answer callback to remove loading spinner (skip for toggle: — answered later with toast)
+        if (context.IsCallbackQuery && context.CallbackQueryId != null && !data.StartsWith("toggle:", StringComparison.OrdinalIgnoreCase))
             await _sender.AnswerCallbackQueryAsync(context.CallbackQueryId, null, cancellationToken).ConfigureAwait(false);
 
         // ── lang:xx callback ──────────────────────────────────────────
@@ -79,9 +84,32 @@ public sealed class DynamicStageHandler : IUpdateHandler
             {
                 await _userRepo.UpdateProfileAsync(userId, null, null, code, cancellationToken).ConfigureAwait(false);
                 // Type change: inline → reply-kb
-                if (editMessageId.HasValue)
+                if (cleanMode && editMessageId.HasValue)
                     await _sender.DeleteMessageAsync(chatId, editMessageId.Value, cancellationToken).ConfigureAwait(false);
                 await ShowReplyKeyboardStageAsync(userId, "main_menu", code, null, cancellationToken).ConfigureAwait(false);
+            }
+            return true;
+        }
+
+        // ── toggle:clean_chat callback ────────────────────────────────
+        if (data.StartsWith("toggle:", StringComparison.OrdinalIgnoreCase))
+        {
+            var toggleKey = data["toggle:".Length..].Trim();
+            if (string.Equals(toggleKey, "clean_chat", StringComparison.OrdinalIgnoreCase))
+            {
+                var newMode = !cleanMode;
+                await _userRepo.SetCleanChatModeAsync(userId, newMode, cancellationToken).ConfigureAwait(false);
+
+                var lang = currentUser?.PreferredLanguage ?? "fa";
+                var isFa = lang == "fa";
+                var toast = newMode
+                    ? (isFa ? "حالت چت تمیز فعال شد" : "Clean chat mode enabled")
+                    : (isFa ? "حالت چت تمیز غیرفعال شد" : "Clean chat mode disabled");
+                if (context.CallbackQueryId != null)
+                    await _sender.AnswerCallbackQueryAsync(context.CallbackQueryId, toast, cancellationToken).ConfigureAwait(false);
+
+                // Re-render settings stage inline (edit in-place) to show updated toggle state
+                await ShowStageInlineAsync(userId, "settings", editMessageId, null, cancellationToken, cleanChatOverride: newMode).ConfigureAwait(false);
             }
             return true;
         }
@@ -90,10 +118,11 @@ public sealed class DynamicStageHandler : IUpdateHandler
         if (string.Equals(context.Command, "settings", StringComparison.OrdinalIgnoreCase)
             || string.Equals(context.Command, "menu", StringComparison.OrdinalIgnoreCase))
         {
-            await TryDeleteAsync(chatId, context.IncomingMessageId, cancellationToken).ConfigureAwait(false);
+            if (cleanMode)
+                await TryDeleteAsync(chatId, context.IncomingMessageId, cancellationToken).ConfigureAwait(false);
             // Same type (reply-kb → reply-kb): edit text + update keyboard
             var oldBotMsgId = await GetOldBotMessageIdAsync(userId, cancellationToken).ConfigureAwait(false);
-            await ShowReplyKeyboardStageAsync(userId, "main_menu", null, oldBotMsgId, cancellationToken).ConfigureAwait(false);
+            await ShowReplyKeyboardStageAsync(userId, "main_menu", null, cleanMode ? oldBotMsgId : null, cancellationToken).ConfigureAwait(false);
             return true;
         }
 
@@ -106,7 +135,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
                 if (IsReplyKeyboardStage(stageKey))
                 {
                     // Type change: inline → reply-kb
-                    if (editMessageId.HasValue)
+                    if (cleanMode && editMessageId.HasValue)
                         await _sender.DeleteMessageAsync(chatId, editMessageId.Value, cancellationToken).ConfigureAwait(false);
                     await ShowReplyKeyboardStageAsync(userId, stageKey, null, null, cancellationToken).ConfigureAwait(false);
                     return true;
@@ -124,7 +153,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
         // ── Plain text → match against reply keyboard buttons ──────────
         if (!context.IsCallbackQuery && !string.IsNullOrEmpty(data) && string.IsNullOrEmpty(context.Command))
         {
-            var matched = await HandleReplyKeyboardButtonAsync(chatId, userId, data, context.IncomingMessageId, cancellationToken).ConfigureAwait(false);
+            var matched = await HandleReplyKeyboardButtonAsync(chatId, userId, data, context.IncomingMessageId, cleanMode, cancellationToken).ConfigureAwait(false);
             return matched;
         }
 
@@ -147,7 +176,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
     //  Reply keyboard button handler
     // ═══════════════════════════════════════════════════════════════════
 
-    private async Task<bool> HandleReplyKeyboardButtonAsync(long chatId, long userId, string text, int? incomingMessageId, CancellationToken cancellationToken)
+    private async Task<bool> HandleReplyKeyboardButtonAsync(long chatId, long userId, string text, int? incomingMessageId, bool cleanMode, CancellationToken cancellationToken)
     {
         foreach (var stageKey in ReplyKeyboardStages)
         {
@@ -172,15 +201,16 @@ public sealed class DynamicStageHandler : IUpdateHandler
 
                 if (string.IsNullOrEmpty(targetStage)) return false;
 
-                // Delete user's incoming text message
-                await TryDeleteAsync(chatId, incomingMessageId, cancellationToken).ConfigureAwait(false);
+                // Delete user's incoming text message (only in clean mode)
+                if (cleanMode)
+                    await TryDeleteAsync(chatId, incomingMessageId, cancellationToken).ConfigureAwait(false);
 
                 var oldBotMsgId = await GetOldBotMessageIdAsync(userId, cancellationToken).ConfigureAwait(false);
 
                 if (IsReplyKeyboardStage(targetStage))
                 {
-                    // Same type (reply-kb → reply-kb): edit text in place + silent keyboard update
-                    await ShowReplyKeyboardStageAsync(userId, targetStage, null, oldBotMsgId, cancellationToken).ConfigureAwait(false);
+                    // Same type (reply-kb → reply-kb): send new + delete old
+                    await ShowReplyKeyboardStageAsync(userId, targetStage, null, cleanMode ? oldBotMsgId : null, cancellationToken).ConfigureAwait(false);
                     return true;
                 }
 
@@ -188,7 +218,8 @@ public sealed class DynamicStageHandler : IUpdateHandler
                 if (string.Equals(targetStage, "profile", StringComparison.OrdinalIgnoreCase))
                     await _stateStore.SetStateAsync(userId, "awaiting_profile_name", cancellationToken).ConfigureAwait(false);
 
-                await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
+                if (cleanMode)
+                    await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
                 await ShowStageInlineAsync(userId, targetStage, null, null, cancellationToken).ConfigureAwait(false);
                 return true;
             }
@@ -272,7 +303,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
     /// <summary>
     /// Show a stage with inline keyboard. If editMessageId is provided, edits in-place.
     /// </summary>
-    private async Task ShowStageInlineAsync(long userId, string stageKey, int? editMessageId, string? langOverride, CancellationToken cancellationToken)
+    private async Task ShowStageInlineAsync(long userId, string stageKey, int? editMessageId, string? langOverride, CancellationToken cancellationToken, bool? cleanChatOverride = null)
     {
         var user = await _userRepo.GetByTelegramUserIdAsync(userId, cancellationToken).ConfigureAwait(false);
         var lang = langOverride ?? user?.PreferredLanguage ?? "fa";
@@ -318,6 +349,13 @@ public sealed class DynamicStageHandler : IUpdateHandler
             visibleButtons.Add(btn);
         }
 
+        // Resolve clean-chat mode for dynamic toggle button label
+        bool? cleanChat = cleanChatOverride;
+        if (cleanChat == null && visibleButtons.Any(b => b.CallbackData == "toggle:clean_chat"))
+        {
+            cleanChat = user?.CleanChatMode ?? true;
+        }
+
         var keyboard = new List<IReadOnlyList<InlineButton>>();
         foreach (var row in visibleButtons.GroupBy(b => b.Row).OrderBy(g => g.Key))
         {
@@ -328,6 +366,15 @@ public sealed class DynamicStageHandler : IUpdateHandler
                 var callbackData = btn.CallbackData;
                 if (string.IsNullOrEmpty(callbackData) && !string.IsNullOrEmpty(btn.TargetStageKey))
                     callbackData = $"stage:{btn.TargetStageKey}";
+
+                // Dynamic toggle label: append current state
+                if (callbackData == "toggle:clean_chat" && cleanChat.HasValue)
+                {
+                    var stateLabel = cleanChat.Value
+                        ? (isFa ? "فعال" : "ON")
+                        : (isFa ? "غیرفعال" : "OFF");
+                    btnText = $"{btnText}: {stateLabel}";
+                }
 
                 if (btn.ButtonType == "url" && !string.IsNullOrEmpty(btn.Url))
                     rowButtons.Add(new InlineButton(btnText, null, btn.Url));

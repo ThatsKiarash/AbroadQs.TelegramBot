@@ -50,6 +50,7 @@ public sealed class StartHandler : IUpdateHandler
 
         var lang = user?.PreferredLanguage ?? "fa";
         var isFa = lang == "fa";
+        var cleanMode = user?.CleanChatMode ?? true;
         var name = Escape(context.FirstName ?? context.Username ?? "User");
 
         // New user → show welcome + language selection
@@ -75,8 +76,9 @@ public sealed class StartHandler : IUpdateHandler
                     : $"<b>Hello {name}!</b>\n\nSelect an option below:");
         }
 
-        // Delete user's /start message
-        try { if (context.IncomingMessageId.HasValue) await _sender.DeleteMessageAsync(context.ChatId, context.IncomingMessageId.Value, cancellationToken).ConfigureAwait(false); } catch { }
+        // Delete user's /start message (only in clean mode)
+        if (cleanMode)
+            try { if (context.IncomingMessageId.HasValue) await _sender.DeleteMessageAsync(context.ChatId, context.IncomingMessageId.Value, cancellationToken).ConfigureAwait(false); } catch { }
 
         // Get old bot message ID
         int? oldBotMsgId = null;
@@ -100,8 +102,8 @@ public sealed class StartHandler : IUpdateHandler
                     new[] { new InlineButton("فارسی 🇮🇷", "lang:fa"), new InlineButton("English 🇬🇧", "lang:en") }
                 };
             await _sender.SendTextMessageWithInlineKeyboardAsync(context.ChatId, text, keyboard, cancellationToken).ConfigureAwait(false);
-            // Delete old bot msg after
-            if (oldBotMsgId.HasValue)
+            // Delete old bot msg after (only in clean mode)
+            if (cleanMode && oldBotMsgId.HasValue)
                 try { await _sender.DeleteMessageAsync(context.ChatId, oldBotMsgId.Value, cancellationToken).ConfigureAwait(false); } catch { }
         }
         else
@@ -109,7 +111,7 @@ public sealed class StartHandler : IUpdateHandler
             // Returning user → send new reply keyboard, then delete old
             var keyboard = await BuildReplyKeyboardAsync(userId, stageKey, isFa, cancellationToken).ConfigureAwait(false);
             await _sender.SendTextMessageWithReplyKeyboardAsync(context.ChatId, text, keyboard, cancellationToken).ConfigureAwait(false);
-            if (oldBotMsgId.HasValue)
+            if (cleanMode && oldBotMsgId.HasValue)
                 try { await _sender.DeleteMessageAsync(context.ChatId, oldBotMsgId.Value, cancellationToken).ConfigureAwait(false); } catch { }
         }
 

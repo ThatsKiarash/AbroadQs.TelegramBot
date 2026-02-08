@@ -30,6 +30,7 @@ public sealed class ApplicationDbContext : DbContext
             e.Property(x => x.FirstName).HasMaxLength(128);
             e.Property(x => x.LastName).HasMaxLength(128);
             e.Property(x => x.PreferredLanguage).HasMaxLength(10);
+            e.Property(x => x.CleanChatMode).HasDefaultValue(true);
         });
 
         modelBuilder.Entity<SettingEntity>(e =>

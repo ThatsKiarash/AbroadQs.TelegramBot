@@ -57,6 +57,7 @@ public sealed class TelegramUserRepository : ITelegramUserRepository
                 x.LastName,
                 x.PreferredLanguage,
                 x.IsRegistered,
+                x.CleanChatMode,
                 x.RegisteredAt,
                 x.FirstSeenAt,
                 x.LastSeenAt))
@@ -79,6 +80,7 @@ public sealed class TelegramUserRepository : ITelegramUserRepository
             entity.LastName,
             entity.PreferredLanguage,
             entity.IsRegistered,
+            entity.CleanChatMode,
             entity.RegisteredAt,
             entity.FirstSeenAt,
             entity.LastSeenAt);
@@ -103,6 +105,16 @@ public sealed class TelegramUserRepository : ITelegramUserRepository
         if (entity == null || entity.IsRegistered) return;
         entity.IsRegistered = true;
         entity.RegisteredAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        if (_processingContext != null)
+            _processingContext.SqlAccessed = true;
+    }
+
+    public async Task SetCleanChatModeAsync(long telegramUserId, bool enabled, CancellationToken cancellationToken = default)
+    {
+        var entity = await _db.TelegramUsers.FirstOrDefaultAsync(x => x.TelegramUserId == telegramUserId, cancellationToken).ConfigureAwait(false);
+        if (entity == null) return;
+        entity.CleanChatMode = enabled;
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         if (_processingContext != null)
             _processingContext.SqlAccessed = true;

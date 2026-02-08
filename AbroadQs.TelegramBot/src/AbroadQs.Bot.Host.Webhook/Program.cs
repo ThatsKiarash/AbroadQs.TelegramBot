@@ -899,8 +899,8 @@ static async Task SeedDefaultDataAsync(ApplicationDbContext db)
                 "<b>Main Menu</b>\n\nPlease choose an option below:",
                 true, null, null, 1),
             ("settings",
-                "<b>تنظیمات</b>\n\nاز این بخش می‌توانید زبان ربات را تغییر دهید.",
-                "<b>Settings</b>\n\nYou can change the bot language from this section.",
+                "<b>تنظیمات</b>\n\nاز این بخش می‌توانید زبان ربات و حالت چت تمیز را مدیریت کنید.",
+                "<b>Settings</b>\n\nManage bot language and clean chat mode from this section.",
                 true, null, "main_menu", 2),
             ("lang_select",
                 "زبان مورد نظر خود را انتخاب کنید:",
@@ -996,8 +996,9 @@ static async Task SeedDefaultDataAsync(ApplicationDbContext db)
             var oldSettingsButtons = db.BotStageButtons.Where(b => b.StageId == settingsStage.Id).ToList();
             if (oldSettingsButtons.Count > 0)
                 db.BotStageButtons.RemoveRange(oldSettingsButtons);
-            db.BotStageButtons.Add(
-                new BotStageButtonEntity { StageId = settingsStage.Id, TextFa = "زبان", TextEn = "Language", ButtonType = "callback", TargetStageKey = "lang_select", Row = 0, Column = 0, IsEnabled = true }
+            db.BotStageButtons.AddRange(
+                new BotStageButtonEntity { StageId = settingsStage.Id, TextFa = "زبان", TextEn = "Language", ButtonType = "callback", TargetStageKey = "lang_select", Row = 0, Column = 0, IsEnabled = true },
+                new BotStageButtonEntity { StageId = settingsStage.Id, TextFa = "حالت چت تمیز", TextEn = "Clean Chat Mode", ButtonType = "callback", CallbackData = "toggle:clean_chat", Row = 1, Column = 0, IsEnabled = true }
             );
         }
 

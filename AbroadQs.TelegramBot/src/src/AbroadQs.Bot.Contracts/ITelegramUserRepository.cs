@@ -12,6 +12,8 @@ public interface ITelegramUserRepository
     Task UpdateProfileAsync(long telegramUserId, string? firstName, string? lastName, string? preferredLanguage, CancellationToken cancellationToken = default);
     /// <summary>Mark user as registered (sets IsRegistered=true and RegisteredAt=now).</summary>
     Task MarkAsRegisteredAsync(long telegramUserId, CancellationToken cancellationToken = default);
+    /// <summary>Toggle or set the clean-chat mode for a user.</summary>
+    Task SetCleanChatModeAsync(long telegramUserId, bool enabled, CancellationToken cancellationToken = default);
 }
 
 public sealed record TelegramUserDto(
@@ -21,6 +23,7 @@ public sealed record TelegramUserDto(
     string? LastName,
     string? PreferredLanguage,
     bool IsRegistered,
+    bool CleanChatMode,
     DateTimeOffset? RegisteredAt,
     DateTimeOffset FirstSeenAt,
     DateTimeOffset LastSeenAt);
