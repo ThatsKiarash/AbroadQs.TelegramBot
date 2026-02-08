@@ -7,11 +7,11 @@ namespace AbroadQs.Bot.Modules.Common;
 /// Also handles "lang:xx" callbacks for language selection.
 /// Also handles plain text messages that match reply keyboard buttons.
 ///
-/// Message behaviour:
-///   • Inline → inline  :  editMessageText (in-place, no new message)
-///   • Inline → reply-kb :  delete inline msg, send new reply-kb msg
-///   • Reply-kb → reply-kb:  send new reply-kb msg, then delete old bot msg (smooth transition)
-///   • Reply-kb → inline :  edit old bot msg in-place with inline keyboard (reply-kb stays at bottom)
+/// Message transition rules:
+///   • Same type (inline → inline) :  editMessageText in-place
+///   • Same type (reply-kb → reply-kb) :  send new + delete old (Telegram API does not allow editing ReplyKeyboardMarkup)
+///   • Different type (reply-kb → inline) :  delete reply-kb msg, send new inline msg
+///   • Different type (inline → reply-kb) :  delete inline msg, send new reply-kb msg
 /// </summary>
 public sealed class DynamicStageHandler : IUpdateHandler
 {
@@ -73,44 +73,43 @@ public sealed class DynamicStageHandler : IUpdateHandler
         if (context.IsCallbackQuery && context.CallbackQueryId != null)
             await _sender.AnswerCallbackQueryAsync(context.CallbackQueryId, null, cancellationToken).ConfigureAwait(false);
 
-        // Handle language selection
+        // ── lang:xx callback ──────────────────────────────────────────
         if (data.StartsWith("lang:", StringComparison.OrdinalIgnoreCase))
         {
             var code = data["lang:".Length..].Trim();
             if (code.Length > 0)
             {
                 await _userRepo.UpdateProfileAsync(userId, null, null, code, cancellationToken).ConfigureAwait(false);
-                // Delete the language-selection inline message
+                // Type change: inline → reply-kb → delete inline, send new reply-kb
                 if (editMessageId.HasValue)
                     await _sender.DeleteMessageAsync(chatId, editMessageId.Value, cancellationToken).ConfigureAwait(false);
-                // Send fresh main_menu with reply keyboard
                 await ShowReplyKeyboardStageAsync(userId, "main_menu", code, cancellationToken).ConfigureAwait(false);
             }
             return true;
         }
 
-        // /settings or /menu → show main_menu
+        // ── /settings or /menu command ────────────────────────────────
         if (string.Equals(context.Command, "settings", StringComparison.OrdinalIgnoreCase)
             || string.Equals(context.Command, "menu", StringComparison.OrdinalIgnoreCase))
         {
             // Delete user's command message
             await TryDeleteAsync(chatId, context.IncomingMessageId, cancellationToken).ConfigureAwait(false);
-            // Send new reply keyboard, then delete old bot msg
+            // Same type (reply-kb → reply-kb): send new, delete old
             var oldBotMsgId = await GetOldBotMessageIdAsync(userId, cancellationToken).ConfigureAwait(false);
             await ShowReplyKeyboardStageAsync(userId, "main_menu", null, cancellationToken).ConfigureAwait(false);
             await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
             return true;
         }
 
-        // Handle stage:xxx callback (inline button press)
+        // ── stage:xxx callback (inline button press) ──────────────────
         if (data.StartsWith("stage:", StringComparison.OrdinalIgnoreCase))
         {
             var stageKey = data["stage:".Length..].Trim();
             if (stageKey.Length > 0)
             {
-                // Target is a reply-keyboard stage → delete inline msg, send new reply-kb
                 if (IsReplyKeyboardStage(stageKey))
                 {
+                    // Type change: inline → reply-kb → delete inline, send new reply-kb
                     if (editMessageId.HasValue)
                         await _sender.DeleteMessageAsync(chatId, editMessageId.Value, cancellationToken).ConfigureAwait(false);
                     await ShowReplyKeyboardStageAsync(userId, stageKey, null, cancellationToken).ConfigureAwait(false);
@@ -121,13 +120,13 @@ public sealed class DynamicStageHandler : IUpdateHandler
                 if (string.Equals(stageKey, "profile", StringComparison.OrdinalIgnoreCase))
                     await _stateStore.SetStateAsync(userId, "awaiting_profile_name", cancellationToken).ConfigureAwait(false);
 
-                // Inline → inline: edit in place
+                // Same type: inline → inline → edit in place
                 await ShowStageInlineAsync(userId, stageKey, editMessageId, null, cancellationToken).ConfigureAwait(false);
             }
             return true;
         }
 
-        // Handle plain text messages — match against reply keyboard buttons
+        // ── Plain text message → match against reply keyboard buttons ──
         if (!context.IsCallbackQuery && !string.IsNullOrEmpty(data) && string.IsNullOrEmpty(context.Command))
         {
             var matched = await HandleReplyKeyboardButtonAsync(chatId, userId, data, context.IncomingMessageId, cancellationToken).ConfigureAwait(false);
@@ -137,9 +136,10 @@ public sealed class DynamicStageHandler : IUpdateHandler
         return false;
     }
 
-    /// <summary>
-    /// Stages that use reply keyboard instead of inline keyboard.
-    /// </summary>
+    // ═══════════════════════════════════════════════════════════════════
+    //  Stage type registry
+    // ═══════════════════════════════════════════════════════════════════
+
     private static readonly HashSet<string> ReplyKeyboardStages = new(StringComparer.OrdinalIgnoreCase)
     {
         "main_menu", "new_request"
@@ -148,11 +148,15 @@ public sealed class DynamicStageHandler : IUpdateHandler
     private static bool IsReplyKeyboardStage(string stageKey) =>
         ReplyKeyboardStages.Contains(stageKey);
 
+    // ═══════════════════════════════════════════════════════════════════
+    //  Reply keyboard button handler
+    // ═══════════════════════════════════════════════════════════════════
+
     /// <summary>
     /// Match a plain text message against buttons of all reply-keyboard stages.
-    /// If matched, navigate to the target stage with smart transitions:
-    ///   • reply-kb → reply-kb : send new, delete old (smooth transition)
-    ///   • reply-kb → inline   : edit old bot msg in-place with inline keyboard
+    /// Transition rules:
+    ///   • reply-kb → reply-kb (same type) :  send new + delete old
+    ///   • reply-kb → inline (type change)  :  delete reply-kb msg, send new inline msg
     /// </summary>
     private async Task<bool> HandleReplyKeyboardButtonAsync(long chatId, long userId, string text, int? incomingMessageId, CancellationToken cancellationToken)
     {
@@ -183,32 +187,33 @@ public sealed class DynamicStageHandler : IUpdateHandler
                 // Always delete user's incoming text message
                 await TryDeleteAsync(chatId, incomingMessageId, cancellationToken).ConfigureAwait(false);
 
-                // Get the ID of the old bot message
+                // Get old bot message ID
                 var oldBotMsgId = await GetOldBotMessageIdAsync(userId, cancellationToken).ConfigureAwait(false);
 
                 if (IsReplyKeyboardStage(targetStage))
                 {
-                    // Reply-kb → Reply-kb: send new msg (with new keyboard), then delete old
+                    // Same type (reply-kb → reply-kb): send new, then delete old
                     await ShowReplyKeyboardStageAsync(userId, targetStage, null, cancellationToken).ConfigureAwait(false);
                     await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
                     return true;
                 }
 
-                // Reply-kb → Inline stage: edit old bot message in-place
+                // Type change (reply-kb → inline): delete old reply-kb msg, then send new inline
                 if (string.Equals(targetStage, "profile", StringComparison.OrdinalIgnoreCase))
                     await _stateStore.SetStateAsync(userId, "awaiting_profile_name", cancellationToken).ConfigureAwait(false);
 
-                // Edit the existing bot message to show inline content
-                await ShowStageInlineAsync(userId, targetStage, oldBotMsgId, null, cancellationToken).ConfigureAwait(false);
+                await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
+                await ShowStageInlineAsync(userId, targetStage, null, null, cancellationToken).ConfigureAwait(false);
                 return true;
             }
         }
         return false;
     }
 
-    /// <summary>
-    /// Get the Telegram message ID of the last bot message for this user.
-    /// </summary>
+    // ═══════════════════════════════════════════════════════════════════
+    //  Helpers
+    // ═══════════════════════════════════════════════════════════════════
+
     private async Task<int?> GetOldBotMessageIdAsync(long userId, CancellationToken cancellationToken)
     {
         if (_msgStateRepo == null) return null;
@@ -220,9 +225,6 @@ public sealed class DynamicStageHandler : IUpdateHandler
         catch { return null; }
     }
 
-    /// <summary>
-    /// Safely attempt to delete a message. Swallows all errors.
-    /// </summary>
     private async Task TryDeleteAsync(long chatId, int? messageId, CancellationToken cancellationToken)
     {
         if (!messageId.HasValue) return;
@@ -230,9 +232,12 @@ public sealed class DynamicStageHandler : IUpdateHandler
         catch { /* swallow */ }
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    //  Stage renderers
+    // ═══════════════════════════════════════════════════════════════════
+
     /// <summary>
     /// Show a stage with reply keyboard (persistent buttons at bottom of chat).
-    /// Works for main_menu, new_request, or any reply-keyboard stage.
     /// </summary>
     private async Task ShowReplyKeyboardStageAsync(long userId, string stageKey, string? langOverride, CancellationToken cancellationToken)
     {
@@ -245,7 +250,6 @@ public sealed class DynamicStageHandler : IUpdateHandler
             ? (isFa ? (stage.TextFa ?? stage.TextEn ?? stageKey) : (stage.TextEn ?? stage.TextFa ?? stageKey))
             : stageKey;
 
-        // Build reply keyboard from DB buttons
         var allButtons = await _stageRepo.GetButtonsAsync(stageKey, cancellationToken).ConfigureAwait(false);
         var userPerms = await _permRepo.GetUserPermissionsAsync(userId, cancellationToken).ConfigureAwait(false);
         var permSet = new HashSet<string>(userPerms, StringComparer.OrdinalIgnoreCase);
@@ -275,8 +279,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
     }
 
     /// <summary>
-    /// Show any non-reply-keyboard stage with inline keyboard.
-    /// If editMessageId is provided, edits the existing message in-place.
+    /// Show a stage with inline keyboard. If editMessageId is provided, edits in-place.
     /// </summary>
     private async Task ShowStageInlineAsync(long userId, string stageKey, int? editMessageId, string? langOverride, CancellationToken cancellationToken)
     {
@@ -345,7 +348,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
                 keyboard.Add(rowButtons);
         }
 
-        // Auto back-button: navigate to parent stage
+        // Auto back-button
         if (!string.IsNullOrEmpty(stage.ParentStageKey))
         {
             var hasBack = visibleButtons.Any(b =>
@@ -362,7 +365,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
     }
 
     /// <summary>
-    /// Send a new message or edit an existing one. Falls back to send if edit fails.
+    /// Send a new inline message or edit an existing one. Falls back to send if edit fails.
     /// </summary>
     private async Task SendOrEditTextAsync(long chatId, string text, IReadOnlyList<IReadOnlyList<InlineButton>> keyboard, int? editMessageId, CancellationToken cancellationToken)
     {
@@ -371,11 +374,11 @@ public sealed class DynamicStageHandler : IUpdateHandler
             try
             {
                 await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, editMessageId.Value, text, keyboard, cancellationToken).ConfigureAwait(false);
-                return; // success
+                return;
             }
             catch
             {
-                // Edit failed (message too old, deleted, etc.) — fall back to sending new message
+                // Edit failed — fall back to sending new message
             }
         }
         await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, text, keyboard, cancellationToken).ConfigureAwait(false);

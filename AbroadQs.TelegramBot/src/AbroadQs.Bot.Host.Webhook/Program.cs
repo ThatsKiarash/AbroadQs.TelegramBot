@@ -974,18 +974,18 @@ static async Task SeedDefaultDataAsync(ApplicationDbContext db)
                 db.BotStageButtons.RemoveRange(oldMainButtons);
 
             db.BotStageButtons.AddRange(
-                // Row 0: ثبت درخواست | امور مالی
+                // Row 0: ثبت درخواست (full width)
                 new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "ثبت درخواست", TextEn = "Submit Request", ButtonType = "callback", CallbackData = "stage:new_request", Row = 0, Column = 0, IsEnabled = true },
-                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "امور مالی", TextEn = "Finance", ButtonType = "callback", CallbackData = "stage:finance", Row = 0, Column = 1, IsEnabled = true },
-                // Row 1: پیام های من | پیشنهادات من
-                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "پیام های من", TextEn = "My Messages", ButtonType = "callback", CallbackData = "stage:my_messages", Row = 1, Column = 0, IsEnabled = true },
+                // Row 1: امور مالی | پیشنهادات من | پیام های من
+                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "امور مالی", TextEn = "Finance", ButtonType = "callback", CallbackData = "stage:finance", Row = 1, Column = 0, IsEnabled = true },
                 new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "پیشنهادات من", TextEn = "My Suggestions", ButtonType = "callback", CallbackData = "stage:my_suggestions", Row = 1, Column = 1, IsEnabled = true },
-                // Row 2: درباره ما | تیکت ها
-                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "درباره ما", TextEn = "About Us", ButtonType = "callback", CallbackData = "stage:about_us", Row = 2, Column = 0, IsEnabled = true },
-                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "تیکت ها", TextEn = "Tickets", ButtonType = "callback", CallbackData = "stage:tickets", Row = 2, Column = 1, IsEnabled = true },
-                // Row 3: پروفایل من | تنظیمات
-                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "پروفایل من", TextEn = "My Profile", ButtonType = "callback", CallbackData = "stage:profile", Row = 3, Column = 0, IsEnabled = true },
-                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "تنظیمات", TextEn = "Settings", ButtonType = "callback", TargetStageKey = "settings", Row = 3, Column = 1, IsEnabled = true }
+                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "پیام های من", TextEn = "My Messages", ButtonType = "callback", CallbackData = "stage:my_messages", Row = 1, Column = 2, IsEnabled = true },
+                // Row 2: پروفایل من | درباره ما | تیکت ها
+                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "پروفایل من", TextEn = "My Profile", ButtonType = "callback", CallbackData = "stage:profile", Row = 2, Column = 0, IsEnabled = true },
+                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "درباره ما", TextEn = "About Us", ButtonType = "callback", CallbackData = "stage:about_us", Row = 2, Column = 1, IsEnabled = true },
+                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "تیکت ها", TextEn = "Tickets", ButtonType = "callback", CallbackData = "stage:tickets", Row = 2, Column = 2, IsEnabled = true },
+                // Row 3: تنظیمات (full width)
+                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "تنظیمات", TextEn = "Settings", ButtonType = "callback", TargetStageKey = "settings", Row = 3, Column = 0, IsEnabled = true }
             );
         }
 
