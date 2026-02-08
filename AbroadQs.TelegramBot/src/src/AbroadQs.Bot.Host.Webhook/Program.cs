@@ -891,16 +891,16 @@ static async Task SeedDefaultDataAsync(ApplicationDbContext db)
         var stages = new (string key, string fa, string en, bool enabled, string? perm, string? parent, int order)[]
         {
             ("welcome",
-                "<b>سلام {name}!</b>\n\nبه ربات <b>AbroadQs</b> خوش آمدید.\n\nلطفاً زبان مورد نظر خود را انتخاب کنید.",
-                "<b>Hello {name}!</b>\n\nWelcome to <b>AbroadQs</b> bot.\n\nPlease select your preferred language.",
+                "<b>سلام {name}!</b>\n\nبه ربات <b>AbroadQs</b> خوش آمدید.\nما در زمینه خدمات ارزی و مالی بین‌المللی فعالیت می‌کنیم.\n\nلطفاً ابتدا زبان خود را انتخاب کنید:",
+                "<b>Hello {name}!</b>\n\nWelcome to <b>AbroadQs</b> bot.\nWe provide international financial and currency exchange services.\n\nPlease select your language:",
                 true, null, null, 0),
             ("main_menu",
-                "<b>منوی اصلی</b>\n\nیکی از گزینه‌های زیر را انتخاب کنید:",
-                "<b>Main Menu</b>\n\nSelect an option below:",
+                "<b>منوی اصلی</b>\n\nاز دکمه‌های زیر یکی را انتخاب کنید:",
+                "<b>Main Menu</b>\n\nPlease choose an option below:",
                 true, null, null, 1),
             ("settings",
-                "<b>تنظیمات</b>\n\nتنظیمات پروفایل و زبان:",
-                "<b>Settings</b>\n\nProfile and language settings:",
+                "<b>تنظیمات</b>\n\nاز این بخش می‌توانید زبان ربات را تغییر دهید.",
+                "<b>Settings</b>\n\nYou can change the bot language from this section.",
                 true, null, "main_menu", 2),
             ("lang_select",
                 "زبان مورد نظر خود را انتخاب کنید:",
@@ -911,40 +911,40 @@ static async Task SeedDefaultDataAsync(ApplicationDbContext db)
                 "Send your first and last name in one line.\nFor example: <b>John Smith</b>",
                 true, null, "settings", 4),
             ("new_request",
-                "<b>ثبت درخواست</b>\n\nنوع درخواست خود را انتخاب کنید:",
-                "<b>Submit Request</b>\n\nSelect your request type:",
+                "<b>ثبت درخواست</b>\n\nنوع خدمات مورد نظر خود را انتخاب کنید:",
+                "<b>Submit Request</b>\n\nSelect the type of service you need:",
                 true, null, "main_menu", 5),
             ("student_exchange",
-                "<b>تبادل مالی دانشجویی</b>\n\nدرخواست تبادل مالی دانشجویی:",
-                "<b>Student Financial Exchange</b>\n\nStudent financial exchange request:",
+                "<b>تبادل مالی دانشجویی</b>\n\nاز این بخش می‌توانید درخواست انتقال ارز دانشجویی ثبت کنید.\nشامل پرداخت شهریه، هزینه‌های اقامت و سایر هزینه‌های تحصیلی.",
+                "<b>Student Financial Exchange</b>\n\nSubmit a student currency transfer request.\nIncludes tuition fees, accommodation costs and other educational expenses.",
                 true, null, "new_request", 6),
             ("overseas_services",
-                "<b>خدمات خارج از کشور</b>\n\nدرخواست خدمات خارج از کشور:",
-                "<b>Overseas Services</b>\n\nOverseas services request:",
+                "<b>خدمات خارج از کشور</b>\n\nاز این بخش می‌توانید درخواست خدمات بین‌المللی ثبت کنید.\nشامل خرید اینترنتی، پرداخت قبض‌های خارجی و سایر خدمات.",
+                "<b>Overseas Services</b>\n\nSubmit an international services request.\nIncludes online purchases, foreign bill payments and other services.",
                 true, null, "new_request", 7),
             ("direct_currency",
-                "<b>خرید و فروش مستقیم ارز</b>\n\nدرخواست خرید و فروش مستقیم ارز:",
-                "<b>Direct Currency Exchange</b>\n\nDirect currency buy/sell request:",
+                "<b>خرید و فروش مستقیم ارز</b>\n\nاز این بخش می‌توانید درخواست خرید یا فروش مستقیم ارز ثبت کنید.\nبا نرخ‌های رقابتی و تسویه سریع.",
+                "<b>Direct Currency Exchange</b>\n\nSubmit a direct currency buy or sell request.\nCompetitive rates with fast settlement.",
                 true, null, "new_request", 8),
             ("finance",
-                "<b>امور مالی</b>\n\nوضعیت مالی شما:",
-                "<b>Finance</b>\n\nYour financial status:",
+                "<b>امور مالی</b>\n\nاز این بخش می‌توانید وضعیت تراکنش‌ها و حساب مالی خود را مشاهده کنید.",
+                "<b>Finance</b>\n\nView your transactions and financial account status from this section.",
                 true, null, "main_menu", 9),
             ("my_suggestions",
-                "<b>پیشنهادات من</b>\n\nپیشنهادات شما:",
-                "<b>My Suggestions</b>\n\nYour suggestions:",
+                "<b>پیشنهادات من</b>\n\nاز این بخش می‌توانید پیشنهادات و انتقادات خود را ثبت کنید.\nنظرات شما به بهبود خدمات ما کمک می‌کند.",
+                "<b>My Suggestions</b>\n\nSubmit your suggestions and feedback.\nYour opinions help us improve our services.",
                 true, null, "main_menu", 10),
             ("my_messages",
-                "<b>پیام های من</b>\n\nپیام‌های شما:",
-                "<b>My Messages</b>\n\nYour messages:",
+                "<b>پیام‌های من</b>\n\nاز این بخش می‌توانید پیام‌های دریافتی از تیم پشتیبانی و اطلاع‌رسانی‌ها را مشاهده کنید.",
+                "<b>My Messages</b>\n\nView messages from support team and notifications from this section.",
                 true, null, "main_menu", 11),
             ("about_us",
-                "<b>درباره ما</b>\n\nاطلاعات درباره AbroadQs:",
-                "<b>About Us</b>\n\nAbout AbroadQs:",
+                "<b>درباره ما</b>\n\n<b>AbroadQs</b> ارائه‌دهنده خدمات ارزی و مالی بین‌المللی است.\nما با هدف تسهیل تراکنش‌های بین‌المللی فعالیت می‌کنیم.\n\nبرای ارتباط با ما می‌توانید از بخش تیکت‌ها استفاده کنید.",
+                "<b>About Us</b>\n\n<b>AbroadQs</b> provides international financial and currency exchange services.\nWe aim to facilitate international transactions.\n\nContact us through the Tickets section.",
                 true, null, "main_menu", 12),
             ("tickets",
-                "<b>تیکت ها</b>\n\nتیکت‌های پشتیبانی شما:",
-                "<b>Tickets</b>\n\nYour support tickets:",
+                "<b>تیکت‌ها</b>\n\nاز این بخش می‌توانید تیکت پشتیبانی جدید ایجاد کنید یا وضعیت تیکت‌های قبلی خود را پیگیری کنید.",
+                "<b>Tickets</b>\n\nCreate a new support ticket or track your existing tickets from this section.",
                 true, null, "main_menu", 13),
         };
 
@@ -974,18 +974,18 @@ static async Task SeedDefaultDataAsync(ApplicationDbContext db)
                 db.BotStageButtons.RemoveRange(oldMainButtons);
 
             db.BotStageButtons.AddRange(
-                // Row 0: ثبت درخواست
+                // Row 0: ثبت درخواست | امور مالی
                 new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "ثبت درخواست", TextEn = "Submit Request", ButtonType = "callback", CallbackData = "stage:new_request", Row = 0, Column = 0, IsEnabled = true },
-                // Row 1: امور مالی | پیشنهادات من | پیام های من
-                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "امور مالی", TextEn = "Finance", ButtonType = "callback", CallbackData = "stage:finance", Row = 1, Column = 0, IsEnabled = true },
+                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "امور مالی", TextEn = "Finance", ButtonType = "callback", CallbackData = "stage:finance", Row = 0, Column = 1, IsEnabled = true },
+                // Row 1: پیام های من | پیشنهادات من
+                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "پیام های من", TextEn = "My Messages", ButtonType = "callback", CallbackData = "stage:my_messages", Row = 1, Column = 0, IsEnabled = true },
                 new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "پیشنهادات من", TextEn = "My Suggestions", ButtonType = "callback", CallbackData = "stage:my_suggestions", Row = 1, Column = 1, IsEnabled = true },
-                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "پیام های من", TextEn = "My Messages", ButtonType = "callback", CallbackData = "stage:my_messages", Row = 1, Column = 2, IsEnabled = true },
-                // Row 2: پروفایل من | درباره ما | تیکت ها
-                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "پروفایل من", TextEn = "My Profile", ButtonType = "callback", CallbackData = "stage:profile", Row = 2, Column = 0, IsEnabled = true },
-                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "درباره ما", TextEn = "About Us", ButtonType = "callback", CallbackData = "stage:about_us", Row = 2, Column = 1, IsEnabled = true },
-                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "تیکت ها", TextEn = "Tickets", ButtonType = "callback", CallbackData = "stage:tickets", Row = 2, Column = 2, IsEnabled = true },
-                // Row 3: تنظیمات
-                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "تنظیمات", TextEn = "Settings", ButtonType = "callback", TargetStageKey = "settings", Row = 3, Column = 0, IsEnabled = true }
+                // Row 2: درباره ما | تیکت ها
+                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "درباره ما", TextEn = "About Us", ButtonType = "callback", CallbackData = "stage:about_us", Row = 2, Column = 0, IsEnabled = true },
+                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "تیکت ها", TextEn = "Tickets", ButtonType = "callback", CallbackData = "stage:tickets", Row = 2, Column = 1, IsEnabled = true },
+                // Row 3: پروفایل من | تنظیمات
+                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "پروفایل من", TextEn = "My Profile", ButtonType = "callback", CallbackData = "stage:profile", Row = 3, Column = 0, IsEnabled = true },
+                new BotStageButtonEntity { StageId = mainMenuStage.Id, TextFa = "تنظیمات", TextEn = "Settings", ButtonType = "callback", TargetStageKey = "settings", Row = 3, Column = 1, IsEnabled = true }
             );
         }
 
@@ -1009,10 +1009,13 @@ static async Task SeedDefaultDataAsync(ApplicationDbContext db)
             if (oldNewReqButtons.Count > 0)
                 db.BotStageButtons.RemoveRange(oldNewReqButtons);
             db.BotStageButtons.AddRange(
-                new BotStageButtonEntity { StageId = newRequestStage.Id, TextFa = "تبادل مالی دانشجویی", TextEn = "Student Financial Exchange", ButtonType = "callback", CallbackData = "stage:student_exchange", Row = 0, Column = 0, IsEnabled = true },
-                new BotStageButtonEntity { StageId = newRequestStage.Id, TextFa = "خدمات خارج از کشور", TextEn = "Overseas Services", ButtonType = "callback", CallbackData = "stage:overseas_services", Row = 1, Column = 0, IsEnabled = true },
-                new BotStageButtonEntity { StageId = newRequestStage.Id, TextFa = "خرید و فروش مستقیم ارز", TextEn = "Direct Currency Exchange", ButtonType = "callback", CallbackData = "stage:direct_currency", Row = 2, Column = 0, IsEnabled = true },
-                new BotStageButtonEntity { StageId = newRequestStage.Id, TextFa = "بازگشت", TextEn = "Back", ButtonType = "callback", CallbackData = "stage:main_menu", Row = 3, Column = 0, IsEnabled = true }
+                // Row 0: تبادل مالی دانشجویی | خدمات خارج از کشور
+                new BotStageButtonEntity { StageId = newRequestStage.Id, TextFa = "تبادل مالی دانشجویی", TextEn = "Student Exchange", ButtonType = "callback", CallbackData = "stage:student_exchange", Row = 0, Column = 0, IsEnabled = true },
+                new BotStageButtonEntity { StageId = newRequestStage.Id, TextFa = "خدمات خارج از کشور", TextEn = "Overseas Services", ButtonType = "callback", CallbackData = "stage:overseas_services", Row = 0, Column = 1, IsEnabled = true },
+                // Row 1: خرید و فروش مستقیم ارز
+                new BotStageButtonEntity { StageId = newRequestStage.Id, TextFa = "خرید و فروش ارز", TextEn = "Currency Exchange", ButtonType = "callback", CallbackData = "stage:direct_currency", Row = 1, Column = 0, IsEnabled = true },
+                // Row 2: بازگشت
+                new BotStageButtonEntity { StageId = newRequestStage.Id, TextFa = "بازگشت", TextEn = "Back", ButtonType = "callback", CallbackData = "stage:main_menu", Row = 2, Column = 0, IsEnabled = true }
             );
         }
 

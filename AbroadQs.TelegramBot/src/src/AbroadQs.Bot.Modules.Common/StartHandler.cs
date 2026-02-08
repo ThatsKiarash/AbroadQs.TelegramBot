@@ -75,8 +75,20 @@ public sealed class StartHandler : IUpdateHandler
                     : $"<b>Hello {name}!</b>\n\nSelect an option below:");
         }
 
-        // Cleanup previous messages (delete user's /start msg and last bot msg)
-        await CleanupChatAsync(context.ChatId, userId, context.IncomingMessageId, cancellationToken).ConfigureAwait(false);
+        // Delete user's /start message
+        try { if (context.IncomingMessageId.HasValue) await _sender.DeleteMessageAsync(context.ChatId, context.IncomingMessageId.Value, cancellationToken).ConfigureAwait(false); } catch { }
+
+        // Get old bot message ID for smooth transition (send new → delete old)
+        int? oldBotMsgId = null;
+        if (_msgStateRepo != null)
+        {
+            try
+            {
+                var msgState = await _msgStateRepo.GetUserMessageStateAsync(userId, cancellationToken).ConfigureAwait(false);
+                if (msgState?.LastBotTelegramMessageId is > 0) oldBotMsgId = (int)msgState.LastBotTelegramMessageId;
+            }
+            catch { }
+        }
 
         // Load buttons from DB for the chosen stage
         if (isNewUser)
@@ -96,6 +108,11 @@ public sealed class StartHandler : IUpdateHandler
             var keyboard = await BuildReplyKeyboardAsync(userId, stageKey, isFa, cancellationToken).ConfigureAwait(false);
             await _sender.SendTextMessageWithReplyKeyboardAsync(context.ChatId, text, keyboard, cancellationToken).ConfigureAwait(false);
         }
+
+        // Delete old bot message AFTER new one is sent (smooth transition)
+        if (oldBotMsgId.HasValue)
+            try { await _sender.DeleteMessageAsync(context.ChatId, oldBotMsgId.Value, cancellationToken).ConfigureAwait(false); } catch { }
+
         return true;
     }
 
@@ -158,31 +175,6 @@ public sealed class StartHandler : IUpdateHandler
                 keyboard.Add(rowTexts);
         }
         return keyboard;
-    }
-
-    /// <summary>
-    /// Delete the user's incoming message and the last bot message to keep the chat clean.
-    /// </summary>
-    private async Task CleanupChatAsync(long chatId, long userId, int? incomingMessageId, CancellationToken cancellationToken)
-    {
-        try
-        {
-            // Delete user's /start message
-            if (incomingMessageId.HasValue)
-                await _sender.DeleteMessageAsync(chatId, incomingMessageId.Value, cancellationToken).ConfigureAwait(false);
-
-            // Delete previous bot message
-            if (_msgStateRepo != null)
-            {
-                var msgState = await _msgStateRepo.GetUserMessageStateAsync(userId, cancellationToken).ConfigureAwait(false);
-                if (msgState?.LastBotTelegramMessageId is > 0)
-                    await _sender.DeleteMessageAsync(chatId, (int)msgState.LastBotTelegramMessageId, cancellationToken).ConfigureAwait(false);
-            }
-        }
-        catch
-        {
-            // Swallow cleanup errors
-        }
     }
 
     private static string Escape(string s) =>
