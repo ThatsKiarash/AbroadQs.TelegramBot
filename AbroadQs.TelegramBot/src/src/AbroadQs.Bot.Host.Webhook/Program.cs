@@ -1005,8 +1005,10 @@ static async Task SeedDefaultDataAsync(ApplicationDbContext db)
             if (oldSettingsButtons.Count > 0)
                 db.BotStageButtons.RemoveRange(oldSettingsButtons);
             db.BotStageButtons.AddRange(
+                // Row 0: زبان | حالت چت تمیز (side by side)
                 new BotStageButtonEntity { StageId = settingsStage.Id, TextFa = "زبان", TextEn = "Language", ButtonType = "callback", TargetStageKey = "lang_select", Row = 0, Column = 0, IsEnabled = true },
-                new BotStageButtonEntity { StageId = settingsStage.Id, TextFa = "حالت چت تمیز", TextEn = "Clean Chat Mode", ButtonType = "callback", CallbackData = "toggle:clean_chat", Row = 1, Column = 0, IsEnabled = true }
+                new BotStageButtonEntity { StageId = settingsStage.Id, TextFa = "حالت چت تمیز", TextEn = "Clean Chat Mode", ButtonType = "callback", CallbackData = "toggle:clean_chat", Row = 0, Column = 1, IsEnabled = true }
+                // Row 1: بازگشت (auto back-button added by ShowStageInlineAsync)
             );
         }
 
