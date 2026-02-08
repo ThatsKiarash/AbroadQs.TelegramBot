@@ -106,28 +106,11 @@ public sealed class StartHandler : IUpdateHandler
         }
         else
         {
-            // Returning user → reply-kb: edit text + update keyboard
+            // Returning user → send new reply keyboard, then delete old
             var keyboard = await BuildReplyKeyboardAsync(userId, stageKey, isFa, cancellationToken).ConfigureAwait(false);
+            await _sender.SendTextMessageWithReplyKeyboardAsync(context.ChatId, text, keyboard, cancellationToken).ConfigureAwait(false);
             if (oldBotMsgId.HasValue)
-            {
-                try
-                {
-                    await _sender.EditMessageTextAsync(context.ChatId, oldBotMsgId.Value, text, cancellationToken).ConfigureAwait(false);
-                    await _sender.UpdateReplyKeyboardSilentAsync(context.ChatId, keyboard, cancellationToken).ConfigureAwait(false);
-                }
-                catch
-                {
-                    // Edit failed — send plain text + phantom keyboard (so it's editable next time)
-                    await _sender.SendTextMessageAsync(context.ChatId, text, cancellationToken).ConfigureAwait(false);
-                    await _sender.UpdateReplyKeyboardSilentAsync(context.ChatId, keyboard, cancellationToken).ConfigureAwait(false);
-                }
-            }
-            else
-            {
-                // First time — send plain text + phantom keyboard
-                await _sender.SendTextMessageAsync(context.ChatId, text, cancellationToken).ConfigureAwait(false);
-                await _sender.UpdateReplyKeyboardSilentAsync(context.ChatId, keyboard, cancellationToken).ConfigureAwait(false);
-            }
+                try { await _sender.DeleteMessageAsync(context.ChatId, oldBotMsgId.Value, cancellationToken).ConfigureAwait(false); } catch { }
         }
 
         return true;

@@ -263,25 +263,10 @@ public sealed class DynamicStageHandler : IUpdateHandler
                 keyboard.Add(rowTexts);
         }
 
+        // Send new message with reply keyboard, then delete old
+        await _sender.SendTextMessageWithReplyKeyboardAsync(userId, text, keyboard, cancellationToken).ConfigureAwait(false);
         if (editMessageId.HasValue)
-        {
-            // EDIT mode: edit text in place + silently update keyboard via phantom
-            try
-            {
-                await _sender.EditMessageTextAsync(userId, editMessageId.Value, text, cancellationToken).ConfigureAwait(false);
-                await _sender.UpdateReplyKeyboardSilentAsync(userId, keyboard, cancellationToken).ConfigureAwait(false);
-                return; // success
-            }
-            catch
-            {
-                // Edit failed — fall back to sending a new message
-            }
-        }
-
-        // SEND mode: send plain text (no markup) + set keyboard via phantom
-        // This ensures the message is editable next time (messages with ReplyKeyboardMarkup can't be edited)
-        await _sender.SendTextMessageAsync(userId, text, cancellationToken).ConfigureAwait(false);
-        await _sender.UpdateReplyKeyboardSilentAsync(userId, keyboard, cancellationToken).ConfigureAwait(false);
+            await TryDeleteAsync(userId, editMessageId, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
