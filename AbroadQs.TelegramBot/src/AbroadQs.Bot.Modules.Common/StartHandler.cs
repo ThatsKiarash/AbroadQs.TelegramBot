@@ -106,7 +106,7 @@ public sealed class StartHandler : IUpdateHandler
         }
         else
         {
-            // Returning user → reply-kb → reply-kb: edit text + update keyboard
+            // Returning user → reply-kb: edit text + update keyboard
             var keyboard = await BuildReplyKeyboardAsync(userId, stageKey, isFa, cancellationToken).ConfigureAwait(false);
             if (oldBotMsgId.HasValue)
             {
@@ -117,13 +117,16 @@ public sealed class StartHandler : IUpdateHandler
                 }
                 catch
                 {
-                    // Edit failed — fall back to send new
-                    await _sender.SendTextMessageWithReplyKeyboardAsync(context.ChatId, text, keyboard, cancellationToken).ConfigureAwait(false);
+                    // Edit failed — send plain text + phantom keyboard (so it's editable next time)
+                    await _sender.SendTextMessageAsync(context.ChatId, text, cancellationToken).ConfigureAwait(false);
+                    await _sender.UpdateReplyKeyboardSilentAsync(context.ChatId, keyboard, cancellationToken).ConfigureAwait(false);
                 }
             }
             else
             {
-                await _sender.SendTextMessageWithReplyKeyboardAsync(context.ChatId, text, keyboard, cancellationToken).ConfigureAwait(false);
+                // First time — send plain text + phantom keyboard
+                await _sender.SendTextMessageAsync(context.ChatId, text, cancellationToken).ConfigureAwait(false);
+                await _sender.UpdateReplyKeyboardSilentAsync(context.ChatId, keyboard, cancellationToken).ConfigureAwait(false);
             }
         }
 

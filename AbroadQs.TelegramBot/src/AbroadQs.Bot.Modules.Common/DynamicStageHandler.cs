@@ -265,7 +265,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
 
         if (editMessageId.HasValue)
         {
-            // EDIT mode: edit text in place + silently update keyboard via phantom message
+            // EDIT mode: edit text in place + silently update keyboard via phantom
             try
             {
                 await _sender.EditMessageTextAsync(userId, editMessageId.Value, text, cancellationToken).ConfigureAwait(false);
@@ -278,8 +278,10 @@ public sealed class DynamicStageHandler : IUpdateHandler
             }
         }
 
-        // SEND mode: send new message with keyboard
-        await _sender.SendTextMessageWithReplyKeyboardAsync(userId, text, keyboard, cancellationToken).ConfigureAwait(false);
+        // SEND mode: send plain text (no markup) + set keyboard via phantom
+        // This ensures the message is editable next time (messages with ReplyKeyboardMarkup can't be edited)
+        await _sender.SendTextMessageAsync(userId, text, cancellationToken).ConfigureAwait(false);
+        await _sender.UpdateReplyKeyboardSilentAsync(userId, keyboard, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
