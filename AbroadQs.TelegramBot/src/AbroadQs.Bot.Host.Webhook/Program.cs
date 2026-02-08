@@ -911,29 +911,41 @@ static async Task SeedDefaultDataAsync(ApplicationDbContext db)
                 "Send your first and last name in one line.\nFor example: <b>John Smith</b>",
                 true, null, "settings", 4),
             ("new_request",
-                "<b>📋 ثبت درخواست</b>\n\nدرخواست جدید خود را ثبت کنید:",
-                "<b>📋 Submit Request</b>\n\nSubmit your new request:",
+                "<b>ثبت درخواست</b>\n\nنوع درخواست خود را انتخاب کنید:",
+                "<b>Submit Request</b>\n\nSelect your request type:",
                 true, null, "main_menu", 5),
+            ("student_exchange",
+                "<b>تبادل مالی دانشجویی</b>\n\nدرخواست تبادل مالی دانشجویی:",
+                "<b>Student Financial Exchange</b>\n\nStudent financial exchange request:",
+                true, null, "new_request", 6),
+            ("overseas_services",
+                "<b>خدمات خارج از کشور</b>\n\nدرخواست خدمات خارج از کشور:",
+                "<b>Overseas Services</b>\n\nOverseas services request:",
+                true, null, "new_request", 7),
+            ("direct_currency",
+                "<b>خرید و فروش مستقیم ارز</b>\n\nدرخواست خرید و فروش مستقیم ارز:",
+                "<b>Direct Currency Exchange</b>\n\nDirect currency buy/sell request:",
+                true, null, "new_request", 8),
             ("finance",
-                "<b>💰 امور مالی</b>\n\nوضعیت مالی شما:",
-                "<b>💰 Finance</b>\n\nYour financial status:",
-                true, null, "main_menu", 6),
-            ("my_suggestions",
-                "<b>💡 پیشنهادات من</b>\n\nپیشنهادات شما:",
-                "<b>💡 My Suggestions</b>\n\nYour suggestions:",
-                true, null, "main_menu", 7),
-            ("my_messages",
-                "<b>✉️ پیام های من</b>\n\nپیام‌های شما:",
-                "<b>✉️ My Messages</b>\n\nYour messages:",
-                true, null, "main_menu", 8),
-            ("about_us",
-                "<b>ℹ️ درباره ما</b>\n\nاطلاعات درباره AbroadQs:",
-                "<b>ℹ️ About Us</b>\n\nAbout AbroadQs:",
+                "<b>امور مالی</b>\n\nوضعیت مالی شما:",
+                "<b>Finance</b>\n\nYour financial status:",
                 true, null, "main_menu", 9),
-            ("tickets",
-                "<b>🎫 تیکت ها</b>\n\nتیکت‌های پشتیبانی شما:",
-                "<b>🎫 Tickets</b>\n\nYour support tickets:",
+            ("my_suggestions",
+                "<b>پیشنهادات من</b>\n\nپیشنهادات شما:",
+                "<b>My Suggestions</b>\n\nYour suggestions:",
                 true, null, "main_menu", 10),
+            ("my_messages",
+                "<b>پیام های من</b>\n\nپیام‌های شما:",
+                "<b>My Messages</b>\n\nYour messages:",
+                true, null, "main_menu", 11),
+            ("about_us",
+                "<b>درباره ما</b>\n\nاطلاعات درباره AbroadQs:",
+                "<b>About Us</b>\n\nAbout AbroadQs:",
+                true, null, "main_menu", 12),
+            ("tickets",
+                "<b>تیکت ها</b>\n\nتیکت‌های پشتیبانی شما:",
+                "<b>Tickets</b>\n\nYour support tickets:",
+                true, null, "main_menu", 13),
         };
 
         foreach (var (key, fa, en, enabled, perm, parent, order) in stages)
@@ -978,11 +990,29 @@ static async Task SeedDefaultDataAsync(ApplicationDbContext db)
         }
 
         var settingsStage = db.BotStages.FirstOrDefault(s => s.StageKey == "settings");
-        if (settingsStage != null && !db.BotStageButtons.Any(b => b.StageId == settingsStage.Id))
+        if (settingsStage != null)
         {
+            // Reset settings buttons
+            var oldSettingsButtons = db.BotStageButtons.Where(b => b.StageId == settingsStage.Id).ToList();
+            if (oldSettingsButtons.Count > 0)
+                db.BotStageButtons.RemoveRange(oldSettingsButtons);
+            db.BotStageButtons.Add(
+                new BotStageButtonEntity { StageId = settingsStage.Id, TextFa = "زبان", TextEn = "Language", ButtonType = "callback", TargetStageKey = "lang_select", Row = 0, Column = 0, IsEnabled = true }
+            );
+        }
+
+        // new_request sub-menu (reply keyboard): 3 options + back
+        var newRequestStage = db.BotStages.FirstOrDefault(s => s.StageKey == "new_request");
+        if (newRequestStage != null)
+        {
+            var oldNewReqButtons = db.BotStageButtons.Where(b => b.StageId == newRequestStage.Id).ToList();
+            if (oldNewReqButtons.Count > 0)
+                db.BotStageButtons.RemoveRange(oldNewReqButtons);
             db.BotStageButtons.AddRange(
-                new BotStageButtonEntity { StageId = settingsStage.Id, TextFa = "زبان", TextEn = "Language", ButtonType = "callback", TargetStageKey = "lang_select", Row = 0, Column = 0, IsEnabled = true },
-                new BotStageButtonEntity { StageId = settingsStage.Id, TextFa = "نام و نام‌خانوادگی", TextEn = "Name & Family", ButtonType = "callback", TargetStageKey = "profile", Row = 1, Column = 0, IsEnabled = true }
+                new BotStageButtonEntity { StageId = newRequestStage.Id, TextFa = "تبادل مالی دانشجویی", TextEn = "Student Financial Exchange", ButtonType = "callback", CallbackData = "stage:student_exchange", Row = 0, Column = 0, IsEnabled = true },
+                new BotStageButtonEntity { StageId = newRequestStage.Id, TextFa = "خدمات خارج از کشور", TextEn = "Overseas Services", ButtonType = "callback", CallbackData = "stage:overseas_services", Row = 1, Column = 0, IsEnabled = true },
+                new BotStageButtonEntity { StageId = newRequestStage.Id, TextFa = "خرید و فروش مستقیم ارز", TextEn = "Direct Currency Exchange", ButtonType = "callback", CallbackData = "stage:direct_currency", Row = 2, Column = 0, IsEnabled = true },
+                new BotStageButtonEntity { StageId = newRequestStage.Id, TextFa = "بازگشت", TextEn = "Back", ButtonType = "callback", CallbackData = "stage:main_menu", Row = 3, Column = 0, IsEnabled = true }
             );
         }
 

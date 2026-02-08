@@ -78,7 +78,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
                 if (editMessageId.HasValue)
                     await _sender.DeleteMessageAsync(chatId, editMessageId.Value, cancellationToken).ConfigureAwait(false);
                 // Send fresh main_menu with reply keyboard
-                await ShowMainMenuAsync(userId, code, cancellationToken).ConfigureAwait(false);
+                await ShowReplyKeyboardStageAsync(userId, "main_menu", code, cancellationToken).ConfigureAwait(false);
             }
             return true;
         }
@@ -88,7 +88,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
             || string.Equals(context.Command, "menu", StringComparison.OrdinalIgnoreCase))
         {
             await CleanupChatAsync(chatId, userId, context.IncomingMessageId, cancellationToken).ConfigureAwait(false);
-            await ShowMainMenuAsync(userId, null, cancellationToken).ConfigureAwait(false);
+            await ShowReplyKeyboardStageAsync(userId, "main_menu", null, cancellationToken).ConfigureAwait(false);
             return true;
         }
 
@@ -98,12 +98,12 @@ public sealed class DynamicStageHandler : IUpdateHandler
             var stageKey = data["stage:".Length..].Trim();
             if (stageKey.Length > 0)
             {
-                // If navigating back to main_menu, delete inline msg + show reply keyboard
-                if (string.Equals(stageKey, "main_menu", StringComparison.OrdinalIgnoreCase))
+                // Reply-keyboard stages: delete inline msg + show reply keyboard
+                if (IsReplyKeyboardStage(stageKey))
                 {
                     if (editMessageId.HasValue)
                         await _sender.DeleteMessageAsync(chatId, editMessageId.Value, cancellationToken).ConfigureAwait(false);
-                    await ShowMainMenuAsync(userId, null, cancellationToken).ConfigureAwait(false);
+                    await ShowReplyKeyboardStageAsync(userId, stageKey, null, cancellationToken).ConfigureAwait(false);
                     return true;
                 }
 
@@ -128,22 +128,36 @@ public sealed class DynamicStageHandler : IUpdateHandler
     }
 
     /// <summary>
-    /// Match a plain text message against main_menu buttons (both Fa and En).
+    /// Stages that use reply keyboard instead of inline keyboard.
+    /// </summary>
+    private static readonly HashSet<string> ReplyKeyboardStages = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "main_menu", "new_request"
+    };
+
+    private static bool IsReplyKeyboardStage(string stageKey) =>
+        ReplyKeyboardStages.Contains(stageKey);
+
+    /// <summary>
+    /// Match a plain text message against buttons of all reply-keyboard stages.
     /// If matched, cleanup chat and navigate to the target stage.
     /// </summary>
     private async Task<bool> HandleReplyKeyboardButtonAsync(long chatId, long userId, string text, int? incomingMessageId, CancellationToken cancellationToken)
     {
-        var allButtons = await _stageRepo.GetButtonsAsync("main_menu", cancellationToken).ConfigureAwait(false);
-        if (allButtons.Count == 0) return false;
-
-        foreach (var btn in allButtons)
+        // Check buttons of every reply-keyboard stage
+        foreach (var stageKey in ReplyKeyboardStages)
         {
-            if (!btn.IsEnabled) continue;
-            var matchFa = btn.TextFa?.Trim();
-            var matchEn = btn.TextEn?.Trim();
-            if (string.Equals(text, matchFa, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(text, matchEn, StringComparison.OrdinalIgnoreCase))
+            var allButtons = await _stageRepo.GetButtonsAsync(stageKey, cancellationToken).ConfigureAwait(false);
+
+            foreach (var btn in allButtons)
             {
+                if (!btn.IsEnabled) continue;
+                var matchFa = btn.TextFa?.Trim();
+                var matchEn = btn.TextEn?.Trim();
+                if (!string.Equals(text, matchFa, StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(text, matchEn, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
                 // Determine target stage
                 var targetStage = btn.TargetStageKey;
                 if (string.IsNullOrEmpty(targetStage) && !string.IsNullOrEmpty(btn.CallbackData))
@@ -153,21 +167,24 @@ public sealed class DynamicStageHandler : IUpdateHandler
                         targetStage = cb["stage:".Length..].Trim();
                 }
 
-                if (!string.IsNullOrEmpty(targetStage))
-                {
-                    // Cleanup previous messages before showing new stage
-                    await CleanupChatAsync(chatId, userId, incomingMessageId, cancellationToken).ConfigureAwait(false);
+                if (string.IsNullOrEmpty(targetStage)) return false;
 
-                    // Special handling for profile stage
-                    if (string.Equals(targetStage, "profile", StringComparison.OrdinalIgnoreCase))
-                    {
-                        await _stateStore.SetStateAsync(userId, "awaiting_profile_name", cancellationToken).ConfigureAwait(false);
-                    }
-                    await ShowStageInlineAsync(userId, targetStage, null, null, cancellationToken).ConfigureAwait(false);
+                // Cleanup previous messages
+                await CleanupChatAsync(chatId, userId, incomingMessageId, cancellationToken).ConfigureAwait(false);
+
+                // If target is a reply-keyboard stage, show reply keyboard
+                if (IsReplyKeyboardStage(targetStage))
+                {
+                    await ShowReplyKeyboardStageAsync(userId, targetStage, null, cancellationToken).ConfigureAwait(false);
                     return true;
                 }
 
-                return false;
+                // Special handling for profile stage
+                if (string.Equals(targetStage, "profile", StringComparison.OrdinalIgnoreCase))
+                    await _stateStore.SetStateAsync(userId, "awaiting_profile_name", cancellationToken).ConfigureAwait(false);
+
+                await ShowStageInlineAsync(userId, targetStage, null, null, cancellationToken).ConfigureAwait(false);
+                return true;
             }
         }
         return false;
@@ -204,21 +221,22 @@ public sealed class DynamicStageHandler : IUpdateHandler
     }
 
     /// <summary>
-    /// Show main_menu with reply keyboard (persistent buttons at bottom of chat).
+    /// Show a stage with reply keyboard (persistent buttons at bottom of chat).
+    /// Works for main_menu, new_request, or any reply-keyboard stage.
     /// </summary>
-    private async Task ShowMainMenuAsync(long userId, string? langOverride, CancellationToken cancellationToken)
+    private async Task ShowReplyKeyboardStageAsync(long userId, string stageKey, string? langOverride, CancellationToken cancellationToken)
     {
         var user = await _userRepo.GetByTelegramUserIdAsync(userId, cancellationToken).ConfigureAwait(false);
         var lang = langOverride ?? user?.PreferredLanguage ?? "fa";
         var isFa = lang == "fa";
 
-        var stage = await _stageRepo.GetByKeyAsync("main_menu", cancellationToken).ConfigureAwait(false);
+        var stage = await _stageRepo.GetByKeyAsync(stageKey, cancellationToken).ConfigureAwait(false);
         var text = stage != null && stage.IsEnabled
-            ? (isFa ? (stage.TextFa ?? stage.TextEn ?? "main_menu") : (stage.TextEn ?? stage.TextFa ?? "main_menu"))
-            : (isFa ? "منوی اصلی\nیکی از گزینه‌های زیر را انتخاب کنید:" : "Main Menu\nSelect an option below:");
+            ? (isFa ? (stage.TextFa ?? stage.TextEn ?? stageKey) : (stage.TextEn ?? stage.TextFa ?? stageKey))
+            : stageKey;
 
         // Build reply keyboard from DB buttons
-        var allButtons = await _stageRepo.GetButtonsAsync("main_menu", cancellationToken).ConfigureAwait(false);
+        var allButtons = await _stageRepo.GetButtonsAsync(stageKey, cancellationToken).ConfigureAwait(false);
         var userPerms = await _permRepo.GetUserPermissionsAsync(userId, cancellationToken).ConfigureAwait(false);
         var permSet = new HashSet<string>(userPerms, StringComparer.OrdinalIgnoreCase);
 
@@ -241,18 +259,6 @@ public sealed class DynamicStageHandler : IUpdateHandler
             }
             if (rowTexts.Count > 0)
                 keyboard.Add(rowTexts);
-        }
-
-        // Fallback if no buttons in DB
-        if (keyboard.Count == 0)
-        {
-            keyboard = new List<IReadOnlyList<string>>
-            {
-                new[] { isFa ? "ثبت درخواست" : "Submit Request" },
-                new[] { isFa ? "امور مالی" : "Finance", isFa ? "پیشنهادات من" : "My Suggestions", isFa ? "پیام های من" : "My Messages" },
-                new[] { isFa ? "پروفایل من" : "My Profile", isFa ? "درباره ما" : "About Us", isFa ? "تیکت ها" : "Tickets" },
-                new[] { isFa ? "تنظیمات" : "Settings" }
-            };
         }
 
         await _sender.SendTextMessageWithReplyKeyboardAsync(userId, text, keyboard, cancellationToken).ConfigureAwait(false);

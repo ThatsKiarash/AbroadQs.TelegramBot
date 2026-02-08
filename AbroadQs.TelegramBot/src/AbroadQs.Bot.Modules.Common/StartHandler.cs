@@ -94,14 +94,6 @@ public sealed class StartHandler : IUpdateHandler
         {
             // Main menu → reply keyboard (persistent buttons at bottom)
             var keyboard = await BuildReplyKeyboardAsync(userId, stageKey, isFa, cancellationToken).ConfigureAwait(false);
-            if (keyboard.Count == 0)
-                keyboard = new List<IReadOnlyList<string>>
-                {
-                    new[] { isFa ? "ثبت درخواست" : "Submit Request" },
-                    new[] { isFa ? "امور مالی" : "Finance", isFa ? "پیشنهادات من" : "My Suggestions", isFa ? "پیام های من" : "My Messages" },
-                    new[] { isFa ? "پروفایل من" : "My Profile", isFa ? "درباره ما" : "About Us", isFa ? "تیکت ها" : "Tickets" },
-                    new[] { isFa ? "تنظیمات" : "Settings" }
-                };
             await _sender.SendTextMessageWithReplyKeyboardAsync(context.ChatId, text, keyboard, cancellationToken).ConfigureAwait(false);
         }
         return true;
