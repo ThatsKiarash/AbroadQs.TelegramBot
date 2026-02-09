@@ -325,6 +325,33 @@ public sealed class TelegramResponseSender : IResponseSender
         }
     }
 
+    public async Task RemoveReplyKeyboardSilentAsync(long chatId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var markup = new ReplyKeyboardRemove();
+            // Send a zero-width space phantom message with ReplyKeyboardRemove, then immediately delete it
+            var result = await _client.SendMessage(
+                new ChatId(chatId), "\u200B", replyMarkup: markup, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            if (result != null)
+            {
+                // Immediately delete the phantom — user should never see it
+                try
+                {
+                    await _client.DeleteMessage(new ChatId(chatId), result.MessageId, cancellationToken: cancellationToken).ConfigureAwait(false);
+                }
+                catch { /* swallow delete failure */ }
+            }
+            // Do NOT save as outgoing message — this is a phantom
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to silently remove reply keyboard in chat {ChatId}", chatId);
+            // Swallow — non-critical
+        }
+    }
+
     public async Task SendPhotoAsync(long chatId, string photoPath, string? caption = null, CancellationToken cancellationToken = default)
     {
         try

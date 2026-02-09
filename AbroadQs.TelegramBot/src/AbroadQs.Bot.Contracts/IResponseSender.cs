@@ -61,6 +61,12 @@ public interface IResponseSender
     Task RemoveReplyKeyboardAsync(long chatId, string text, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Silently remove the reply keyboard — sends a temporary message with ReplyKeyboardRemove and immediately deletes it.
+    /// The user sees nothing. Does NOT save the phantom as a bot message.
+    /// </summary>
+    Task RemoveReplyKeyboardSilentAsync(long chatId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Send a photo with an optional caption. Used to show sample verification images etc.
     /// </summary>
     Task SendPhotoAsync(long chatId, string photoPath, string? caption = null, CancellationToken cancellationToken = default);
