@@ -51,11 +51,17 @@ builder.Services.AddSingleton<AbroadQs.Bot.Contracts.ISmsService>(sp =>
         168094,
         sp.GetRequiredService<ILogger<AbroadQs.Bot.Host.Webhook.Services.SmsIrService>>()));
 
-// Email service (SMTP) for email OTP verification
+// HttpClientFactory for email relay
+builder.Services.AddHttpClient();
+
+// Email service — HTTP relay (primary) + SMTP fallback
 builder.Services.AddSingleton<AbroadQs.Bot.Contracts.IEmailService>(sp =>
     new AbroadQs.Bot.Host.Webhook.Services.EmailOtpService(
         "abroadqs.com", 465, "info@abroadqs.com", "Kia135724!",
-        sp.GetRequiredService<ILogger<AbroadQs.Bot.Host.Webhook.Services.EmailOtpService>>()));
+        sp.GetRequiredService<ILogger<AbroadQs.Bot.Host.Webhook.Services.EmailOtpService>>(),
+        relayUrl: "https://abroadqs.com/api/email_relay.php",
+        relayToken: "AbroadQs_Email_Relay_2026_Secure",
+        httpClientFactory: sp.GetRequiredService<IHttpClientFactory>()));
 
 // Scoped processing context برای ردیابی عملیات هر درخواست
 builder.Services.AddScoped<ProcessingContext>();

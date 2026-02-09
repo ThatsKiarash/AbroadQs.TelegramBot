@@ -106,7 +106,8 @@ public sealed class KycStateHandler : IUpdateHandler
             if (cb == CbSkipEmail)
             {
                 var state = await _stateStore.GetStateAsync(userId, cancellationToken).ConfigureAwait(false);
-                if (state != "kyc_step_email") return false;
+                if (state != "kyc_step_email" && !(state ?? "").StartsWith("kyc_step_email_otp:", StringComparison.OrdinalIgnoreCase))
+                    return false;
 
                 var user = await SafeGetUser(userId, cancellationToken);
                 var isFa = IsFarsi(user);
@@ -301,6 +302,7 @@ public sealed class KycStateHandler : IUpdateHandler
                 ? $"شماره تلفن شما ثبت شد.\nکد تایید به شماره <b>{masked}</b> ارسال شد.\n\nلطفا کد 5 رقمی را وارد کنید:"
                 : $"Phone number saved.\nCode sent to <b>{masked}</b>.\n\nPlease enter the 5-digit code:";
             await SafeRemoveKeyboard(chatId, "...", cancellationToken);
+            await TrackLastBotMsgAsync(userId, cancellationToken); // track the "..." removal message
             await SafeSendInline(chatId, otpMsg, CancelRow(isFaLang), cancellationToken);
             await TrackLastBotMsgAsync(userId, cancellationToken);
             return true;
@@ -533,7 +535,19 @@ public sealed class KycStateHandler : IUpdateHandler
         await _stateStore.ClearStateAsync(userId, ct).ConfigureAwait(false);
         await CleanupFlowMessagesAsync(chatId, userId, cleanMode, ct);
 
-        try { await _sender.RemoveReplyKeyboardAsync(chatId, "...", ct).ConfigureAwait(false); } catch { }
+        // Remove reply keyboard with a temporary message, then delete it immediately
+        try
+        {
+            await _sender.RemoveReplyKeyboardAsync(chatId, "...", ct).ConfigureAwait(false);
+            // Delete the "..." message immediately (it's the last bot message now)
+            if (_msgStateRepo != null)
+            {
+                var s = await _msgStateRepo.GetUserMessageStateAsync(userId, ct).ConfigureAwait(false);
+                if (s?.LastBotTelegramMessageId is > 0)
+                    await SafeDelete(chatId, (int)s.LastBotTelegramMessageId, ct);
+            }
+        }
+        catch { }
 
         var cancelMsg = isFa
             ? "فرایند احراز هویت لغو شد.\nهر زمان که آماده بودید، می‌توانید دوباره از بخش پروفایل اقدام کنید."
