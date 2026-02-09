@@ -14,6 +14,9 @@ namespace AbroadQs.Bot.Modules.Common;
 ///
 /// Also supports partial re-submission when admin rejects fields (start_kyc_fix).
 /// Tracks message IDs during the flow for bulk cleanup at the end.
+///
+/// IMPORTANT: Every step allows the user to type "لغو" / "Cancel" to abort.
+///            Every async external call (SMS, email) is wrapped in a timeout so the bot never hangs.
 /// </summary>
 public sealed class KycStateHandler : IUpdateHandler
 {
@@ -26,6 +29,12 @@ public sealed class KycStateHandler : IUpdateHandler
 
     // Path to the sample KYC photo (inside wwwroot)
     private const string SamplePhotoPath = "wwwroot/kyc_sample_photo.png";
+
+    // Cancel keywords in both languages
+    private static readonly HashSet<string> CancelKeywords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "لغو", "cancel", "انصراف", "/cancel"
+    };
 
     public KycStateHandler(
         IResponseSender sender,
@@ -53,7 +62,8 @@ public sealed class KycStateHandler : IUpdateHandler
         {
             var cb = context.MessageText?.Trim() ?? "";
             return cb.StartsWith("country:", StringComparison.OrdinalIgnoreCase)
-                || cb == "start_kyc_fix";
+                || cb == "start_kyc_fix"
+                || cb == "cancel_kyc";
         }
         // Accept text, contact, or photo messages (state check in HandleAsync)
         return !string.IsNullOrEmpty(context.MessageText)
@@ -67,31 +77,42 @@ public sealed class KycStateHandler : IUpdateHandler
         var userId = context.UserId.Value;
         var chatId = context.ChatId;
 
-        // ── Callback: country selection ─────────────────────────────────
+        // ── Callback queries ─────────────────────────────────────────────
         if (context.IsCallbackQuery)
         {
             var cb = context.MessageText?.Trim() ?? "";
+
+            // cancel_kyc callback (from inline cancel button)
+            if (cb == "cancel_kyc")
+            {
+                if (context.CallbackQueryId != null)
+                    await SafeAnswerCallback(context.CallbackQueryId, null, cancellationToken);
+
+                var user = await SafeGetUser(userId, cancellationToken);
+                var isFa = (user?.PreferredLanguage ?? "fa") == "fa";
+                await CancelKycFlowAsync(chatId, userId, user?.CleanChatMode ?? true, isFa, cancellationToken);
+                return true;
+            }
 
             // start_kyc_fix: begin partial re-submission for rejected fields
             if (cb == "start_kyc_fix")
             {
                 if (context.CallbackQueryId != null)
-                    await _sender.AnswerCallbackQueryAsync(context.CallbackQueryId, null, cancellationToken).ConfigureAwait(false);
+                    await SafeAnswerCallback(context.CallbackQueryId, null, cancellationToken);
 
-                var user = await _userRepo.GetByTelegramUserIdAsync(userId, cancellationToken).ConfigureAwait(false);
+                var user = await SafeGetUser(userId, cancellationToken);
                 var isFa = (user?.PreferredLanguage ?? "fa") == "fa";
                 var cleanMode = user?.CleanChatMode ?? true;
                 var editMsgId = context.CallbackMessageId;
                 if (cleanMode && editMsgId.HasValue)
-                    await _sender.DeleteMessageAsync(chatId, editMsgId.Value, cancellationToken).ConfigureAwait(false);
+                    await SafeDelete(chatId, editMsgId.Value, cancellationToken);
 
                 // Determine which fields are rejected
                 var rejectionData = user?.KycRejectionData;
-                var nextStep = GetNextRejectedStep(rejectionData);
-                if (nextStep == null) nextStep = "kyc_step_name"; // fallback: redo all
+                var nextStep = GetNextRejectedStep(rejectionData) ?? "kyc_step_name"; // fallback: redo all
 
                 await _stateStore.SetStateAsync(userId, nextStep, cancellationToken).ConfigureAwait(false);
-                await SendStepPromptAsync(chatId, userId, nextStep, isFa, cancellationToken).ConfigureAwait(false);
+                await SendStepPromptAsync(chatId, userId, nextStep, isFa, cancellationToken);
                 return true;
             }
 
@@ -99,36 +120,32 @@ public sealed class KycStateHandler : IUpdateHandler
             if (cb.StartsWith("country:", StringComparison.OrdinalIgnoreCase))
             {
                 if (context.CallbackQueryId != null)
-                    await _sender.AnswerCallbackQueryAsync(context.CallbackQueryId, null, cancellationToken).ConfigureAwait(false);
+                    await SafeAnswerCallback(context.CallbackQueryId, null, cancellationToken);
 
                 var state = await _stateStore.GetStateAsync(userId, cancellationToken).ConfigureAwait(false);
                 if (state != "kyc_step_country") return false;
 
                 var countryCode = cb["country:".Length..].Trim();
-                var user = await _userRepo.GetByTelegramUserIdAsync(userId, cancellationToken).ConfigureAwait(false);
+                var user = await SafeGetUser(userId, cancellationToken);
                 var isFa = (user?.PreferredLanguage ?? "fa") == "fa";
 
                 if (countryCode == "other")
                 {
                     await _stateStore.SetStateAsync(userId, "kyc_step_country_text", cancellationToken).ConfigureAwait(false);
                     var msg = isFa
-                        ? "لطفاً نام کشور محل سکونت خود را تایپ کنید:"
-                        : "Please type your country of residence:";
-                    // Track outgoing
-                    await TrackIncomingAsync(userId, context.CallbackMessageId, cancellationToken).ConfigureAwait(false);
-                    await _sender.SendTextMessageAsync(chatId, msg, cancellationToken).ConfigureAwait(false);
-                    await TrackLastBotMsgAsync(userId, cancellationToken).ConfigureAwait(false);
+                        ? "لطفا نام کشور محل سکونت خود را تایپ کنید:\n\nبرای لغو عملیات، بنویسید: <b>لغو</b>"
+                        : "Please type your country of residence:\n\nTo cancel, type: <b>Cancel</b>";
+                    await TrackIncomingAsync(userId, context.CallbackMessageId, cancellationToken);
+                    await SafeSendText(chatId, msg, cancellationToken);
+                    await TrackLastBotMsgAsync(userId, cancellationToken);
                     return true;
                 }
 
                 var countryName = GetCountryName(countryCode, isFa);
                 await _userRepo.SetCountryAsync(userId, countryName, cancellationToken).ConfigureAwait(false);
 
-                // Track outgoing
-                await TrackIncomingAsync(userId, context.CallbackMessageId, cancellationToken).ConfigureAwait(false);
-
-                // Move to photo step
-                await GoToPhotoStepAsync(chatId, userId, isFa, cancellationToken).ConfigureAwait(false);
+                await TrackIncomingAsync(userId, context.CallbackMessageId, cancellationToken);
+                await GoToPhotoStepAsync(chatId, userId, isFa, cancellationToken);
                 return true;
             }
 
@@ -140,21 +157,29 @@ public sealed class KycStateHandler : IUpdateHandler
         if (string.IsNullOrEmpty(state2) || !state2.StartsWith("kyc_step_", StringComparison.OrdinalIgnoreCase))
             return false;
 
-        var currentUser = await _userRepo.GetByTelegramUserIdAsync(userId, cancellationToken).ConfigureAwait(false);
+        var currentUser = await SafeGetUser(userId, cancellationToken);
         var isFaLang = (currentUser?.PreferredLanguage ?? "fa") == "fa";
 
         // Track user's incoming message
-        await TrackIncomingAsync(userId, context.IncomingMessageId, cancellationToken).ConfigureAwait(false);
+        await TrackIncomingAsync(userId, context.IncomingMessageId, cancellationToken);
+
+        // ── Global cancel check (for all text steps) ─────────────────────
+        var rawText = context.MessageText?.Trim() ?? "";
+        if (!context.HasContact && !context.HasPhoto && CancelKeywords.Contains(rawText))
+        {
+            await CancelKycFlowAsync(chatId, userId, currentUser?.CleanChatMode ?? true, isFaLang, cancellationToken);
+            return true;
+        }
 
         // ── Step 1: Name entry ────────────────────────────────────────
         if (state2 == "kyc_step_name")
         {
-            var text = context.MessageText?.Trim();
+            var text = rawText;
             if (string.IsNullOrEmpty(text))
             {
-                var msg = isFaLang ? "لطفاً نام و نام خانوادگی خود را وارد کنید:" : "Please enter your first and last name:";
-                await _sender.SendTextMessageAsync(chatId, msg, cancellationToken).ConfigureAwait(false);
-                await TrackLastBotMsgAsync(userId, cancellationToken).ConfigureAwait(false);
+                var msg = isFaLang ? "لطفا نام و نام خانوادگی خود را وارد کنید:" : "Please enter your first and last name:";
+                await SafeSendText(chatId, msg, cancellationToken);
+                await TrackLastBotMsgAsync(userId, cancellationToken);
                 return true;
             }
 
@@ -165,10 +190,10 @@ public sealed class KycStateHandler : IUpdateHandler
             if (string.IsNullOrEmpty(firstName) || string.IsNullOrEmpty(lastName))
             {
                 var msg = isFaLang
-                    ? "لطفاً نام و نام خانوادگی خود را در یک خط وارد کنید.\nمثال: <b>علی احمدی</b>"
-                    : "Please enter both first and last name in one line.\nExample: <b>John Smith</b>";
-                await _sender.SendTextMessageAsync(chatId, msg, cancellationToken).ConfigureAwait(false);
-                await TrackLastBotMsgAsync(userId, cancellationToken).ConfigureAwait(false);
+                    ? "لطفا نام و نام خانوادگی خود را در یک خط وارد کنید.\nمثال: <b>علی احمدی</b>\n\nبرای لغو عملیات، بنویسید: <b>لغو</b>"
+                    : "Please enter both first and last name in one line.\nExample: <b>John Smith</b>\n\nTo cancel, type: <b>Cancel</b>";
+                await SafeSendText(chatId, msg, cancellationToken);
+                await TrackLastBotMsgAsync(userId, cancellationToken);
                 return true;
             }
 
@@ -179,46 +204,32 @@ public sealed class KycStateHandler : IUpdateHandler
             if (nextFixStep != null)
             {
                 await _stateStore.SetStateAsync(userId, nextFixStep, cancellationToken).ConfigureAwait(false);
-                await SendStepPromptAsync(chatId, userId, nextFixStep, isFaLang, cancellationToken).ConfigureAwait(false);
+                await SendStepPromptAsync(chatId, userId, nextFixStep, isFaLang, cancellationToken);
                 return true;
             }
 
             await _stateStore.SetStateAsync(userId, "kyc_step_phone", cancellationToken).ConfigureAwait(false);
 
             var phoneMsg = isFaLang
-                ? $"نام شما ثبت شد: <b>{Esc(firstName)} {Esc(lastName)}</b>\n\nاکنون لطفاً شماره تلفن خود را با زدن دکمه زیر به اشتراک بگذارید:"
+                ? $"نام شما ثبت شد: <b>{Esc(firstName)} {Esc(lastName)}</b>\n\nاکنون لطفا شماره تلفن خود را با زدن دکمه زیر به اشتراک بگذارید:"
                 : $"Name saved: <b>{Esc(firstName)} {Esc(lastName)}</b>\n\nNow please share your phone number by pressing the button below:";
             var btnLabel = isFaLang ? "اشتراک‌گذاری شماره تلفن" : "Share Phone Number";
             var cancelLabel = isFaLang ? "لغو" : "Cancel";
-            await _sender.SendContactRequestAsync(chatId, phoneMsg, btnLabel, cancelLabel, cancellationToken).ConfigureAwait(false);
-            await TrackLastBotMsgAsync(userId, cancellationToken).ConfigureAwait(false);
+            await SafeSendContactRequest(chatId, phoneMsg, btnLabel, cancelLabel, cancellationToken);
+            await TrackLastBotMsgAsync(userId, cancellationToken);
             return true;
         }
 
         // ── Step 2: Phone sharing ─────────────────────────────────────
         if (state2 == "kyc_step_phone")
         {
-            // Check for cancel
-            var txt = context.MessageText?.Trim();
-            if (!string.IsNullOrEmpty(txt) && (txt == "لغو" || string.Equals(txt, "Cancel", StringComparison.OrdinalIgnoreCase)))
-            {
-                await _stateStore.ClearStateAsync(userId, cancellationToken).ConfigureAwait(false);
-                await CleanupFlowMessagesAsync(chatId, userId, currentUser?.CleanChatMode ?? true, cancellationToken).ConfigureAwait(false);
-                var cancelMsg = isFaLang ? "فرایند احراز هویت لغو شد." : "Verification process cancelled.";
-                await _sender.RemoveReplyKeyboardAsync(chatId, cancelMsg, cancellationToken).ConfigureAwait(false);
-                var backKeyboard = new List<IReadOnlyList<InlineButton>>
-                {
-                    new[] { new InlineButton(isFaLang ? "بازگشت" : "Back", "stage:main_menu") }
-                };
-                await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, cancelMsg, backKeyboard, cancellationToken).ConfigureAwait(false);
-                return true;
-            }
-
             if (!context.HasContact)
             {
-                var msg = isFaLang ? "لطفاً از دکمه زیر برای اشتراک‌گذاری شماره تلفن استفاده کنید:" : "Please use the button below to share your phone number:";
-                await _sender.SendTextMessageAsync(chatId, msg, cancellationToken).ConfigureAwait(false);
-                await TrackLastBotMsgAsync(userId, cancellationToken).ConfigureAwait(false);
+                var msg = isFaLang
+                    ? "لطفا از دکمه زیر برای اشتراک‌گذاری شماره تلفن استفاده کنید.\n\nبرای لغو، دکمه <b>لغو</b> را بزنید."
+                    : "Please use the button below to share your phone number.\n\nTo cancel, press the <b>Cancel</b> button.";
+                await SafeSendText(chatId, msg, cancellationToken);
+                await TrackLastBotMsgAsync(userId, cancellationToken);
                 return true;
             }
 
@@ -229,26 +240,42 @@ public sealed class KycStateHandler : IUpdateHandler
             var otp = new Random().Next(10000, 99999).ToString();
             await _stateStore.SetStateAsync(userId, $"kyc_step_otp:{otp}", cancellationToken).ConfigureAwait(false);
 
-            // Send OTP via SMS
+            // Send OTP via SMS — with timeout protection
             if (_smsService != null)
             {
-                var sent = await _smsService.SendVerificationCodeAsync(phone, otp, cancellationToken).ConfigureAwait(false);
+                bool sent;
+                try
+                {
+                    using var smsCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    smsCts.CancelAfter(TimeSpan.FromSeconds(15));
+                    sent = await _smsService.SendVerificationCodeAsync(phone, otp, smsCts.Token).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    sent = false;
+                    _ = ex; // logged at sms service level
+                }
+
                 if (!sent)
                 {
-                    var errMsg = isFaLang ? "خطا در ارسال کد تأیید. لطفاً دوباره تلاش کنید." : "Error sending verification code. Please try again.";
+                    var errMsg = isFaLang
+                        ? "خطا در ارسال کد تایید پیامکی. لطفا دوباره شماره تلفن خود را به اشتراک بگذارید.\n\nبرای لغو، دکمه <b>لغو</b> را بزنید."
+                        : "Error sending SMS verification code. Please share your phone number again.\n\nTo cancel, press the <b>Cancel</b> button.";
                     await _stateStore.SetStateAsync(userId, "kyc_step_phone", cancellationToken).ConfigureAwait(false);
-                    await _sender.SendTextMessageAsync(chatId, errMsg, cancellationToken).ConfigureAwait(false);
-                    await TrackLastBotMsgAsync(userId, cancellationToken).ConfigureAwait(false);
+                    var btnLabel2 = isFaLang ? "اشتراک‌گذاری شماره تلفن" : "Share Phone Number";
+                    var cancelLabel2 = isFaLang ? "لغو" : "Cancel";
+                    await SafeSendContactRequest(chatId, errMsg, btnLabel2, cancelLabel2, cancellationToken);
+                    await TrackLastBotMsgAsync(userId, cancellationToken);
                     return true;
                 }
             }
 
             var masked = MaskPhone(phone);
             var otpMsg = isFaLang
-                ? $"شماره تلفن شما ثبت شد.\nکد تأیید به شماره <b>{masked}</b> ارسال شد.\n\nلطفاً کد ۵ رقمی را وارد کنید:"
-                : $"Phone number saved.\nVerification code sent to <b>{masked}</b>.\n\nPlease enter the 5-digit code:";
-            await _sender.RemoveReplyKeyboardAsync(chatId, otpMsg, cancellationToken).ConfigureAwait(false);
-            await TrackLastBotMsgAsync(userId, cancellationToken).ConfigureAwait(false);
+                ? $"شماره تلفن شما ثبت شد.\nکد تایید به شماره <b>{masked}</b> ارسال شد.\n\nلطفا کد 5 رقمی را وارد کنید:\n\nبرای لغو عملیات، بنویسید: <b>لغو</b>"
+                : $"Phone number saved.\nVerification code sent to <b>{masked}</b>.\n\nPlease enter the 5-digit code:\n\nTo cancel, type: <b>Cancel</b>";
+            await SafeRemoveKeyboard(chatId, otpMsg, cancellationToken);
+            await TrackLastBotMsgAsync(userId, cancellationToken);
             return true;
         }
 
@@ -256,21 +283,25 @@ public sealed class KycStateHandler : IUpdateHandler
         if (state2.StartsWith("kyc_step_otp:", StringComparison.OrdinalIgnoreCase))
         {
             var expectedOtp = state2["kyc_step_otp:".Length..];
-            var enteredOtp = context.MessageText?.Trim();
+            var enteredOtp = rawText;
 
             if (string.IsNullOrEmpty(enteredOtp))
             {
-                var msg = isFaLang ? "لطفاً کد تأیید ۵ رقمی را وارد کنید:" : "Please enter the 5-digit verification code:";
-                await _sender.SendTextMessageAsync(chatId, msg, cancellationToken).ConfigureAwait(false);
-                await TrackLastBotMsgAsync(userId, cancellationToken).ConfigureAwait(false);
+                var msg = isFaLang
+                    ? "لطفا کد تایید 5 رقمی را وارد کنید:\n\nبرای لغو عملیات، بنویسید: <b>لغو</b>"
+                    : "Please enter the 5-digit verification code:\n\nTo cancel, type: <b>Cancel</b>";
+                await SafeSendText(chatId, msg, cancellationToken);
+                await TrackLastBotMsgAsync(userId, cancellationToken);
                 return true;
             }
 
             if (enteredOtp != expectedOtp)
             {
-                var msg = isFaLang ? "کد وارد شده صحیح نیست. لطفاً دوباره تلاش کنید:" : "Incorrect code. Please try again:";
-                await _sender.SendTextMessageAsync(chatId, msg, cancellationToken).ConfigureAwait(false);
-                await TrackLastBotMsgAsync(userId, cancellationToken).ConfigureAwait(false);
+                var msg = isFaLang
+                    ? "کد وارد شده صحیح نیست. لطفا دوباره تلاش کنید:\n\nبرای لغو عملیات، بنویسید: <b>لغو</b>"
+                    : "Incorrect code. Please try again:\n\nTo cancel, type: <b>Cancel</b>";
+                await SafeSendText(chatId, msg, cancellationToken);
+                await TrackLastBotMsgAsync(userId, cancellationToken);
                 return true;
             }
 
@@ -279,31 +310,31 @@ public sealed class KycStateHandler : IUpdateHandler
             if (nextFixStep != null)
             {
                 await _stateStore.SetStateAsync(userId, nextFixStep, cancellationToken).ConfigureAwait(false);
-                await SendStepPromptAsync(chatId, userId, nextFixStep, isFaLang, cancellationToken).ConfigureAwait(false);
+                await SendStepPromptAsync(chatId, userId, nextFixStep, isFaLang, cancellationToken);
                 return true;
             }
 
             // Go to email step
             await _stateStore.SetStateAsync(userId, "kyc_step_email", cancellationToken).ConfigureAwait(false);
             var emailMsg = isFaLang
-                ? "شماره تلفن شما با موفقیت تأیید شد.\n\nاکنون لطفاً آدرس ایمیل خود را وارد کنید:"
-                : "Phone number verified successfully.\n\nNow please enter your email address:";
-            await _sender.SendTextMessageAsync(chatId, emailMsg, cancellationToken).ConfigureAwait(false);
-            await TrackLastBotMsgAsync(userId, cancellationToken).ConfigureAwait(false);
+                ? "شماره تلفن شما با موفقیت تایید شد.\n\nاکنون لطفا آدرس ایمیل خود را وارد کنید:\n\nبرای لغو عملیات، بنویسید: <b>لغو</b>"
+                : "Phone number verified successfully.\n\nNow please enter your email address:\n\nTo cancel, type: <b>Cancel</b>";
+            await SafeSendText(chatId, emailMsg, cancellationToken);
+            await TrackLastBotMsgAsync(userId, cancellationToken);
             return true;
         }
 
         // ── Step 4: Email entry ───────────────────────────────────────
         if (state2 == "kyc_step_email")
         {
-            var email = context.MessageText?.Trim();
+            var email = rawText;
             if (string.IsNullOrEmpty(email) || !email.Contains('@') || !email.Contains('.'))
             {
                 var msg = isFaLang
-                    ? "لطفاً یک آدرس ایمیل معتبر وارد کنید:\nمثال: <b>you@example.com</b>"
-                    : "Please enter a valid email address:\nExample: <b>you@example.com</b>";
-                await _sender.SendTextMessageAsync(chatId, msg, cancellationToken).ConfigureAwait(false);
-                await TrackLastBotMsgAsync(userId, cancellationToken).ConfigureAwait(false);
+                    ? "لطفا یک آدرس ایمیل معتبر وارد کنید:\nمثال: <b>you@example.com</b>\n\nبرای لغو عملیات، بنویسید: <b>لغو</b>"
+                    : "Please enter a valid email address:\nExample: <b>you@example.com</b>\n\nTo cancel, type: <b>Cancel</b>";
+                await SafeSendText(chatId, msg, cancellationToken);
+                await TrackLastBotMsgAsync(userId, cancellationToken);
                 return true;
             }
 
@@ -313,28 +344,42 @@ public sealed class KycStateHandler : IUpdateHandler
             var otp = new Random().Next(10000, 99999).ToString();
             await _stateStore.SetStateAsync(userId, $"kyc_step_email_otp:{otp}", cancellationToken).ConfigureAwait(false);
 
-            // Send email OTP
+            // Send email OTP — with timeout protection
             if (_emailService != null)
             {
-                var sent = await _emailService.SendVerificationCodeAsync(email, otp, cancellationToken).ConfigureAwait(false);
+                bool sent;
+                try
+                {
+                    // EmailOtpService already has a 12s internal timeout, but add safety here too
+                    using var emailCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    emailCts.CancelAfter(TimeSpan.FromSeconds(20));
+                    sent = await _emailService.SendVerificationCodeAsync(email, otp, emailCts.Token).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    sent = false;
+                    _ = ex; // logged at email service level
+                }
+
                 if (!sent)
                 {
+                    // DON'T get stuck — tell user and let them retry
                     var errMsg = isFaLang
-                        ? "خطا در ارسال کد تأیید ایمیل. لطفاً دوباره تلاش کنید."
-                        : "Error sending email verification code. Please try again.";
+                        ? "متاسفانه ارسال کد تایید ایمیل با خطا مواجه شد.\nلطفا آدرس ایمیل خود را مجددا وارد کنید یا ایمیل دیگری امتحان کنید.\n\nبرای لغو عملیات، بنویسید: <b>لغو</b>"
+                        : "Failed to send email verification code.\nPlease enter your email address again or try a different email.\n\nTo cancel, type: <b>Cancel</b>";
                     await _stateStore.SetStateAsync(userId, "kyc_step_email", cancellationToken).ConfigureAwait(false);
-                    await _sender.SendTextMessageAsync(chatId, errMsg, cancellationToken).ConfigureAwait(false);
-                    await TrackLastBotMsgAsync(userId, cancellationToken).ConfigureAwait(false);
+                    await SafeSendText(chatId, errMsg, cancellationToken);
+                    await TrackLastBotMsgAsync(userId, cancellationToken);
                     return true;
                 }
             }
 
             var maskedEmail = MaskEmail(email);
             var msg2 = isFaLang
-                ? $"کد تأیید به ایمیل <b>{maskedEmail}</b> ارسال شد.\n\nلطفاً کد ۵ رقمی را وارد کنید:"
-                : $"Verification code sent to <b>{maskedEmail}</b>.\n\nPlease enter the 5-digit code:";
-            await _sender.SendTextMessageAsync(chatId, msg2, cancellationToken).ConfigureAwait(false);
-            await TrackLastBotMsgAsync(userId, cancellationToken).ConfigureAwait(false);
+                ? $"کد تایید به ایمیل <b>{maskedEmail}</b> ارسال شد.\n\nلطفا کد 5 رقمی را وارد کنید:\n\nبرای لغو عملیات، بنویسید: <b>لغو</b>"
+                : $"Verification code sent to <b>{maskedEmail}</b>.\n\nPlease enter the 5-digit code:\n\nTo cancel, type: <b>Cancel</b>";
+            await SafeSendText(chatId, msg2, cancellationToken);
+            await TrackLastBotMsgAsync(userId, cancellationToken);
             return true;
         }
 
@@ -342,21 +387,25 @@ public sealed class KycStateHandler : IUpdateHandler
         if (state2.StartsWith("kyc_step_email_otp:", StringComparison.OrdinalIgnoreCase))
         {
             var expectedOtp = state2["kyc_step_email_otp:".Length..];
-            var enteredOtp = context.MessageText?.Trim();
+            var enteredOtp = rawText;
 
             if (string.IsNullOrEmpty(enteredOtp))
             {
-                var msg = isFaLang ? "لطفاً کد تأیید ایمیل ۵ رقمی را وارد کنید:" : "Please enter the 5-digit email verification code:";
-                await _sender.SendTextMessageAsync(chatId, msg, cancellationToken).ConfigureAwait(false);
-                await TrackLastBotMsgAsync(userId, cancellationToken).ConfigureAwait(false);
+                var msg = isFaLang
+                    ? "لطفا کد تایید ایمیل 5 رقمی را وارد کنید:\n\nبرای لغو عملیات، بنویسید: <b>لغو</b>"
+                    : "Please enter the 5-digit email verification code:\n\nTo cancel, type: <b>Cancel</b>";
+                await SafeSendText(chatId, msg, cancellationToken);
+                await TrackLastBotMsgAsync(userId, cancellationToken);
                 return true;
             }
 
             if (enteredOtp != expectedOtp)
             {
-                var msg = isFaLang ? "کد وارد شده صحیح نیست. لطفاً دوباره تلاش کنید:" : "Incorrect code. Please try again:";
-                await _sender.SendTextMessageAsync(chatId, msg, cancellationToken).ConfigureAwait(false);
-                await TrackLastBotMsgAsync(userId, cancellationToken).ConfigureAwait(false);
+                var msg = isFaLang
+                    ? "کد وارد شده صحیح نیست. لطفا دوباره تلاش کنید:\n\nبرای لغو عملیات، بنویسید: <b>لغو</b>"
+                    : "Incorrect code. Please try again:\n\nTo cancel, type: <b>Cancel</b>";
+                await SafeSendText(chatId, msg, cancellationToken);
+                await TrackLastBotMsgAsync(userId, cancellationToken);
                 return true;
             }
 
@@ -368,30 +417,32 @@ public sealed class KycStateHandler : IUpdateHandler
             if (nextFixStep != null)
             {
                 await _stateStore.SetStateAsync(userId, nextFixStep, cancellationToken).ConfigureAwait(false);
-                await SendStepPromptAsync(chatId, userId, nextFixStep, isFaLang, cancellationToken).ConfigureAwait(false);
+                await SendStepPromptAsync(chatId, userId, nextFixStep, isFaLang, cancellationToken);
                 return true;
             }
 
             // Go to country step
             await _stateStore.SetStateAsync(userId, "kyc_step_country", cancellationToken).ConfigureAwait(false);
-            await SendCountrySelectionAsync(chatId, isFaLang, cancellationToken).ConfigureAwait(false);
+            await SendCountrySelectionAsync(chatId, isFaLang, cancellationToken);
             return true;
         }
 
         // ── Step 6a: Country selection (text for "Other") ─────────────
         if (state2 == "kyc_step_country_text")
         {
-            var country = context.MessageText?.Trim();
+            var country = rawText;
             if (string.IsNullOrEmpty(country))
             {
-                var msg = isFaLang ? "لطفاً نام کشور را وارد کنید:" : "Please enter the country name:";
-                await _sender.SendTextMessageAsync(chatId, msg, cancellationToken).ConfigureAwait(false);
-                await TrackLastBotMsgAsync(userId, cancellationToken).ConfigureAwait(false);
+                var msg = isFaLang
+                    ? "لطفا نام کشور را وارد کنید:\n\nبرای لغو عملیات، بنویسید: <b>لغو</b>"
+                    : "Please enter the country name:\n\nTo cancel, type: <b>Cancel</b>";
+                await SafeSendText(chatId, msg, cancellationToken);
+                await TrackLastBotMsgAsync(userId, cancellationToken);
                 return true;
             }
 
             await _userRepo.SetCountryAsync(userId, country, cancellationToken).ConfigureAwait(false);
-            await GoToPhotoStepAsync(chatId, userId, isFaLang, cancellationToken).ConfigureAwait(false);
+            await GoToPhotoStepAsync(chatId, userId, isFaLang, cancellationToken);
             return true;
         }
 
@@ -403,10 +454,10 @@ public sealed class KycStateHandler : IUpdateHandler
             if (!context.HasPhoto)
             {
                 var msg = isFaLang
-                    ? "لطفاً یک عکس سلفی ارسال کنید (نه فایل).\nعکس باید شامل صورت شما و کاغذی با نوشته <b>AbroadQs</b> باشد."
-                    : "Please send a selfie photo (not a file).\nThe photo must show your face and a paper with <b>AbroadQs</b> written on it.";
-                await _sender.SendTextMessageAsync(chatId, msg, cancellationToken).ConfigureAwait(false);
-                await TrackLastBotMsgAsync(userId, cancellationToken).ConfigureAwait(false);
+                    ? "لطفا یک عکس سلفی ارسال کنید (نه فایل).\nعکس باید شامل صورت شما و کاغذی با نوشته <b>AbroadQs</b> باشد.\n\nبرای لغو عملیات، بنویسید: <b>لغو</b>"
+                    : "Please send a selfie photo (not a file).\nThe photo must show your face and a paper with <b>AbroadQs</b> written on it.\n\nTo cancel, type: <b>Cancel</b>";
+                await SafeSendText(chatId, msg, cancellationToken);
+                await TrackLastBotMsgAsync(userId, cancellationToken);
                 return true;
             }
 
@@ -418,7 +469,7 @@ public sealed class KycStateHandler : IUpdateHandler
             await _stateStore.ClearStateAsync(userId, cancellationToken).ConfigureAwait(false);
 
             // Cleanup flow messages
-            await CleanupFlowMessagesAsync(chatId, userId, currentUser?.CleanChatMode ?? true, cancellationToken).ConfigureAwait(false);
+            await CleanupFlowMessagesAsync(chatId, userId, currentUser?.CleanChatMode ?? true, cancellationToken);
 
             var successMsg = isFaLang
                 ? "مدارک شما با موفقیت ارسال شد و در انتظار بررسی توسط تیم ماست.\nپس از بررسی، نتیجه به شما اطلاع داده خواهد شد."
@@ -427,11 +478,33 @@ public sealed class KycStateHandler : IUpdateHandler
             {
                 new[] { new InlineButton(isFaLang ? "بازگشت به منوی اصلی" : "Back to Main Menu", "stage:main_menu") }
             };
-            await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, successMsg, keyboard, cancellationToken).ConfigureAwait(false);
+            await SafeSendInline(chatId, successMsg, keyboard, cancellationToken);
             return true;
         }
 
         return false;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  Cancel flow
+    // ═══════════════════════════════════════════════════════════════════
+
+    private async Task CancelKycFlowAsync(long chatId, long userId, bool cleanMode, bool isFa, CancellationToken ct)
+    {
+        await _stateStore.ClearStateAsync(userId, ct).ConfigureAwait(false);
+        await CleanupFlowMessagesAsync(chatId, userId, cleanMode, ct);
+
+        // Remove any reply keyboard first
+        try { await _sender.RemoveReplyKeyboardAsync(chatId, "...", ct).ConfigureAwait(false); } catch { }
+
+        var cancelMsg = isFa
+            ? "فرایند احراز هویت لغو شد.\nهر زمان که آماده بودید، می‌توانید دوباره از بخش پروفایل اقدام کنید."
+            : "Verification process cancelled.\nYou can restart anytime from the Profile section.";
+        var backKeyboard = new List<IReadOnlyList<InlineButton>>
+        {
+            new[] { new InlineButton(isFa ? "بازگشت به منوی اصلی" : "Back to Main Menu", "stage:main_menu") }
+        };
+        await SafeSendInline(chatId, cancelMsg, backKeyboard, ct);
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -441,7 +514,7 @@ public sealed class KycStateHandler : IUpdateHandler
     private async Task SendCountrySelectionAsync(long chatId, bool isFa, CancellationToken ct)
     {
         var msg = isFa
-            ? "ایمیل شما با موفقیت تأیید شد.\n\nاکنون لطفاً کشور محل سکونت خود را انتخاب کنید:"
+            ? "ایمیل شما با موفقیت تایید شد.\n\nاکنون لطفا کشور محل سکونت خود را انتخاب کنید:"
             : "Email verified successfully.\n\nNow please select your country of residence:";
 
         var countries = new (string code, string fa, string en)[]
@@ -473,8 +546,11 @@ public sealed class KycStateHandler : IUpdateHandler
             keyboard.Add(row);
         }
 
-        await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, msg, keyboard, ct).ConfigureAwait(false);
-        await TrackLastBotMsgAsync(chatId, ct).ConfigureAwait(false);
+        // Add cancel button row
+        keyboard.Add(new[] { new InlineButton(isFa ? "لغو احراز هویت" : "Cancel Verification", "cancel_kyc") });
+
+        await SafeSendInline(chatId, msg, keyboard, ct);
+        await TrackLastBotMsgAsync(chatId, ct);
     }
 
     private static string GetCountryName(string code, bool isFa)
@@ -503,12 +579,12 @@ public sealed class KycStateHandler : IUpdateHandler
     private async Task GoToPhotoStepAsync(long chatId, long userId, bool isFa, CancellationToken ct)
     {
         // Check for partial fix
-        var user = await _userRepo.GetByTelegramUserIdAsync(userId, ct).ConfigureAwait(false);
+        var user = await SafeGetUser(userId, ct);
         var nextFixStep = GetNextFixStep(user?.KycRejectionData, "country");
         if (nextFixStep != null)
         {
             await _stateStore.SetStateAsync(userId, nextFixStep, ct).ConfigureAwait(false);
-            await SendStepPromptAsync(chatId, userId, nextFixStep, isFa, ct).ConfigureAwait(false);
+            await SendStepPromptAsync(chatId, userId, nextFixStep, isFa, ct);
             return;
         }
 
@@ -521,25 +597,27 @@ public sealed class KycStateHandler : IUpdateHandler
             if (File.Exists(photoPath))
             {
                 await _sender.SendPhotoAsync(chatId, photoPath,
-                    isFa ? "نمونه عکس تأیید هویت" : "Sample verification photo", ct).ConfigureAwait(false);
-                await TrackLastBotMsgAsync(userId, ct).ConfigureAwait(false);
+                    isFa ? "نمونه عکس تایید هویت" : "Sample verification photo", ct).ConfigureAwait(false);
+                await TrackLastBotMsgAsync(userId, ct);
             }
         }
         catch { /* if photo send fails, continue without it */ }
 
         var photoMsg = isFa
             ? "کشور شما ثبت شد.\n\n" +
-              "اکنون لطفاً یک عکس سلفی از خود ارسال کنید که در آن:\n" +
+              "اکنون لطفا یک عکس سلفی از خود ارسال کنید که در آن:\n" +
               "- یک تکه کاغذ در کنار صورت شما باشد\n" +
               "- روی کاغذ عبارت <b>AbroadQs</b> نوشته شده باشد\n\n" +
-              "مطابق تصویر نمونه بالا عکس بگیرید."
+              "مطابق تصویر نمونه بالا عکس بگیرید.\n\n" +
+              "برای لغو عملیات، بنویسید: <b>لغو</b>"
             : "Country saved.\n\n" +
               "Now please send a selfie photo where:\n" +
               "- You hold a piece of paper next to your face\n" +
               "- The paper has <b>AbroadQs</b> written on it\n\n" +
-              "Take the photo similar to the sample above.";
-        await _sender.SendTextMessageAsync(chatId, photoMsg, ct).ConfigureAwait(false);
-        await TrackLastBotMsgAsync(userId, ct).ConfigureAwait(false);
+              "Take the photo similar to the sample above.\n\n" +
+              "To cancel, type: <b>Cancel</b>";
+        await SafeSendText(chatId, photoMsg, ct);
+        await TrackLastBotMsgAsync(userId, ct);
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -549,7 +627,10 @@ public sealed class KycStateHandler : IUpdateHandler
     private async Task TrackIncomingAsync(long userId, int? messageId, CancellationToken ct)
     {
         if (messageId.HasValue)
-            await _stateStore.AddFlowMessageIdAsync(userId, messageId.Value, ct).ConfigureAwait(false);
+        {
+            try { await _stateStore.AddFlowMessageIdAsync(userId, messageId.Value, ct).ConfigureAwait(false); }
+            catch { /* best effort */ }
+        }
     }
 
     private async Task TrackLastBotMsgAsync(long userId, CancellationToken ct)
@@ -577,6 +658,52 @@ public sealed class KycStateHandler : IUpdateHandler
             }
         }
         catch { /* best effort */ }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  Safe wrappers — the bot must NEVER hang or throw unhandled
+    // ═══════════════════════════════════════════════════════════════════
+
+    private async Task SafeSendText(long chatId, string text, CancellationToken ct)
+    {
+        try { await _sender.SendTextMessageAsync(chatId, text, ct).ConfigureAwait(false); }
+        catch { /* swallow — user will see nothing but bot won't crash */ }
+    }
+
+    private async Task SafeSendInline(long chatId, string text, List<IReadOnlyList<InlineButton>> kb, CancellationToken ct)
+    {
+        try { await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, text, kb, ct).ConfigureAwait(false); }
+        catch { /* swallow */ }
+    }
+
+    private async Task SafeSendContactRequest(long chatId, string text, string btnLabel, string cancelLabel, CancellationToken ct)
+    {
+        try { await _sender.SendContactRequestAsync(chatId, text, btnLabel, cancelLabel, ct).ConfigureAwait(false); }
+        catch { /* swallow */ }
+    }
+
+    private async Task SafeRemoveKeyboard(long chatId, string text, CancellationToken ct)
+    {
+        try { await _sender.RemoveReplyKeyboardAsync(chatId, text, ct).ConfigureAwait(false); }
+        catch { /* swallow */ }
+    }
+
+    private async Task SafeDelete(long chatId, int msgId, CancellationToken ct)
+    {
+        try { await _sender.DeleteMessageAsync(chatId, msgId, ct).ConfigureAwait(false); }
+        catch { /* swallow */ }
+    }
+
+    private async Task SafeAnswerCallback(string callbackId, string? text, CancellationToken ct)
+    {
+        try { await _sender.AnswerCallbackQueryAsync(callbackId, text, ct).ConfigureAwait(false); }
+        catch { /* swallow */ }
+    }
+
+    private async Task<TelegramUserDto?> SafeGetUser(long userId, CancellationToken ct)
+    {
+        try { return await _userRepo.GetByTelegramUserIdAsync(userId, ct).ConfigureAwait(false); }
+        catch { return null; }
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -636,32 +763,32 @@ public sealed class KycStateHandler : IUpdateHandler
         {
             case "kyc_step_name":
                 var nameMsg = isFa
-                    ? "لطفاً نام و نام خانوادگی خود را در یک خط وارد کنید:\nمثال: <b>علی احمدی</b>"
-                    : "Please enter your first and last name in one line:\nExample: <b>John Smith</b>";
-                await _sender.SendTextMessageAsync(chatId, nameMsg, ct).ConfigureAwait(false);
+                    ? "لطفا نام و نام خانوادگی خود را در یک خط وارد کنید:\nمثال: <b>علی احمدی</b>\n\nبرای لغو عملیات، بنویسید: <b>لغو</b>"
+                    : "Please enter your first and last name in one line:\nExample: <b>John Smith</b>\n\nTo cancel, type: <b>Cancel</b>";
+                await SafeSendText(chatId, nameMsg, ct);
                 break;
             case "kyc_step_phone":
                 var phoneMsg = isFa
-                    ? "لطفاً شماره تلفن خود را با زدن دکمه زیر به اشتراک بگذارید:"
+                    ? "لطفا شماره تلفن خود را با زدن دکمه زیر به اشتراک بگذارید:"
                     : "Please share your phone number by pressing the button below:";
-                await _sender.SendContactRequestAsync(chatId, phoneMsg,
+                await SafeSendContactRequest(chatId, phoneMsg,
                     isFa ? "اشتراک‌گذاری شماره تلفن" : "Share Phone Number",
-                    isFa ? "لغو" : "Cancel", ct).ConfigureAwait(false);
+                    isFa ? "لغو" : "Cancel", ct);
                 break;
             case "kyc_step_email":
                 var emailMsg = isFa
-                    ? "لطفاً آدرس ایمیل خود را وارد کنید:"
-                    : "Please enter your email address:";
-                await _sender.SendTextMessageAsync(chatId, emailMsg, ct).ConfigureAwait(false);
+                    ? "لطفا آدرس ایمیل خود را وارد کنید:\n\nبرای لغو عملیات، بنویسید: <b>لغو</b>"
+                    : "Please enter your email address:\n\nTo cancel, type: <b>Cancel</b>";
+                await SafeSendText(chatId, emailMsg, ct);
                 break;
             case "kyc_step_country":
-                await SendCountrySelectionAsync(chatId, isFa, ct).ConfigureAwait(false);
+                await SendCountrySelectionAsync(chatId, isFa, ct);
                 return; // already tracks
             case "kyc_step_photo":
-                await GoToPhotoStepAsync(chatId, userId, isFa, ct).ConfigureAwait(false);
+                await GoToPhotoStepAsync(chatId, userId, isFa, ct);
                 return; // already tracks
         }
-        await TrackLastBotMsgAsync(userId, ct).ConfigureAwait(false);
+        await TrackLastBotMsgAsync(userId, ct);
     }
 
     // ═══════════════════════════════════════════════════════════════════
