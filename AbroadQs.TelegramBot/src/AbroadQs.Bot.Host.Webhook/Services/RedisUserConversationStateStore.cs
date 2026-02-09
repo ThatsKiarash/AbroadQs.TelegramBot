@@ -69,4 +69,38 @@ public sealed class RedisUserConversationStateStore : IUserConversationStateStor
             _logger.LogWarning(ex, "Redis ClearState failed for user {UserId}", userId);
         }
     }
+
+    private const string ReplyStagePrefix = "user:replystage:";
+
+    public async Task SetReplyStageAsync(long userId, string stageKey, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var key = ReplyStagePrefix + userId;
+            await _db.StringSetAsync(key, stageKey, TimeSpan.FromHours(24)).ConfigureAwait(false);
+            if (_processingContext != null)
+                _processingContext.RedisAccessed = true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Redis SetReplyStage failed for user {UserId}", userId);
+        }
+    }
+
+    public async Task<string?> GetReplyStageAsync(long userId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var key = ReplyStagePrefix + userId;
+            var value = await _db.StringGetAsync(key).ConfigureAwait(false);
+            if (_processingContext != null)
+                _processingContext.RedisAccessed = true;
+            return value.HasValue ? value.ToString() : null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Redis GetReplyStage failed for user {UserId}", userId);
+            return null;
+        }
+    }
 }

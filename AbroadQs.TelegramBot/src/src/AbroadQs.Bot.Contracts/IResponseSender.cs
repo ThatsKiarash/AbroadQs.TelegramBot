@@ -48,4 +48,15 @@ public interface IResponseSender
     /// Answer a callback query so Telegram removes the loading state. Call when handling a callback.
     /// </summary>
     Task AnswerCallbackQueryAsync(string callbackQueryId, string? message = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Send a message with a reply keyboard that has a "Share Contact" button.
+    /// Used for phone number verification in KYC flow.
+    /// </summary>
+    Task SendContactRequestAsync(long chatId, string text, string buttonLabel, string? cancelLabel = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Remove the reply keyboard for a user. Used after contact sharing to clean up the UI.
+    /// </summary>
+    Task RemoveReplyKeyboardAsync(long chatId, string text, CancellationToken cancellationToken = default);
 }

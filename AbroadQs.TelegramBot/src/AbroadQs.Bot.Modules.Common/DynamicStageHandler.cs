@@ -48,7 +48,8 @@ public sealed class DynamicStageHandler : IUpdateHandler
         {
             return data.StartsWith("stage:", StringComparison.OrdinalIgnoreCase)
                 || data.StartsWith("lang:", StringComparison.OrdinalIgnoreCase)
-                || data.StartsWith("toggle:", StringComparison.OrdinalIgnoreCase);
+                || data.StartsWith("toggle:", StringComparison.OrdinalIgnoreCase)
+                || data == "start_kyc";
         }
         var cmd = context.Command;
         if (string.Equals(cmd, "settings", StringComparison.OrdinalIgnoreCase)
@@ -114,6 +115,27 @@ public sealed class DynamicStageHandler : IUpdateHandler
             return true;
         }
 
+        // ── start_kyc callback ─────────────────────────────────────────
+        if (data == "start_kyc")
+        {
+            if (context.CallbackQueryId != null)
+                await _sender.AnswerCallbackQueryAsync(context.CallbackQueryId, null, cancellationToken).ConfigureAwait(false);
+
+            var lang = currentUser?.PreferredLanguage ?? "fa";
+            var isFa = lang == "fa";
+
+            // Delete the inline message with the KYC prompt
+            if (cleanMode && editMessageId.HasValue)
+                await _sender.DeleteMessageAsync(chatId, editMessageId.Value, cancellationToken).ConfigureAwait(false);
+
+            await _stateStore.SetStateAsync(userId, "kyc_step_name", cancellationToken).ConfigureAwait(false);
+            var msg = isFa
+                ? "مراحل احراز هویت:\n۱. نام و نام خانوادگی\n۲. تأیید شماره تلفن\n۳. ارسال عکس تأییدیه\n\nلطفاً نام و نام خانوادگی خود را در یک خط وارد کنید:\nمثال: <b>علی احمدی</b>"
+                : "Verification steps:\n1. Full name\n2. Phone verification\n3. Selfie photo\n\nPlease enter your first and last name in one line:\nExample: <b>John Smith</b>";
+            await _sender.SendTextMessageAsync(chatId, msg, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+
         // ── /settings or /menu command ────────────────────────────────
         if (string.Equals(context.Command, "settings", StringComparison.OrdinalIgnoreCase)
             || string.Equals(context.Command, "menu", StringComparison.OrdinalIgnoreCase))
@@ -133,18 +155,20 @@ public sealed class DynamicStageHandler : IUpdateHandler
             if (stageKey.Length > 0)
             {
                 // ── Verification gate ─────────────────────────────────
-                if (RequiresVerification(stageKey) && currentUser?.IsRegistered != true)
+                if (RequiresVerification(stageKey) && currentUser?.IsVerified != true)
                 {
                     var lang = currentUser?.PreferredLanguage ?? "fa";
                     var isFa = lang == "fa";
                     var msg = isFa
-                        ? "برای استفاده از این بخش ابتدا باید پروفایل خود را تکمیل کنید.\nلطفاً به بخش <b>پروفایل من</b> بروید و اطلاعات خود را وارد کنید."
-                        : "You need to complete your profile before using this section.\nPlease go to <b>My Profile</b> and enter your information.";
-                    var btnLabel = isFa ? "پروفایل من" : "My Profile";
+                        ? "برای استفاده از این بخش ابتدا باید احراز هویت کنید.\nلطفاً مراحل احراز هویت را تکمیل کنید تا بتوانید از خدمات تبادل ارز استفاده نمایید."
+                        : "You need to verify your identity before using this section.\nPlease complete the verification process to access currency exchange services.";
+                    var kycLabel = isFa ? "شروع احراز هویت" : "Start Verification";
+                    var profileLabel = isFa ? "پروفایل من" : "My Profile";
                     var backLabel = isFa ? "بازگشت" : "Back";
                     var keyboard = new List<IReadOnlyList<InlineButton>>
                     {
-                        new[] { new InlineButton(btnLabel, "stage:profile") },
+                        new[] { new InlineButton(kycLabel, "start_kyc") },
+                        new[] { new InlineButton(profileLabel, "stage:profile") },
                         new[] { new InlineButton(backLabel, "stage:submit_exchange") }
                     };
                     await SendOrEditTextAsync(chatId, msg, keyboard, editMessageId, cancellationToken).ConfigureAwait(false);
@@ -160,8 +184,28 @@ public sealed class DynamicStageHandler : IUpdateHandler
                     return true;
                 }
 
+                // Profile view: show info instead of generic stage
                 if (string.Equals(stageKey, "profile", StringComparison.OrdinalIgnoreCase))
+                {
+                    var lang = currentUser?.PreferredLanguage ?? "fa";
+                    var isFa = lang == "fa";
+                    var (profileText, profileKb) = ProfileStateHandler.BuildProfileView(currentUser, isFa);
+                    await SendOrEditTextAsync(chatId, profileText, profileKb, editMessageId, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+
+                // Profile edit name
+                if (string.Equals(stageKey, "profile_edit_name", StringComparison.OrdinalIgnoreCase))
+                {
                     await _stateStore.SetStateAsync(userId, "awaiting_profile_name", cancellationToken).ConfigureAwait(false);
+                    var lang = currentUser?.PreferredLanguage ?? "fa";
+                    var isFa = lang == "fa";
+                    var msg = isFa
+                        ? "نام و نام خانوادگی خود را در یک خط بفرستید:\nمثال: <b>علی احمدی</b>"
+                        : "Send your first and last name in one line:\nExample: <b>John Smith</b>";
+                    await SendOrEditTextAsync(chatId, msg, Array.Empty<IReadOnlyList<InlineButton>>(), editMessageId, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
 
                 // Same type: inline → inline: edit in place
                 await ShowStageInlineAsync(userId, stageKey, editMessageId, null, cancellationToken).ConfigureAwait(false);
@@ -206,7 +250,16 @@ public sealed class DynamicStageHandler : IUpdateHandler
 
     private async Task<bool> HandleReplyKeyboardButtonAsync(long chatId, long userId, string text, int? incomingMessageId, bool cleanMode, CancellationToken cancellationToken)
     {
-        foreach (var stageKey in ReplyKeyboardStages)
+        // Read which reply keyboard stage the user is currently on → try that first
+        var currentReplyStage = await _stateStore.GetReplyStageAsync(userId, cancellationToken).ConfigureAwait(false);
+        var orderedStages = ReplyKeyboardStages.ToList();
+        if (!string.IsNullOrEmpty(currentReplyStage))
+        {
+            orderedStages.Remove(currentReplyStage);
+            orderedStages.Insert(0, currentReplyStage); // prioritize current stage
+        }
+
+        foreach (var stageKey in orderedStages)
         {
             var allButtons = await _stageRepo.GetButtonsAsync(stageKey, cancellationToken).ConfigureAwait(false);
 
@@ -239,18 +292,20 @@ public sealed class DynamicStageHandler : IUpdateHandler
                 if (RequiresVerification(targetStage))
                 {
                     var user = await _userRepo.GetByTelegramUserIdAsync(userId, cancellationToken).ConfigureAwait(false);
-                    if (user?.IsRegistered != true)
+                    if (user?.IsVerified != true)
                     {
                         var lang = user?.PreferredLanguage ?? "fa";
                         var isFa = lang == "fa";
                         var msg = isFa
-                            ? "برای استفاده از این بخش ابتدا باید پروفایل خود را تکمیل کنید.\nلطفاً به بخش <b>پروفایل من</b> بروید و اطلاعات خود را وارد کنید."
-                            : "You need to complete your profile before using this section.\nPlease go to <b>My Profile</b> and enter your information.";
-                        var btnLabel = isFa ? "پروفایل من" : "My Profile";
+                            ? "برای استفاده از این بخش ابتدا باید احراز هویت کنید.\nلطفاً مراحل احراز هویت را تکمیل کنید تا بتوانید از خدمات تبادل ارز استفاده نمایید."
+                            : "You need to verify your identity before using this section.\nPlease complete the verification process to access currency exchange services.";
+                        var kycLabel = isFa ? "شروع احراز هویت" : "Start Verification";
+                        var profileLabel = isFa ? "پروفایل من" : "My Profile";
                         var backLabel = isFa ? "بازگشت" : "Back";
                         var keyboard = new List<IReadOnlyList<InlineButton>>
                         {
-                            new[] { new InlineButton(btnLabel, "stage:profile") },
+                            new[] { new InlineButton(kycLabel, "start_kyc") },
+                            new[] { new InlineButton(profileLabel, "stage:profile") },
                             new[] { new InlineButton(backLabel, "stage:submit_exchange") }
                         };
                         if (cleanMode)
@@ -269,7 +324,16 @@ public sealed class DynamicStageHandler : IUpdateHandler
 
                 // Type change (reply-kb → inline): delete reply-kb msg, send new inline
                 if (string.Equals(targetStage, "profile", StringComparison.OrdinalIgnoreCase))
-                    await _stateStore.SetStateAsync(userId, "awaiting_profile_name", cancellationToken).ConfigureAwait(false);
+                {
+                    var user = await _userRepo.GetByTelegramUserIdAsync(userId, cancellationToken).ConfigureAwait(false);
+                    var lang = user?.PreferredLanguage ?? "fa";
+                    var isFa = lang == "fa";
+                    var (profileText, profileKb) = ProfileStateHandler.BuildProfileView(user, isFa);
+                    if (cleanMode)
+                        await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
+                    await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, profileText, profileKb, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
 
                 if (cleanMode)
                     await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
@@ -346,6 +410,9 @@ public sealed class DynamicStageHandler : IUpdateHandler
             if (rowTexts.Count > 0)
                 keyboard.Add(rowTexts);
         }
+
+        // Track current reply stage for back-button routing
+        await _stateStore.SetReplyStageAsync(userId, stageKey, cancellationToken).ConfigureAwait(false);
 
         // Send new message with reply keyboard, then delete old
         await _sender.SendTextMessageWithReplyKeyboardAsync(userId, text, keyboard, cancellationToken).ConfigureAwait(false);

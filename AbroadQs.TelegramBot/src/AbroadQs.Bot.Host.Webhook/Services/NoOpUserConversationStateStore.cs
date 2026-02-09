@@ -12,4 +12,10 @@ public sealed class NoOpUserConversationStateStore : IUserConversationStateStore
 
     public Task ClearStateAsync(long userId, CancellationToken cancellationToken = default)
         => Task.CompletedTask;
+
+    public Task SetReplyStageAsync(long userId, string stageKey, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task<string?> GetReplyStageAsync(long userId, CancellationToken cancellationToken = default)
+        => Task.FromResult<string?>(null);
 }

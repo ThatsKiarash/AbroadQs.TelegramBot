@@ -24,4 +24,10 @@ public sealed class NoOpTelegramUserRepository : ITelegramUserRepository
 
     public Task SetCleanChatModeAsync(long telegramUserId, bool enabled, CancellationToken cancellationToken = default)
         => Task.CompletedTask;
+
+    public Task SetPhoneNumberAsync(long telegramUserId, string phoneNumber, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task SetVerifiedAsync(long telegramUserId, string? photoFileId, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
 }

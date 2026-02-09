@@ -58,6 +58,9 @@ public sealed class TelegramUserRepository : ITelegramUserRepository
                 x.PreferredLanguage,
                 x.IsRegistered,
                 x.CleanChatMode,
+                x.PhoneNumber,
+                x.IsVerified,
+                x.VerificationPhotoFileId,
                 x.RegisteredAt,
                 x.FirstSeenAt,
                 x.LastSeenAt))
@@ -81,6 +84,9 @@ public sealed class TelegramUserRepository : ITelegramUserRepository
             entity.PreferredLanguage,
             entity.IsRegistered,
             entity.CleanChatMode,
+            entity.PhoneNumber,
+            entity.IsVerified,
+            entity.VerificationPhotoFileId,
             entity.RegisteredAt,
             entity.FirstSeenAt,
             entity.LastSeenAt);
@@ -115,6 +121,29 @@ public sealed class TelegramUserRepository : ITelegramUserRepository
         var entity = await _db.TelegramUsers.FirstOrDefaultAsync(x => x.TelegramUserId == telegramUserId, cancellationToken).ConfigureAwait(false);
         if (entity == null) return;
         entity.CleanChatMode = enabled;
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        if (_processingContext != null)
+            _processingContext.SqlAccessed = true;
+    }
+
+    public async Task SetPhoneNumberAsync(long telegramUserId, string phoneNumber, CancellationToken cancellationToken = default)
+    {
+        var entity = await _db.TelegramUsers.FirstOrDefaultAsync(x => x.TelegramUserId == telegramUserId, cancellationToken).ConfigureAwait(false);
+        if (entity == null) return;
+        entity.PhoneNumber = phoneNumber;
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        if (_processingContext != null)
+            _processingContext.SqlAccessed = true;
+    }
+
+    public async Task SetVerifiedAsync(long telegramUserId, string? photoFileId, CancellationToken cancellationToken = default)
+    {
+        var entity = await _db.TelegramUsers.FirstOrDefaultAsync(x => x.TelegramUserId == telegramUserId, cancellationToken).ConfigureAwait(false);
+        if (entity == null) return;
+        entity.IsVerified = true;
+        if (photoFileId != null) entity.VerificationPhotoFileId = photoFileId;
+        entity.IsRegistered = true;
+        entity.RegisteredAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         if (_processingContext != null)
             _processingContext.SqlAccessed = true;

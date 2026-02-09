@@ -44,6 +44,13 @@ builder.Services.AddBotApplication();
 builder.Services.AddCommonModule();
 builder.Services.AddExampleModule();
 
+// SMS service (sms.ir) for OTP verification
+builder.Services.AddSingleton<AbroadQs.Bot.Contracts.ISmsService>(sp =>
+    new AbroadQs.Bot.Host.Webhook.Services.SmsIrService(
+        "ZxpWSZ0nSgVcqRGecTPGS0KGltods6GJhfZSGyVUjLuEGXks",
+        168094,
+        sp.GetRequiredService<ILogger<AbroadQs.Bot.Host.Webhook.Services.SmsIrService>>()));
+
 // Scoped processing context برای ردیابی عملیات هر درخواست
 builder.Services.AddScoped<ProcessingContext>();
 builder.Services.AddScoped<IProcessingContext>(sp => sp.GetRequiredService<ProcessingContext>());
@@ -915,9 +922,9 @@ static async Task SeedDefaultDataAsync(ApplicationDbContext db)
                 "Select your preferred language:",
                 true, null, "settings", 3),
             ("profile",
-                "نام و نام خانوادگی خود را در یک خط بفرستید.\nمثلاً: <b>علی احمدی</b>",
-                "Send your first and last name in one line.\nFor example: <b>John Smith</b>",
-                true, null, "settings", 4),
+                "<b>پروفایل من</b>\n\nاطلاعات حساب و وضعیت احراز هویت شما.",
+                "<b>My Profile</b>\n\nYour account information and verification status.",
+                true, null, "main_menu", 4),
             ("new_request",
                 "<b>ثبت درخواست</b>\n\nنوع خدمات مورد نظر خود را انتخاب کنید:",
                 "<b>Submit Request</b>\n\nSelect the type of service you need:",

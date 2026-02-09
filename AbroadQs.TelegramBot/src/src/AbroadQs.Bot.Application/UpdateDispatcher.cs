@@ -104,6 +104,8 @@ public sealed class UpdateDispatcher
         bool isCallbackQuery = false;
         int? callbackMessageId = null;
         string? callbackQueryId = null;
+        string? contactPhoneNumber = null;
+        string? photoFileId = null;
 
         int? incomingMessageId = null;
 
@@ -116,6 +118,14 @@ public sealed class UpdateDispatcher
             firstName = update.Message.From?.FirstName;
             lastName = update.Message.From?.LastName;
             incomingMessageId = update.Message.MessageId;
+
+            // Extract contact phone number if present
+            if (update.Message.Contact != null)
+                contactPhoneNumber = update.Message.Contact.PhoneNumber;
+
+            // Extract largest photo file ID if present
+            if (update.Message.Photo != null && update.Message.Photo.Length > 0)
+                photoFileId = update.Message.Photo[^1].FileId; // last element = largest
         }
         else if (update.CallbackQuery != null)
         {
@@ -147,6 +157,8 @@ public sealed class UpdateDispatcher
             IsCallbackQuery = isCallbackQuery,
             CallbackMessageId = callbackMessageId,
             CallbackQueryId = callbackQueryId,
+            ContactPhoneNumber = contactPhoneNumber,
+            PhotoFileId = photoFileId,
             RawUpdate = update
         };
     }

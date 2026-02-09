@@ -44,6 +44,18 @@ public sealed class BotUpdateContext
     /// </summary>
     public string? CallbackQueryId { get; init; }
 
+    /// <summary>Phone number from a shared contact message (e.g. "09121234567").</summary>
+    public string? ContactPhoneNumber { get; init; }
+
+    /// <summary>Telegram file ID of the largest photo in a photo message.</summary>
+    public string? PhotoFileId { get; init; }
+
+    /// <summary>True if this message contains a contact.</summary>
+    public bool HasContact => !string.IsNullOrEmpty(ContactPhoneNumber);
+
+    /// <summary>True if this message contains a photo.</summary>
+    public bool HasPhoto => !string.IsNullOrEmpty(PhotoFileId);
+
     /// <summary>
     /// Optional: raw update object from Telegram.Bot for advanced handlers that need it.
     /// Set by the host; handlers can cast to Telegram.Bot.Types.Update if they reference Telegram.Bot.

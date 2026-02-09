@@ -9,18 +9,21 @@ public sealed class StartHandler : IUpdateHandler
     private readonly IBotStageRepository _stageRepo;
     private readonly IPermissionRepository _permRepo;
     private readonly IUserMessageStateRepository? _msgStateRepo;
+    private readonly IUserConversationStateStore _stateStore;
 
     public StartHandler(
         IResponseSender sender,
         ITelegramUserRepository userRepo,
         IBotStageRepository stageRepo,
         IPermissionRepository permRepo,
+        IUserConversationStateStore stateStore,
         IUserMessageStateRepository? msgStateRepo = null)
     {
         _sender = sender;
         _userRepo = userRepo;
         _stageRepo = stageRepo;
         _permRepo = permRepo;
+        _stateStore = stateStore;
         _msgStateRepo = msgStateRepo;
     }
 
@@ -108,6 +111,8 @@ public sealed class StartHandler : IUpdateHandler
             // Returning user → send new reply keyboard, then delete old
             var keyboard = await BuildReplyKeyboardAsync(userId, stageKey, isFa, cancellationToken).ConfigureAwait(false);
             await _sender.SendTextMessageWithReplyKeyboardAsync(context.ChatId, text, keyboard, cancellationToken).ConfigureAwait(false);
+            // Track current reply stage for back-button routing
+            await _stateStore.SetReplyStageAsync(userId, "main_menu", cancellationToken).ConfigureAwait(false);
             if (cleanMode && oldBotMsgId.HasValue)
                 try { await _sender.DeleteMessageAsync(context.ChatId, oldBotMsgId.Value, cancellationToken).ConfigureAwait(false); } catch { }
         }

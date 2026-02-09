@@ -31,6 +31,8 @@ public sealed class ApplicationDbContext : DbContext
             e.Property(x => x.LastName).HasMaxLength(128);
             e.Property(x => x.PreferredLanguage).HasMaxLength(10);
             e.Property(x => x.CleanChatMode).HasDefaultValue(true);
+            e.Property(x => x.PhoneNumber).HasMaxLength(20);
+            e.Property(x => x.VerificationPhotoFileId).HasMaxLength(256);
         });
 
         modelBuilder.Entity<SettingEntity>(e =>

@@ -278,6 +278,53 @@ public sealed class TelegramResponseSender : IResponseSender
         }
     }
 
+    public async Task SendContactRequestAsync(long chatId, string text, string buttonLabel, string? cancelLabel = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var contactButton = KeyboardButton.WithRequestContact(buttonLabel);
+            var rows = new List<KeyboardButton[]> { new[] { contactButton } };
+            if (!string.IsNullOrEmpty(cancelLabel))
+                rows.Add(new[] { new KeyboardButton(cancelLabel) });
+
+            var markup = new ReplyKeyboardMarkup(rows) { ResizeKeyboard = true, OneTimeKeyboard = true };
+            var result = await _client.SendMessage(
+                new ChatId(chatId), text, parseMode: ParseMode.Html, replyMarkup: markup, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            if (result != null)
+            {
+                if (_processingContext != null) _processingContext.ResponseSent = true;
+                await SaveOutgoingMessageAsync(result, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send contact request to chat {ChatId}", chatId);
+            throw;
+        }
+    }
+
+    public async Task RemoveReplyKeyboardAsync(long chatId, string text, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var markup = new ReplyKeyboardRemove();
+            var result = await _client.SendMessage(
+                new ChatId(chatId), text, parseMode: ParseMode.Html, replyMarkup: markup, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            if (result != null)
+            {
+                if (_processingContext != null) _processingContext.ResponseSent = true;
+                await SaveOutgoingMessageAsync(result, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to remove reply keyboard in chat {ChatId}", chatId);
+            throw;
+        }
+    }
+
     private async Task SaveOutgoingMessageAsync(Message message, CancellationToken cancellationToken)
     {
         if (_scopeFactory == null) return;
