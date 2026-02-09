@@ -923,37 +923,61 @@ static async Task SeedDefaultDataAsync(ApplicationDbContext db)
                 "<b>Submit Request</b>\n\nSelect the type of service you need:",
                 true, null, "main_menu", 5),
             ("student_exchange",
-                "<b>تبادل مالی دانشجویی</b>\n\nاز این بخش می‌توانید درخواست انتقال ارز دانشجویی ثبت کنید.\nشامل پرداخت شهریه، هزینه‌های اقامت و سایر هزینه‌های تحصیلی.",
-                "<b>Student Financial Exchange</b>\n\nSubmit a student currency transfer request.\nIncludes tuition fees, accommodation costs and other educational expenses.",
+                "<b>تبادل مالی دانشجویی</b>\n\nاز این بخش می‌توانید درخواست تبادل ارز دانشجویی ثبت کنید، تبادلات خود را پیگیری کنید و از نرخ‌های روز مطلع شوید.",
+                "<b>Student Financial Exchange</b>\n\nSubmit student currency exchange requests, track your exchanges, and check current rates.",
                 true, null, "new_request", 6),
-            ("overseas_services",
-                "<b>خدمات خارج از کشور</b>\n\nاز این بخش می‌توانید درخواست خدمات بین‌المللی ثبت کنید.\nشامل خرید اینترنتی، پرداخت قبض‌های خارجی و سایر خدمات.",
-                "<b>Overseas Services</b>\n\nSubmit an international services request.\nIncludes online purchases, foreign bill payments and other services.",
+            ("international_question",
+                "<b>سوال بین الملل</b>\n\nاز این بخش می‌توانید سوالات خود در زمینه امور بین‌المللی را مطرح کنید.\nتیم کارشناسان ما پاسخگوی شما خواهد بود.",
+                "<b>International Questions</b>\n\nAsk your questions about international affairs.\nOur expert team will respond to you.",
                 true, null, "new_request", 7),
-            ("direct_currency",
-                "<b>خرید و فروش مستقیم ارز</b>\n\nاز این بخش می‌توانید درخواست خرید یا فروش مستقیم ارز ثبت کنید.\nبا نرخ‌های رقابتی و تسویه سریع.",
-                "<b>Direct Currency Exchange</b>\n\nSubmit a direct currency buy or sell request.\nCompetitive rates with fast settlement.",
+            ("student_project",
+                "<b>پروژه دانشجویی</b>\n\nاز این بخش می‌توانید درخواست همکاری در پروژه‌های دانشجویی ثبت کنید.",
+                "<b>Student Project</b>\n\nSubmit a collaboration request for student projects.",
                 true, null, "new_request", 8),
+            ("financial_sponsor",
+                "<b>حامی مالی</b>\n\nاز این بخش می‌توانید درخواست حمایت مالی ثبت کنید یا به عنوان حامی مالی فعالیت کنید.",
+                "<b>Financial Sponsor</b>\n\nSubmit a financial sponsorship request or become a financial sponsor.",
+                true, null, "new_request", 9),
+            ("submit_exchange",
+                "<b>ثبت درخواست تبادل</b>\n\nاز این بخش می‌توانید درخواست جدید تبادل ارز دانشجویی ثبت کنید.\nشامل پرداخت شهریه، هزینه‌های اقامت و سایر هزینه‌های تحصیلی.",
+                "<b>Submit Exchange Request</b>\n\nSubmit a new student currency exchange request.\nIncludes tuition fees, accommodation costs and other educational expenses.",
+                true, null, "student_exchange", 10),
+            ("my_exchanges",
+                "<b>تبادلات من</b>\n\nاز این بخش می‌توانید لیست تبادلات قبلی خود را مشاهده و پیگیری کنید.",
+                "<b>My Exchanges</b>\n\nView and track your previous exchange transactions.",
+                true, null, "student_exchange", 11),
+            ("exchange_groups",
+                "<b>گروه‌های تبادل</b>\n\nاز این بخش می‌توانید به گروه‌های تبادل ارز دانشجویی دسترسی پیدا کنید.",
+                "<b>Exchange Groups</b>\n\nAccess student currency exchange groups.",
+                true, null, "student_exchange", 12),
+            ("exchange_rates",
+                "<b>نرخ ارزها</b>\n\nاز این بخش می‌توانید نرخ‌های به‌روز ارزهای مختلف را مشاهده کنید.",
+                "<b>Exchange Rates</b>\n\nView up-to-date exchange rates for various currencies.",
+                true, null, "student_exchange", 13),
+            ("exchange_guide",
+                "<b>شرایط و راهنما</b>\n\nاز این بخش می‌توانید با شرایط، قوانین و راهنمای تبادل ارز دانشجویی آشنا شوید.",
+                "<b>Terms & Guide</b>\n\nLearn about the terms, rules and guidelines for student currency exchange.",
+                true, null, "student_exchange", 14),
             ("finance",
                 "<b>امور مالی</b>\n\nاز این بخش می‌توانید وضعیت تراکنش‌ها و حساب مالی خود را مشاهده کنید.",
                 "<b>Finance</b>\n\nView your transactions and financial account status from this section.",
-                true, null, "main_menu", 9),
+                true, null, "main_menu", 20),
             ("my_suggestions",
                 "<b>پیشنهادات من</b>\n\nاز این بخش می‌توانید پیشنهادات و انتقادات خود را ثبت کنید.\nنظرات شما به بهبود خدمات ما کمک می‌کند.",
                 "<b>My Suggestions</b>\n\nSubmit your suggestions and feedback.\nYour opinions help us improve our services.",
-                true, null, "main_menu", 10),
+                true, null, "main_menu", 21),
             ("my_messages",
                 "<b>پیام‌های من</b>\n\nاز این بخش می‌توانید پیام‌های دریافتی از تیم پشتیبانی و اطلاع‌رسانی‌ها را مشاهده کنید.",
                 "<b>My Messages</b>\n\nView messages from support team and notifications from this section.",
-                true, null, "main_menu", 11),
+                true, null, "main_menu", 22),
             ("about_us",
                 "<b>درباره ما</b>\n\n<b>AbroadQs</b> ارائه‌دهنده خدمات ارزی و مالی بین‌المللی است.\nما با هدف تسهیل تراکنش‌های بین‌المللی فعالیت می‌کنیم.\n\nبرای ارتباط با ما می‌توانید از بخش تیکت‌ها استفاده کنید.",
                 "<b>About Us</b>\n\n<b>AbroadQs</b> provides international financial and currency exchange services.\nWe aim to facilitate international transactions.\n\nContact us through the Tickets section.",
-                true, null, "main_menu", 12),
+                true, null, "main_menu", 23),
             ("tickets",
                 "<b>تیکت‌ها</b>\n\nاز این بخش می‌توانید تیکت پشتیبانی جدید ایجاد کنید یا وضعیت تیکت‌های قبلی خود را پیگیری کنید.",
                 "<b>Tickets</b>\n\nCreate a new support ticket or track your existing tickets from this section.",
-                true, null, "main_menu", 13),
+                true, null, "main_menu", 24),
         };
 
         foreach (var (key, fa, en, enabled, perm, parent, order) in stages)
@@ -1012,7 +1036,7 @@ static async Task SeedDefaultDataAsync(ApplicationDbContext db)
             );
         }
 
-        // new_request sub-menu (reply keyboard): 3 options + back
+        // new_request sub-menu (reply keyboard)
         var newRequestStage = db.BotStages.FirstOrDefault(s => s.StageKey == "new_request");
         if (newRequestStage != null)
         {
@@ -1020,13 +1044,35 @@ static async Task SeedDefaultDataAsync(ApplicationDbContext db)
             if (oldNewReqButtons.Count > 0)
                 db.BotStageButtons.RemoveRange(oldNewReqButtons);
             db.BotStageButtons.AddRange(
-                // Row 0: تبادل مالی دانشجویی | خدمات خارج از کشور
+                // Row 0: تبادل مالی دانشجویی (full width)
                 new BotStageButtonEntity { StageId = newRequestStage.Id, TextFa = "تبادل مالی دانشجویی", TextEn = "Student Exchange", ButtonType = "callback", CallbackData = "stage:student_exchange", Row = 0, Column = 0, IsEnabled = true },
-                new BotStageButtonEntity { StageId = newRequestStage.Id, TextFa = "خدمات خارج از کشور", TextEn = "Overseas Services", ButtonType = "callback", CallbackData = "stage:overseas_services", Row = 0, Column = 1, IsEnabled = true },
-                // Row 1: خرید و فروش مستقیم ارز
-                new BotStageButtonEntity { StageId = newRequestStage.Id, TextFa = "خرید و فروش ارز", TextEn = "Currency Exchange", ButtonType = "callback", CallbackData = "stage:direct_currency", Row = 1, Column = 0, IsEnabled = true },
+                // Row 1: سوال بین الملل | پروژه دانشجویی | حامی مالی
+                new BotStageButtonEntity { StageId = newRequestStage.Id, TextFa = "سوال بین الملل", TextEn = "Intl Questions", ButtonType = "callback", CallbackData = "stage:international_question", Row = 1, Column = 0, IsEnabled = true },
+                new BotStageButtonEntity { StageId = newRequestStage.Id, TextFa = "پروژه دانشجویی", TextEn = "Student Project", ButtonType = "callback", CallbackData = "stage:student_project", Row = 1, Column = 1, IsEnabled = true },
+                new BotStageButtonEntity { StageId = newRequestStage.Id, TextFa = "حامی مالی", TextEn = "Financial Sponsor", ButtonType = "callback", CallbackData = "stage:financial_sponsor", Row = 1, Column = 2, IsEnabled = true },
                 // Row 2: بازگشت
                 new BotStageButtonEntity { StageId = newRequestStage.Id, TextFa = "بازگشت", TextEn = "Back", ButtonType = "callback", CallbackData = "stage:main_menu", Row = 2, Column = 0, IsEnabled = true }
+            );
+        }
+
+        // student_exchange sub-menu (reply keyboard)
+        var studentExchangeStage = db.BotStages.FirstOrDefault(s => s.StageKey == "student_exchange");
+        if (studentExchangeStage != null)
+        {
+            var oldStudentButtons = db.BotStageButtons.Where(b => b.StageId == studentExchangeStage.Id).ToList();
+            if (oldStudentButtons.Count > 0)
+                db.BotStageButtons.RemoveRange(oldStudentButtons);
+            db.BotStageButtons.AddRange(
+                // Row 0: ثبت درخواست (full width)
+                new BotStageButtonEntity { StageId = studentExchangeStage.Id, TextFa = "ثبت درخواست", TextEn = "Submit Request", ButtonType = "callback", CallbackData = "stage:submit_exchange", Row = 0, Column = 0, IsEnabled = true },
+                // Row 1: تبادلات من | گروه های تبادل | نرخ ارز ها
+                new BotStageButtonEntity { StageId = studentExchangeStage.Id, TextFa = "تبادلات من", TextEn = "My Exchanges", ButtonType = "callback", CallbackData = "stage:my_exchanges", Row = 1, Column = 0, IsEnabled = true },
+                new BotStageButtonEntity { StageId = studentExchangeStage.Id, TextFa = "گروه های تبادل", TextEn = "Exchange Groups", ButtonType = "callback", CallbackData = "stage:exchange_groups", Row = 1, Column = 1, IsEnabled = true },
+                new BotStageButtonEntity { StageId = studentExchangeStage.Id, TextFa = "نرخ ارز ها", TextEn = "Exchange Rates", ButtonType = "callback", CallbackData = "stage:exchange_rates", Row = 1, Column = 2, IsEnabled = true },
+                // Row 2: شرایط و راهنما (full width)
+                new BotStageButtonEntity { StageId = studentExchangeStage.Id, TextFa = "شرایط و راهنما", TextEn = "Terms & Guide", ButtonType = "callback", CallbackData = "stage:exchange_guide", Row = 2, Column = 0, IsEnabled = true },
+                // Row 3: بازگشت
+                new BotStageButtonEntity { StageId = studentExchangeStage.Id, TextFa = "بازگشت", TextEn = "Back", ButtonType = "callback", CallbackData = "stage:new_request", Row = 3, Column = 0, IsEnabled = true }
             );
         }
 

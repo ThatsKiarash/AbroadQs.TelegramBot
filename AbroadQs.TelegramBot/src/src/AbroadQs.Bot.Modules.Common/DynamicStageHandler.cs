@@ -166,7 +166,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
 
     private static readonly HashSet<string> ReplyKeyboardStages = new(StringComparer.OrdinalIgnoreCase)
     {
-        "main_menu", "new_request"
+        "main_menu", "new_request", "student_exchange"
     };
 
     private static bool IsReplyKeyboardStage(string stageKey) =>
