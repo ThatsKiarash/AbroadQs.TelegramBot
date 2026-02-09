@@ -17,9 +17,9 @@ public static class CommonModuleExtensions
     {
         services.AddScoped<IUpdateHandler, StartHandler>();
         services.AddScoped<IUpdateHandler, HelpHandler>();
+        services.AddScoped<IUpdateHandler, KycStateHandler>();     // Before DynamicStageHandler (state-driven)
+        services.AddScoped<IUpdateHandler, ProfileStateHandler>(); // Before DynamicStageHandler (state-driven)
         services.AddScoped<IUpdateHandler, DynamicStageHandler>();
-        services.AddScoped<IUpdateHandler, ProfileStateHandler>();
-        services.AddScoped<IUpdateHandler, KycStateHandler>();
         services.AddScoped<IUpdateHandler, UnknownCommandHandler>();
         return services;
     }

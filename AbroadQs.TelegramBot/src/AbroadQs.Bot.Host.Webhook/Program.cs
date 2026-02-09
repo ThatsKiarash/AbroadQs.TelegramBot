@@ -51,6 +51,12 @@ builder.Services.AddSingleton<AbroadQs.Bot.Contracts.ISmsService>(sp =>
         168094,
         sp.GetRequiredService<ILogger<AbroadQs.Bot.Host.Webhook.Services.SmsIrService>>()));
 
+// Email service (SMTP) for email OTP verification
+builder.Services.AddSingleton<AbroadQs.Bot.Contracts.IEmailService>(sp =>
+    new AbroadQs.Bot.Host.Webhook.Services.EmailOtpService(
+        "abroadqs.com", 465, "info@abroadqs.com", "Kia135724!",
+        sp.GetRequiredService<ILogger<AbroadQs.Bot.Host.Webhook.Services.EmailOtpService>>()));
+
 // Scoped processing context برای ردیابی عملیات هر درخواست
 builder.Services.AddScoped<ProcessingContext>();
 builder.Services.AddScoped<IProcessingContext>(sp => sp.GetRequiredService<ProcessingContext>());
@@ -705,6 +711,213 @@ app.MapDelete("/api/users/{userId:long}/permissions/{permKey}", async (long user
     return Results.Ok(new { revoked = true });
 }).WithName("UserPermissionRevoke");
 
+// ===== KYC Review API =====
+app.MapGet("/api/kyc/pending", async (HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var userRepo = scope.ServiceProvider.GetService<ITelegramUserRepository>();
+        if (userRepo == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+        var allUsers = await userRepo.ListAllAsync(ctx.RequestAborted).ConfigureAwait(false);
+        var pending = allUsers
+            .Where(u => string.Equals(u.KycStatus, "pending_review", StringComparison.OrdinalIgnoreCase))
+            .Select(u => new
+            {
+                telegramUserId = u.TelegramUserId,
+                username = u.Username,
+                firstName = u.FirstName,
+                lastName = u.LastName,
+                phoneNumber = u.PhoneNumber,
+                email = u.Email,
+                emailVerified = u.EmailVerified,
+                country = u.Country,
+                kycStatus = u.KycStatus,
+                verificationPhotoFileId = u.VerificationPhotoFileId
+            });
+        return Results.Json(pending);
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("KycPending");
+
+app.MapGet("/api/kyc/all", async (HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var userRepo = scope.ServiceProvider.GetService<ITelegramUserRepository>();
+        if (userRepo == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+        var allUsers = await userRepo.ListAllAsync(ctx.RequestAborted).ConfigureAwait(false);
+        var kycUsers = allUsers
+            .Where(u => !string.IsNullOrEmpty(u.KycStatus) && u.KycStatus != "none")
+            .Select(u => new
+            {
+                telegramUserId = u.TelegramUserId,
+                username = u.Username,
+                firstName = u.FirstName,
+                lastName = u.LastName,
+                phoneNumber = u.PhoneNumber,
+                email = u.Email,
+                emailVerified = u.EmailVerified,
+                country = u.Country,
+                kycStatus = u.KycStatus,
+                kycRejectionData = u.KycRejectionData,
+                verificationPhotoFileId = u.VerificationPhotoFileId
+            });
+        return Results.Json(kycUsers);
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("KycAll");
+
+app.MapGet("/api/kyc/{userId:long}", async (long userId, HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var userRepo = scope.ServiceProvider.GetService<ITelegramUserRepository>();
+        if (userRepo == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+        var user = await userRepo.GetByTelegramUserIdAsync(userId, ctx.RequestAborted).ConfigureAwait(false);
+        if (user == null) return Results.NotFound();
+        return Results.Json(new
+        {
+            telegramUserId = user.TelegramUserId,
+            username = user.Username,
+            firstName = user.FirstName,
+            lastName = user.LastName,
+            phoneNumber = user.PhoneNumber,
+            email = user.Email,
+            emailVerified = user.EmailVerified,
+            country = user.Country,
+            kycStatus = user.KycStatus,
+            kycRejectionData = user.KycRejectionData,
+            verificationPhotoFileId = user.VerificationPhotoFileId,
+            isVerified = user.IsVerified,
+            registeredAt = user.RegisteredAt
+        });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("KycUserDetail");
+
+// Get photo URL for verification photo
+app.MapGet("/api/kyc/{userId:long}/photo", async (long userId, HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var userRepo = scope.ServiceProvider.GetService<ITelegramUserRepository>();
+        if (userRepo == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+        var user = await userRepo.GetByTelegramUserIdAsync(userId, ctx.RequestAborted).ConfigureAwait(false);
+        if (user == null || string.IsNullOrEmpty(user.VerificationPhotoFileId))
+            return Results.NotFound();
+
+        var token = await ReadTokenAsync(ctx.RequestServices, ctx.RequestAborted).ConfigureAwait(false);
+        if (!IsValidTokenFormat(token))
+            return Results.Json(new { detail = "Bot token not configured" }, statusCode: 400);
+
+        var client = new TelegramBotClient(token!);
+        var file = await client.GetFile(user.VerificationPhotoFileId, ctx.RequestAborted).ConfigureAwait(false);
+        var photoUrl = $"https://api.telegram.org/file/bot{token}/{file.FilePath}";
+        return Results.Json(new { photoUrl, fileId = user.VerificationPhotoFileId });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("KycUserPhoto");
+
+app.MapPost("/api/kyc/{userId:long}/approve", async (long userId, HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var userRepo = scope.ServiceProvider.GetService<ITelegramUserRepository>();
+        if (userRepo == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+
+        await userRepo.SetKycStatusAsync(userId, "approved", null, ctx.RequestAborted).ConfigureAwait(false);
+
+        // Notify user via Telegram
+        try
+        {
+            var token = await ReadTokenAsync(ctx.RequestServices, ctx.RequestAborted).ConfigureAwait(false);
+            if (IsValidTokenFormat(token))
+            {
+                var client = new TelegramBotClient(token!);
+                var user = await userRepo.GetByTelegramUserIdAsync(userId, ctx.RequestAborted).ConfigureAwait(false);
+                var isFa = (user?.PreferredLanguage ?? "fa") == "fa";
+                var msg = isFa
+                    ? "احراز هویت شما تأیید شد!\nاکنون می‌توانید از تمامی خدمات تبادل ارز استفاده کنید."
+                    : "Your identity has been verified!\nYou can now use all currency exchange services.";
+                await client.SendMessage(new Telegram.Bot.Types.ChatId(userId), msg, parseMode: Telegram.Bot.Types.Enums.ParseMode.Html, cancellationToken: ctx.RequestAborted).ConfigureAwait(false);
+            }
+        }
+        catch { /* notification best-effort */ }
+
+        return Results.Json(new { success = true, message = "User approved" });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("KycApprove");
+
+app.MapPost("/api/kyc/{userId:long}/reject", async (long userId, HttpContext ctx) =>
+{
+    try
+    {
+        var body = await ctx.Request.ReadFromJsonAsync<KycRejectRequest>(ctx.RequestAborted).ConfigureAwait(false);
+        if (body == null || body.Reasons == null || body.Reasons.Count == 0)
+            return Results.BadRequest(new { detail = "Rejection reasons are required" });
+
+        var rejectionJson = System.Text.Json.JsonSerializer.Serialize(body.Reasons);
+
+        using var scope = ctx.RequestServices.CreateScope();
+        var userRepo = scope.ServiceProvider.GetService<ITelegramUserRepository>();
+        if (userRepo == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+
+        await userRepo.SetKycStatusAsync(userId, "rejected", rejectionJson, ctx.RequestAborted).ConfigureAwait(false);
+
+        // Notify user via Telegram
+        try
+        {
+            var token = await ReadTokenAsync(ctx.RequestServices, ctx.RequestAborted).ConfigureAwait(false);
+            if (IsValidTokenFormat(token))
+            {
+                var client = new TelegramBotClient(token!);
+                var user = await userRepo.GetByTelegramUserIdAsync(userId, ctx.RequestAborted).ConfigureAwait(false);
+                var isFa = (user?.PreferredLanguage ?? "fa") == "fa";
+
+                var fieldLabels = new Dictionary<string, (string fa, string en)>
+                {
+                    ["name"] = ("نام و نام خانوادگی", "Name"),
+                    ["phone"] = ("شماره تلفن", "Phone"),
+                    ["email"] = ("ایمیل", "Email"),
+                    ["country"] = ("کشور", "Country"),
+                    ["photo"] = ("عکس تأییدیه", "Verification Photo"),
+                };
+
+                var reasonLines = string.Join("\n", body.Reasons.Select(kv =>
+                {
+                    var label = fieldLabels.ContainsKey(kv.Key)
+                        ? (isFa ? fieldLabels[kv.Key].fa : fieldLabels[kv.Key].en)
+                        : kv.Key;
+                    return $"- <b>{label}</b>: {kv.Value}";
+                }));
+
+                var msg = isFa
+                    ? $"متأسفانه احراز هویت شما رد شد.\n\nدلایل:\n{reasonLines}\n\nلطفاً موارد را اصلاح و دوباره ارسال کنید."
+                    : $"Unfortunately your verification was rejected.\n\nReasons:\n{reasonLines}\n\nPlease fix the issues and resubmit.";
+
+                var keyboard = new Telegram.Bot.Types.ReplyMarkups.InlineKeyboardMarkup(
+                    new[] { new[] { Telegram.Bot.Types.ReplyMarkups.InlineKeyboardButton.WithCallbackData(
+                        isFa ? "اصلاح و ارسال مجدد" : "Fix and Resubmit", "start_kyc_fix") } });
+
+                await client.SendMessage(new Telegram.Bot.Types.ChatId(userId), msg,
+                    parseMode: Telegram.Bot.Types.Enums.ParseMode.Html,
+                    replyMarkup: keyboard,
+                    cancellationToken: ctx.RequestAborted).ConfigureAwait(false);
+            }
+        }
+        catch { /* notification best-effort */ }
+
+        return Results.Json(new { success = true, message = "User rejected" });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("KycReject");
+
 // تست: اگر این 200 برگردونه، مسیرهای API درست ثبت شدن
 app.MapGet("/api/ping", () => Results.Json(new { ok = true })).WithName("Ping");
 
@@ -1255,3 +1468,4 @@ app.Run();
 record SetWebhookRequest(string? Url);
 record SetTokenRequest(string? Token);
 record SetUpdateModeRequest(string? Mode);
+record KycRejectRequest(Dictionary<string, string>? Reasons);

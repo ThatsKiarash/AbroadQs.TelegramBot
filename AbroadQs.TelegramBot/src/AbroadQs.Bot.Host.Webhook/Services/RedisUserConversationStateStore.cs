@@ -103,4 +103,34 @@ public sealed class RedisUserConversationStateStore : IUserConversationStateStor
             return null;
         }
     }
+
+    private const string FlowMsgPrefix = "user:flowmsgs:";
+
+    public async Task AddFlowMessageIdAsync(long userId, int messageId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var key = FlowMsgPrefix + userId;
+            await _db.ListRightPushAsync(key, messageId).ConfigureAwait(false);
+            await _db.KeyExpireAsync(key, TimeSpan.FromHours(2)).ConfigureAwait(false);
+            if (_processingContext != null) _processingContext.RedisAccessed = true;
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "Redis AddFlowMessageId failed for user {UserId}", userId); }
+    }
+
+    public async Task<List<int>> GetAndClearFlowMessageIdsAsync(long userId, CancellationToken cancellationToken = default)
+    {
+        var result = new List<int>();
+        try
+        {
+            var key = FlowMsgPrefix + userId;
+            var values = await _db.ListRangeAsync(key).ConfigureAwait(false);
+            foreach (var v in values)
+                if (v.TryParse(out int id)) result.Add(id);
+            await _db.KeyDeleteAsync(key).ConfigureAwait(false);
+            if (_processingContext != null) _processingContext.RedisAccessed = true;
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "Redis GetAndClearFlowMessageIds failed for user {UserId}", userId); }
+        return result;
+    }
 }

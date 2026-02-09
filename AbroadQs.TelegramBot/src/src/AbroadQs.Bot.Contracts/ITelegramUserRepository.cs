@@ -16,6 +16,10 @@ public interface ITelegramUserRepository
     Task SetCleanChatModeAsync(long telegramUserId, bool enabled, CancellationToken cancellationToken = default);
     Task SetPhoneNumberAsync(long telegramUserId, string phoneNumber, CancellationToken cancellationToken = default);
     Task SetVerifiedAsync(long telegramUserId, string? photoFileId, CancellationToken cancellationToken = default);
+    Task SetEmailAsync(long telegramUserId, string email, CancellationToken cancellationToken = default);
+    Task SetEmailVerifiedAsync(long telegramUserId, CancellationToken cancellationToken = default);
+    Task SetCountryAsync(long telegramUserId, string country, CancellationToken cancellationToken = default);
+    Task SetKycStatusAsync(long telegramUserId, string status, string? rejectionData = null, CancellationToken cancellationToken = default);
 }
 
 public sealed record TelegramUserDto(
@@ -29,6 +33,11 @@ public sealed record TelegramUserDto(
     string? PhoneNumber,
     bool IsVerified,
     string? VerificationPhotoFileId,
+    string? Email,
+    bool EmailVerified,
+    string? Country,
+    string? KycStatus,
+    string? KycRejectionData,
     DateTimeOffset? RegisteredAt,
     DateTimeOffset FirstSeenAt,
     DateTimeOffset LastSeenAt);

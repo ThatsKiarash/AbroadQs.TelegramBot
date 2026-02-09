@@ -13,4 +13,8 @@ public interface IUserConversationStateStore
     /// <summary>Track which reply keyboard stage the user is currently viewing.</summary>
     Task SetReplyStageAsync(long userId, string stageKey, CancellationToken cancellationToken = default);
     Task<string?> GetReplyStageAsync(long userId, CancellationToken cancellationToken = default);
+
+    /// <summary>Track message IDs during multi-step flows (KYC etc.) for bulk cleanup.</summary>
+    Task AddFlowMessageIdAsync(long userId, int messageId, CancellationToken cancellationToken = default);
+    Task<List<int>> GetAndClearFlowMessageIdsAsync(long userId, CancellationToken cancellationToken = default);
 }

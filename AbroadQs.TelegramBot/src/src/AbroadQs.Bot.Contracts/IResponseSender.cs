@@ -59,4 +59,14 @@ public interface IResponseSender
     /// Remove the reply keyboard for a user. Used after contact sharing to clean up the UI.
     /// </summary>
     Task RemoveReplyKeyboardAsync(long chatId, string text, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Send a photo with an optional caption. Used to show sample verification images etc.
+    /// </summary>
+    Task SendPhotoAsync(long chatId, string photoPath, string? caption = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Send a photo from a URL with an optional caption and inline keyboard.
+    /// </summary>
+    Task SendPhotoWithInlineKeyboardAsync(long chatId, string photoUrl, string? caption, IReadOnlyList<IReadOnlyList<InlineButton>>? inlineKeyboard = null, CancellationToken cancellationToken = default);
 }

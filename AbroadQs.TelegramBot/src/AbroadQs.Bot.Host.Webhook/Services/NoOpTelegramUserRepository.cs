@@ -30,4 +30,16 @@ public sealed class NoOpTelegramUserRepository : ITelegramUserRepository
 
     public Task SetVerifiedAsync(long telegramUserId, string? photoFileId, CancellationToken cancellationToken = default)
         => Task.CompletedTask;
+
+    public Task SetEmailAsync(long telegramUserId, string email, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task SetEmailVerifiedAsync(long telegramUserId, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task SetCountryAsync(long telegramUserId, string country, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task SetKycStatusAsync(long telegramUserId, string status, string? rejectionData = null, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
 }

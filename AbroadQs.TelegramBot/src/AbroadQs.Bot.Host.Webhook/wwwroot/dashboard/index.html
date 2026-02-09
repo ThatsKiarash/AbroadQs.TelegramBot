@@ -14,7 +14,7 @@
             <nav class="nav flex-column sidebar-nav">
                 <a href="#" class="nav-link" data-tab="bot-operations">Overview</a>
                 <a href="#" class="nav-link active" data-tab="users">Users</a>
-                <a href="#" class="nav-link">Identity Verification</a>
+                <a href="#" class="nav-link" data-tab="kyc">Identity Verification</a>
                 <a href="#" class="nav-link">Identity Settings</a>
                 <a href="#" class="nav-link">Tickets</a>
                 <a href="#" class="nav-link">Exchange Rates</a>
@@ -263,6 +263,61 @@
                     </div>
                 </section>
 
+                <!-- KYC Review Section -->
+                <section class="dashboard-section" id="section-kyc" style="display: none;">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <div>
+                            <h1 class="h4 mb-1">Identity Verification (KYC)</h1>
+                            <p class="text-muted mb-0">Review and manage user identity verification submissions.</p>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <select class="form-select form-select-sm" id="kycFilter" style="width:auto;">
+                                <option value="pending">Pending Review</option>
+                                <option value="all">All Submissions</option>
+                            </select>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="btnRefreshKyc">Refresh</button>
+                        </div>
+                    </div>
+                    <div class="card shadow-sm">
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover mb-0">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>User ID</th>
+                                            <th>Name</th>
+                                            <th>Phone</th>
+                                            <th>Email</th>
+                                            <th>Country</th>
+                                            <th>Status</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="kycTableBody">
+                                        <tr><td colspan="7" class="text-center text-muted">Loading...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- KYC Detail Modal -->
+                <div class="modal fade" id="kycDetailModal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="kycDetailTitle">KYC Details</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body" id="kycDetailBody">
+                                <div class="text-center text-muted">Loading...</div>
+                            </div>
+                            <div class="modal-footer" id="kycDetailFooter"></div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Permissions Section -->
                 <section class="dashboard-section" id="section-permissions" style="display: none;">
                     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -399,6 +454,7 @@
                 if (tab === 'users') loadUsers();
                 if (tab === 'stages') loadStages();
                 if (tab === 'permissions') loadPermissions();
+                if (tab === 'kyc') loadKyc();
             });
         });
 
@@ -1095,6 +1151,203 @@
             await fetch(base + '/api/users/' + currentPermUserId + '/permissions/' + key, { method:'DELETE' });
             loadUserPerms();
         }
+
+        // ===== KYC Review =====
+        async function loadKyc() {
+            var filter = document.getElementById('kycFilter').value;
+            var url = filter === 'all' ? base + '/api/kyc/all' : base + '/api/kyc/pending';
+            try {
+                const r = await fetch(url);
+                const data = await r.json();
+                const tbody = document.getElementById('kycTableBody');
+                if (Array.isArray(data) && data.length > 0) {
+                    tbody.innerHTML = data.map(function(u) {
+                        var name = escapeHtml((u.firstName || '') + ' ' + (u.lastName || '')).trim() || '—';
+                        var statusBadge = u.kycStatus === 'pending_review'
+                            ? '<span class="badge bg-warning text-dark">Pending</span>'
+                            : u.kycStatus === 'approved'
+                            ? '<span class="badge bg-success">Approved</span>'
+                            : u.kycStatus === 'rejected'
+                            ? '<span class="badge bg-danger">Rejected</span>'
+                            : '<span class="badge bg-secondary">' + escapeHtml(u.kycStatus || 'none') + '</span>';
+                        return '<tr>' +
+                            '<td><code>' + u.telegramUserId + '</code></td>' +
+                            '<td>' + name + '</td>' +
+                            '<td>' + escapeHtml(u.phoneNumber || '—') + '</td>' +
+                            '<td>' + escapeHtml(u.email || '—') + (u.emailVerified ? ' <span class="badge bg-success">V</span>' : '') + '</td>' +
+                            '<td>' + escapeHtml(u.country || '—') + '</td>' +
+                            '<td>' + statusBadge + '</td>' +
+                            '<td>' +
+                                '<button class="btn btn-sm btn-outline-info me-1" onclick="viewKycDetail(' + u.telegramUserId + ')">View</button>' +
+                                (u.kycStatus === 'pending_review' ? '<button class="btn btn-sm btn-success me-1" onclick="approveKyc(' + u.telegramUserId + ')">Approve</button><button class="btn btn-sm btn-danger" onclick="rejectKycDialog(' + u.telegramUserId + ')">Reject</button>' : '') +
+                            '</td></tr>';
+                    }).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No submissions found.</td></tr>';
+                }
+            } catch(e) {
+                document.getElementById('kycTableBody').innerHTML = '<tr><td colspan="7" class="text-center text-danger">Error loading KYC data</td></tr>';
+            }
+        }
+
+        document.getElementById('btnRefreshKyc').addEventListener('click', loadKyc);
+        document.getElementById('kycFilter').addEventListener('change', loadKyc);
+
+        window.viewKycDetail = async function(userId) {
+            var modal = new bootstrap.Modal(document.getElementById('kycDetailModal'));
+            document.getElementById('kycDetailTitle').textContent = 'KYC Details - User ' + userId;
+            document.getElementById('kycDetailBody').innerHTML = '<div class="text-center text-muted">Loading...</div>';
+            document.getElementById('kycDetailFooter').innerHTML = '';
+            modal.show();
+
+            try {
+                const r = await fetch(base + '/api/kyc/' + userId);
+                const u = await r.json();
+                if (!r.ok) throw new Error(u.detail || 'Error');
+
+                var statusBadge = u.kycStatus === 'approved' ? '<span class="badge bg-success">Approved</span>'
+                    : u.kycStatus === 'pending_review' ? '<span class="badge bg-warning text-dark">Pending Review</span>'
+                    : u.kycStatus === 'rejected' ? '<span class="badge bg-danger">Rejected</span>'
+                    : '<span class="badge bg-secondary">' + escapeHtml(u.kycStatus||'none') + '</span>';
+
+                var html = '<div class="row">' +
+                    '<div class="col-md-6">' +
+                    '<table class="table table-sm">' +
+                    '<tr><th>Telegram ID</th><td><code>' + u.telegramUserId + '</code></td></tr>' +
+                    '<tr><th>Username</th><td>' + (u.username ? '@' + escapeHtml(u.username) : '—') + '</td></tr>' +
+                    '<tr><th>Name</th><td>' + escapeHtml((u.firstName||'') + ' ' + (u.lastName||'')) + '</td></tr>' +
+                    '<tr><th>Phone</th><td>' + escapeHtml(u.phoneNumber || '—') + '</td></tr>' +
+                    '<tr><th>Email</th><td>' + escapeHtml(u.email || '—') + (u.emailVerified ? ' <span class="badge bg-success">Verified</span>' : '') + '</td></tr>' +
+                    '<tr><th>Country</th><td>' + escapeHtml(u.country || '—') + '</td></tr>' +
+                    '<tr><th>Status</th><td>' + statusBadge + '</td></tr>' +
+                    '</table>' +
+                    (u.kycRejectionData ? '<div class="alert alert-danger"><strong>Rejection Reasons:</strong><br>' + escapeHtml(u.kycRejectionData) + '</div>' : '') +
+                    '</div>' +
+                    '<div class="col-md-6 text-center">' +
+                    '<h6>Verification Photo</h6>' +
+                    '<div id="kycPhotoContainer"><div class="text-muted">Loading photo...</div></div>' +
+                    '</div></div>';
+
+                document.getElementById('kycDetailBody').innerHTML = html;
+
+                // Load photo
+                if (u.verificationPhotoFileId) {
+                    try {
+                        const pr = await fetch(base + '/api/kyc/' + userId + '/photo');
+                        const pd = await pr.json();
+                        if (pr.ok && pd.photoUrl) {
+                            document.getElementById('kycPhotoContainer').innerHTML =
+                                '<img src="' + pd.photoUrl + '" class="img-fluid rounded" style="max-height:400px;" alt="Verification Photo" />';
+                        } else {
+                            document.getElementById('kycPhotoContainer').innerHTML = '<div class="text-muted">Could not load photo</div>';
+                        }
+                    } catch(e) {
+                        document.getElementById('kycPhotoContainer').innerHTML = '<div class="text-muted">Photo load error</div>';
+                    }
+                } else {
+                    document.getElementById('kycPhotoContainer').innerHTML = '<div class="text-muted">No photo uploaded</div>';
+                }
+
+                // Footer buttons
+                if (u.kycStatus === 'pending_review') {
+                    document.getElementById('kycDetailFooter').innerHTML =
+                        '<button class="btn btn-success" onclick="approveKyc(' + userId + ')">Approve</button> ' +
+                        '<button class="btn btn-danger" onclick="rejectKycDialog(' + userId + ')">Reject</button>';
+                }
+            } catch(e) {
+                document.getElementById('kycDetailBody').innerHTML = '<div class="text-center text-danger">' + escapeHtml(e.message) + '</div>';
+            }
+        };
+
+        window.approveKyc = async function(userId) {
+            const confirm = await Swal.fire({
+                title: 'Approve KYC?',
+                text: 'Approve identity verification for user ' + userId + '?',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Approve',
+                confirmButtonColor: '#28a745'
+            });
+            if (!confirm.isConfirmed) return;
+            try {
+                const r = await fetch(base + '/api/kyc/' + userId + '/approve', { method: 'POST' });
+                const data = await r.json();
+                if (!r.ok) throw new Error(data.detail || data.error || 'Error');
+                Swal.fire({ icon: 'success', title: 'Approved', text: 'User has been verified and notified.', timer: 2500 });
+                loadKyc();
+                // Close modal if open
+                try { bootstrap.Modal.getInstance(document.getElementById('kycDetailModal'))?.hide(); } catch(_){}
+            } catch(e) {
+                Swal.fire({ icon: 'error', title: 'Error', text: e.message });
+            }
+        };
+
+        window.rejectKycDialog = async function(userId) {
+            var fieldOptions = [
+                { field: 'name', label: 'Name' },
+                { field: 'phone', label: 'Phone' },
+                { field: 'email', label: 'Email' },
+                { field: 'country', label: 'Country' },
+                { field: 'photo', label: 'Verification Photo' }
+            ];
+
+            var fieldsHtml = fieldOptions.map(function(f) {
+                return '<div class="form-check mb-2">' +
+                    '<input class="form-check-input" type="checkbox" id="reject_' + f.field + '" value="' + f.field + '">' +
+                    '<label class="form-check-label" for="reject_' + f.field + '">' + f.label + '</label>' +
+                    '<input type="text" class="form-control form-control-sm mt-1" id="reason_' + f.field + '" placeholder="Reason for rejection..." style="display:none;">' +
+                    '</div>';
+            }).join('');
+
+            var { value: result } = await Swal.fire({
+                title: 'Reject KYC - User ' + userId,
+                html: '<p class="text-start">Select fields to reject and provide reasons:</p>' +
+                    '<div class="text-start">' + fieldsHtml + '</div>',
+                showCancelButton: true,
+                confirmButtonText: 'Reject',
+                confirmButtonColor: '#dc3545',
+                didOpen: function() {
+                    fieldOptions.forEach(function(f) {
+                        document.getElementById('reject_' + f.field).addEventListener('change', function() {
+                            document.getElementById('reason_' + f.field).style.display = this.checked ? 'block' : 'none';
+                        });
+                    });
+                },
+                preConfirm: function() {
+                    var reasons = {};
+                    var hasAny = false;
+                    fieldOptions.forEach(function(f) {
+                        if (document.getElementById('reject_' + f.field).checked) {
+                            var reason = document.getElementById('reason_' + f.field).value.trim() || 'Rejected';
+                            reasons[f.field] = reason;
+                            hasAny = true;
+                        }
+                    });
+                    if (!hasAny) {
+                        Swal.showValidationMessage('Select at least one field to reject');
+                        return false;
+                    }
+                    return reasons;
+                }
+            });
+
+            if (!result) return;
+
+            try {
+                const r = await fetch(base + '/api/kyc/' + userId + '/reject', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reasons: result })
+                });
+                const data = await r.json();
+                if (!r.ok) throw new Error(data.detail || data.error || 'Error');
+                Swal.fire({ icon: 'info', title: 'Rejected', text: 'User has been notified with rejection reasons.', timer: 2500 });
+                loadKyc();
+                try { bootstrap.Modal.getInstance(document.getElementById('kycDetailModal'))?.hide(); } catch(_){}
+            } catch(e) {
+                Swal.fire({ icon: 'error', title: 'Error', text: e.message });
+            }
+        };
 
         loadTokenIntoInput();
         loadUpdateMode();

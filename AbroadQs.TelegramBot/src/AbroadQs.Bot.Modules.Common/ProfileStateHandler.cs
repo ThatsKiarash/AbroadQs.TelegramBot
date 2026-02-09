@@ -60,27 +60,52 @@ public sealed class ProfileStateHandler : IUpdateHandler
     {
         var name = $"{Escape(user?.FirstName ?? "—")} {Escape(user?.LastName ?? "—")}";
         var phone = user?.PhoneNumber != null ? user.PhoneNumber : (isFa ? "ثبت نشده" : "Not set");
-        var verifiedLabel = user?.IsVerified == true
-            ? (isFa ? "تأیید شده" : "Verified")
-            : (isFa ? "تأیید نشده" : "Not verified");
+        var email = user?.Email != null ? user.Email : (isFa ? "ثبت نشده" : "Not set");
+        var emailVerified = user?.EmailVerified == true ? (isFa ? " (تأیید شده)" : " (verified)") : "";
+        var country = user?.Country ?? (isFa ? "ثبت نشده" : "Not set");
+
+        var kycStatus = user?.KycStatus ?? "none";
+        var verifiedLabel = kycStatus switch
+        {
+            "approved" => isFa ? "تأیید شده" : "Verified",
+            "pending_review" => isFa ? "در انتظار بررسی" : "Pending Review",
+            "rejected" => isFa ? "رد شده" : "Rejected",
+            _ => isFa ? "تأیید نشده" : "Not verified"
+        };
 
         var text = isFa
             ? $"<b>پروفایل من</b>\n\n" +
               $"نام: <b>{name}</b>\n" +
               $"شماره تلفن: <b>{Escape(phone)}</b>\n" +
+              $"ایمیل: <b>{Escape(email)}{emailVerified}</b>\n" +
+              $"کشور: <b>{Escape(country)}</b>\n" +
               $"وضعیت احراز هویت: <b>{verifiedLabel}</b>"
             : $"<b>My Profile</b>\n\n" +
               $"Name: <b>{name}</b>\n" +
               $"Phone: <b>{Escape(phone)}</b>\n" +
+              $"Email: <b>{Escape(email)}{emailVerified}</b>\n" +
+              $"Country: <b>{Escape(country)}</b>\n" +
               $"Verification: <b>{verifiedLabel}</b>";
 
         var keyboard = new List<IReadOnlyList<InlineButton>>();
 
-        if (user?.IsVerified != true)
+        if (!string.Equals(kycStatus, "approved", StringComparison.OrdinalIgnoreCase))
         {
-            // Not verified: show edit name + start KYC
-            keyboard.Add(new[] { new InlineButton(isFa ? "ویرایش نام" : "Edit Name", "stage:profile_edit_name") });
-            keyboard.Add(new[] { new InlineButton(isFa ? "شروع احراز هویت" : "Start Verification", "start_kyc") });
+            if (string.Equals(kycStatus, "rejected", StringComparison.OrdinalIgnoreCase))
+            {
+                // Rejected: show fix + resubmit button
+                keyboard.Add(new[] { new InlineButton(isFa ? "اصلاح و ارسال مجدد" : "Fix and Resubmit", "start_kyc_fix") });
+            }
+            else if (string.Equals(kycStatus, "pending_review", StringComparison.OrdinalIgnoreCase))
+            {
+                // Pending review: show status message only, no action
+            }
+            else
+            {
+                // Not started: show edit name + start KYC
+                keyboard.Add(new[] { new InlineButton(isFa ? "ویرایش نام" : "Edit Name", "stage:profile_edit_name") });
+                keyboard.Add(new[] { new InlineButton(isFa ? "شروع احراز هویت" : "Start Verification", "start_kyc") });
+            }
         }
         // Always show back button
         keyboard.Add(new[] { new InlineButton(isFa ? "بازگشت" : "Back", "stage:main_menu") });

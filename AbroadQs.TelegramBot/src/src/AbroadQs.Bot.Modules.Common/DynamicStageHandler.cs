@@ -49,7 +49,9 @@ public sealed class DynamicStageHandler : IUpdateHandler
             return data.StartsWith("stage:", StringComparison.OrdinalIgnoreCase)
                 || data.StartsWith("lang:", StringComparison.OrdinalIgnoreCase)
                 || data.StartsWith("toggle:", StringComparison.OrdinalIgnoreCase)
-                || data == "start_kyc";
+                || data == "start_kyc"
+                || data == "start_kyc_fix"
+                || data.StartsWith("country:", StringComparison.OrdinalIgnoreCase);
         }
         var cmd = context.Command;
         if (string.Equals(cmd, "settings", StringComparison.OrdinalIgnoreCase)
@@ -130,8 +132,8 @@ public sealed class DynamicStageHandler : IUpdateHandler
 
             await _stateStore.SetStateAsync(userId, "kyc_step_name", cancellationToken).ConfigureAwait(false);
             var msg = isFa
-                ? "مراحل احراز هویت:\n۱. نام و نام خانوادگی\n۲. تأیید شماره تلفن\n۳. ارسال عکس تأییدیه\n\nلطفاً نام و نام خانوادگی خود را در یک خط وارد کنید:\nمثال: <b>علی احمدی</b>"
-                : "Verification steps:\n1. Full name\n2. Phone verification\n3. Selfie photo\n\nPlease enter your first and last name in one line:\nExample: <b>John Smith</b>";
+                ? "مراحل احراز هویت:\n۱. نام و نام خانوادگی\n۲. تأیید شماره تلفن (پیامک)\n۳. تأیید ایمیل\n۴. انتخاب کشور محل سکونت\n۵. ارسال عکس تأییدیه\n۶. بررسی توسط تیم\n\nلطفاً نام و نام خانوادگی خود را در یک خط وارد کنید:\nمثال: <b>علی احمدی</b>"
+                : "Verification steps:\n1. Full name\n2. Phone verification (SMS)\n3. Email verification\n4. Country of residence\n5. Selfie photo\n6. Team review\n\nPlease enter your first and last name in one line:\nExample: <b>John Smith</b>";
             await _sender.SendTextMessageAsync(chatId, msg, cancellationToken).ConfigureAwait(false);
             return true;
         }
@@ -155,7 +157,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
             if (stageKey.Length > 0)
             {
                 // ── Verification gate ─────────────────────────────────
-                if (RequiresVerification(stageKey) && currentUser?.IsVerified != true)
+                if (RequiresVerification(stageKey) && !string.Equals(currentUser?.KycStatus, "approved", StringComparison.OrdinalIgnoreCase))
                 {
                     var lang = currentUser?.PreferredLanguage ?? "fa";
                     var isFa = lang == "fa";
@@ -292,7 +294,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
                 if (RequiresVerification(targetStage))
                 {
                     var user = await _userRepo.GetByTelegramUserIdAsync(userId, cancellationToken).ConfigureAwait(false);
-                    if (user?.IsVerified != true)
+                    if (!string.Equals(user?.KycStatus, "approved", StringComparison.OrdinalIgnoreCase))
                     {
                         var lang = user?.PreferredLanguage ?? "fa";
                         var isFa = lang == "fa";

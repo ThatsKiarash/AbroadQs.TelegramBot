@@ -33,6 +33,10 @@ public sealed class ApplicationDbContext : DbContext
             e.Property(x => x.CleanChatMode).HasDefaultValue(true);
             e.Property(x => x.PhoneNumber).HasMaxLength(20);
             e.Property(x => x.VerificationPhotoFileId).HasMaxLength(256);
+            e.Property(x => x.Email).HasMaxLength(256);
+            e.Property(x => x.Country).HasMaxLength(100);
+            e.Property(x => x.KycStatus).HasMaxLength(20);
+            e.Property(x => x.KycRejectionData).HasMaxLength(2000);
         });
 
         modelBuilder.Entity<SettingEntity>(e =>

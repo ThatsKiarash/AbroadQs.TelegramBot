@@ -325,6 +325,80 @@ public sealed class TelegramResponseSender : IResponseSender
         }
     }
 
+    public async Task SendPhotoAsync(long chatId, string photoPath, string? caption = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            InputFile inputFile;
+            if (photoPath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || photoPath.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                inputFile = InputFile.FromUri(photoPath);
+            }
+            else
+            {
+                var stream = System.IO.File.OpenRead(photoPath);
+                inputFile = InputFile.FromStream(stream, Path.GetFileName(photoPath));
+            }
+
+            var result = await _client.SendPhoto(
+                new ChatId(chatId), inputFile, caption: caption, parseMode: ParseMode.Html,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            if (result != null)
+            {
+                if (_processingContext != null) _processingContext.ResponseSent = true;
+                await SaveOutgoingMessageAsync(result, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send photo to chat {ChatId}", chatId);
+            throw;
+        }
+    }
+
+    public async Task SendPhotoWithInlineKeyboardAsync(long chatId, string photoUrl, string? caption, IReadOnlyList<IReadOnlyList<InlineButton>>? inlineKeyboard = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            InputFile inputFile;
+            if (photoUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || photoUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                inputFile = InputFile.FromUri(photoUrl);
+            else
+            {
+                var stream = System.IO.File.OpenRead(photoUrl);
+                inputFile = InputFile.FromStream(stream, Path.GetFileName(photoUrl));
+            }
+
+            InlineKeyboardMarkup? markup = null;
+            if (inlineKeyboard != null)
+            {
+                var rows = inlineKeyboard.Select(row => row.Select(b =>
+                {
+                    if (!string.IsNullOrEmpty(b.Url))
+                        return InlineKeyboardButton.WithUrl(b.Text, b.Url);
+                    return InlineKeyboardButton.WithCallbackData(b.Text, b.CallbackData ?? "");
+                }).ToList()).ToList();
+                markup = new InlineKeyboardMarkup(rows);
+            }
+
+            var result = await _client.SendPhoto(
+                new ChatId(chatId), inputFile, caption: caption, parseMode: ParseMode.Html,
+                replyMarkup: markup, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            if (result != null)
+            {
+                if (_processingContext != null) _processingContext.ResponseSent = true;
+                await SaveOutgoingMessageAsync(result, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send photo with keyboard to chat {ChatId}", chatId);
+            throw;
+        }
+    }
+
     private async Task SaveOutgoingMessageAsync(Message message, CancellationToken cancellationToken)
     {
         if (_scopeFactory == null) return;

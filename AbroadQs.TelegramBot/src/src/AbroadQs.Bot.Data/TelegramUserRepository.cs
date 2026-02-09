@@ -61,6 +61,11 @@ public sealed class TelegramUserRepository : ITelegramUserRepository
                 x.PhoneNumber,
                 x.IsVerified,
                 x.VerificationPhotoFileId,
+                x.Email,
+                x.EmailVerified,
+                x.Country,
+                x.KycStatus,
+                x.KycRejectionData,
                 x.RegisteredAt,
                 x.FirstSeenAt,
                 x.LastSeenAt))
@@ -87,6 +92,11 @@ public sealed class TelegramUserRepository : ITelegramUserRepository
             entity.PhoneNumber,
             entity.IsVerified,
             entity.VerificationPhotoFileId,
+            entity.Email,
+            entity.EmailVerified,
+            entity.Country,
+            entity.KycStatus,
+            entity.KycRejectionData,
             entity.RegisteredAt,
             entity.FirstSeenAt,
             entity.LastSeenAt);
@@ -144,8 +154,57 @@ public sealed class TelegramUserRepository : ITelegramUserRepository
         if (photoFileId != null) entity.VerificationPhotoFileId = photoFileId;
         entity.IsRegistered = true;
         entity.RegisteredAt = DateTimeOffset.UtcNow;
+        entity.KycStatus = "approved";
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         if (_processingContext != null)
             _processingContext.SqlAccessed = true;
+    }
+
+    public async Task SetEmailAsync(long telegramUserId, string email, CancellationToken cancellationToken = default)
+    {
+        var entity = await _db.TelegramUsers.FirstOrDefaultAsync(x => x.TelegramUserId == telegramUserId, cancellationToken).ConfigureAwait(false);
+        if (entity == null) return;
+        entity.Email = email;
+        entity.EmailVerified = false;
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        if (_processingContext != null) _processingContext.SqlAccessed = true;
+    }
+
+    public async Task SetEmailVerifiedAsync(long telegramUserId, CancellationToken cancellationToken = default)
+    {
+        var entity = await _db.TelegramUsers.FirstOrDefaultAsync(x => x.TelegramUserId == telegramUserId, cancellationToken).ConfigureAwait(false);
+        if (entity == null) return;
+        entity.EmailVerified = true;
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        if (_processingContext != null) _processingContext.SqlAccessed = true;
+    }
+
+    public async Task SetCountryAsync(long telegramUserId, string country, CancellationToken cancellationToken = default)
+    {
+        var entity = await _db.TelegramUsers.FirstOrDefaultAsync(x => x.TelegramUserId == telegramUserId, cancellationToken).ConfigureAwait(false);
+        if (entity == null) return;
+        entity.Country = country;
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        if (_processingContext != null) _processingContext.SqlAccessed = true;
+    }
+
+    public async Task SetKycStatusAsync(long telegramUserId, string status, string? rejectionData = null, CancellationToken cancellationToken = default)
+    {
+        var entity = await _db.TelegramUsers.FirstOrDefaultAsync(x => x.TelegramUserId == telegramUserId, cancellationToken).ConfigureAwait(false);
+        if (entity == null) return;
+        entity.KycStatus = status;
+        entity.KycRejectionData = rejectionData;
+        if (status == "approved")
+        {
+            entity.IsVerified = true;
+            entity.IsRegistered = true;
+            entity.RegisteredAt ??= DateTimeOffset.UtcNow;
+        }
+        else if (status == "rejected" || status == "pending_review")
+        {
+            entity.IsVerified = false;
+        }
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        if (_processingContext != null) _processingContext.SqlAccessed = true;
     }
 }
