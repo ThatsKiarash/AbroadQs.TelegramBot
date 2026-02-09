@@ -36,16 +36,13 @@ public sealed class StartHandler : IUpdateHandler
 
         // Load user
         var user = await _userRepo.GetByTelegramUserIdAsync(userId, cancellationToken).ConfigureAwait(false);
-        var isNewUser = user == null || !user.IsRegistered;
+        // A user is "new" if they haven't selected a language yet (first visit)
+        var isNewUser = user == null || string.IsNullOrEmpty(user.PreferredLanguage);
 
-        // If not registered, mark as registered now
+        // Grant default permission on first visit (if not already granted)
         if (isNewUser)
         {
-            await _userRepo.MarkAsRegisteredAsync(userId, cancellationToken).ConfigureAwait(false);
-            // Grant default permission on first registration
             try { await _permRepo.GrantPermissionAsync(userId, "default", cancellationToken).ConfigureAwait(false); } catch { }
-            // Re-load user
-            user = await _userRepo.GetByTelegramUserIdAsync(userId, cancellationToken).ConfigureAwait(false);
         }
 
         var lang = user?.PreferredLanguage ?? "fa";

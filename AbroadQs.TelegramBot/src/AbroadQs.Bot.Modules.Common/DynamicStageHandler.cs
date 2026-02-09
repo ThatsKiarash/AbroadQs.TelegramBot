@@ -132,6 +132,25 @@ public sealed class DynamicStageHandler : IUpdateHandler
             var stageKey = data["stage:".Length..].Trim();
             if (stageKey.Length > 0)
             {
+                // ── Verification gate ─────────────────────────────────
+                if (RequiresVerification(stageKey) && currentUser?.IsRegistered != true)
+                {
+                    var lang = currentUser?.PreferredLanguage ?? "fa";
+                    var isFa = lang == "fa";
+                    var msg = isFa
+                        ? "برای استفاده از این بخش ابتدا باید پروفایل خود را تکمیل کنید.\nلطفاً به بخش <b>پروفایل من</b> بروید و اطلاعات خود را وارد کنید."
+                        : "You need to complete your profile before using this section.\nPlease go to <b>My Profile</b> and enter your information.";
+                    var btnLabel = isFa ? "پروفایل من" : "My Profile";
+                    var backLabel = isFa ? "بازگشت" : "Back";
+                    var keyboard = new List<IReadOnlyList<InlineButton>>
+                    {
+                        new[] { new InlineButton(btnLabel, "stage:profile") },
+                        new[] { new InlineButton(backLabel, "stage:submit_exchange") }
+                    };
+                    await SendOrEditTextAsync(chatId, msg, keyboard, editMessageId, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+
                 if (IsReplyKeyboardStage(stageKey))
                 {
                     // Type change: inline → reply-kb
@@ -166,11 +185,20 @@ public sealed class DynamicStageHandler : IUpdateHandler
 
     private static readonly HashSet<string> ReplyKeyboardStages = new(StringComparer.OrdinalIgnoreCase)
     {
-        "main_menu", "new_request", "student_exchange"
+        "main_menu", "new_request", "student_exchange", "submit_exchange"
     };
 
     private static bool IsReplyKeyboardStage(string stageKey) =>
         ReplyKeyboardStages.Contains(stageKey);
+
+    /// <summary>Stages that require profile completion (IsRegistered) before entry.</summary>
+    private static readonly HashSet<string> VerificationRequiredStages = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "buy_currency", "sell_currency", "do_exchange"
+    };
+
+    private static bool RequiresVerification(string stageKey) =>
+        VerificationRequiredStages.Contains(stageKey);
 
     // ═══════════════════════════════════════════════════════════════════
     //  Reply keyboard button handler
@@ -206,6 +234,31 @@ public sealed class DynamicStageHandler : IUpdateHandler
                     await TryDeleteAsync(chatId, incomingMessageId, cancellationToken).ConfigureAwait(false);
 
                 var oldBotMsgId = await GetOldBotMessageIdAsync(userId, cancellationToken).ConfigureAwait(false);
+
+                // ── Verification gate (from reply-kb) ──────────────
+                if (RequiresVerification(targetStage))
+                {
+                    var user = await _userRepo.GetByTelegramUserIdAsync(userId, cancellationToken).ConfigureAwait(false);
+                    if (user?.IsRegistered != true)
+                    {
+                        var lang = user?.PreferredLanguage ?? "fa";
+                        var isFa = lang == "fa";
+                        var msg = isFa
+                            ? "برای استفاده از این بخش ابتدا باید پروفایل خود را تکمیل کنید.\nلطفاً به بخش <b>پروفایل من</b> بروید و اطلاعات خود را وارد کنید."
+                            : "You need to complete your profile before using this section.\nPlease go to <b>My Profile</b> and enter your information.";
+                        var btnLabel = isFa ? "پروفایل من" : "My Profile";
+                        var backLabel = isFa ? "بازگشت" : "Back";
+                        var keyboard = new List<IReadOnlyList<InlineButton>>
+                        {
+                            new[] { new InlineButton(btnLabel, "stage:profile") },
+                            new[] { new InlineButton(backLabel, "stage:submit_exchange") }
+                        };
+                        if (cleanMode)
+                            await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
+                        await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, msg, keyboard, cancellationToken).ConfigureAwait(false);
+                        return true;
+                    }
+                }
 
                 if (IsReplyKeyboardStage(targetStage))
                 {

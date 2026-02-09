@@ -42,6 +42,8 @@ public sealed class ProfileStateHandler : IUpdateHandler
 
         await _stateStore.ClearStateAsync(context.UserId.Value, cancellationToken).ConfigureAwait(false);
         await _userRepo.UpdateProfileAsync(context.UserId.Value, firstName, lastName, null, cancellationToken).ConfigureAwait(false);
+        // Mark user as verified (profile completed) if not already
+        await _userRepo.MarkAsRegisteredAsync(context.UserId.Value, cancellationToken).ConfigureAwait(false);
 
         var user = await _userRepo.GetByTelegramUserIdAsync(context.UserId.Value, cancellationToken).ConfigureAwait(false);
         var lang = user?.PreferredLanguage;

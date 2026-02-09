@@ -939,9 +939,21 @@ static async Task SeedDefaultDataAsync(ApplicationDbContext db)
                 "<b>Financial Sponsor</b>\n\nSubmit a financial sponsorship request or become a financial sponsor.",
                 true, null, "new_request", 9),
             ("submit_exchange",
-                "<b>ثبت درخواست تبادل</b>\n\nاز این بخش می‌توانید درخواست جدید تبادل ارز دانشجویی ثبت کنید.\nشامل پرداخت شهریه، هزینه‌های اقامت و سایر هزینه‌های تحصیلی.",
-                "<b>Submit Exchange Request</b>\n\nSubmit a new student currency exchange request.\nIncludes tuition fees, accommodation costs and other educational expenses.",
+                "<b>ثبت درخواست تبادل</b>\n\nنوع درخواست خود را انتخاب کنید:",
+                "<b>Submit Exchange Request</b>\n\nSelect your request type:",
                 true, null, "student_exchange", 10),
+            ("buy_currency",
+                "<b>خرید ارز</b>\n\nاز این بخش می‌توانید درخواست خرید ارز ثبت کنید.",
+                "<b>Buy Currency</b>\n\nSubmit a currency purchase request.",
+                true, null, "submit_exchange", 15),
+            ("sell_currency",
+                "<b>فروش ارز</b>\n\nاز این بخش می‌توانید درخواست فروش ارز ثبت کنید.",
+                "<b>Sell Currency</b>\n\nSubmit a currency sell request.",
+                true, null, "submit_exchange", 16),
+            ("do_exchange",
+                "<b>تبادل</b>\n\nاز این بخش می‌توانید درخواست تبادل ارز ثبت کنید.",
+                "<b>Exchange</b>\n\nSubmit a currency exchange request.",
+                true, null, "submit_exchange", 17),
             ("my_exchanges",
                 "<b>تبادلات من</b>\n\nاز این بخش می‌توانید لیست تبادلات قبلی خود را مشاهده و پیگیری کنید.",
                 "<b>My Exchanges</b>\n\nView and track your previous exchange transactions.",
@@ -1063,8 +1075,8 @@ static async Task SeedDefaultDataAsync(ApplicationDbContext db)
             if (oldStudentButtons.Count > 0)
                 db.BotStageButtons.RemoveRange(oldStudentButtons);
             db.BotStageButtons.AddRange(
-                // Row 0: ثبت درخواست (full width)
-                new BotStageButtonEntity { StageId = studentExchangeStage.Id, TextFa = "ثبت درخواست", TextEn = "Submit Request", ButtonType = "callback", CallbackData = "stage:submit_exchange", Row = 0, Column = 0, IsEnabled = true },
+                // Row 0: ثبت درخواست تبادل (full width)
+                new BotStageButtonEntity { StageId = studentExchangeStage.Id, TextFa = "ثبت درخواست تبادل", TextEn = "Submit Exchange", ButtonType = "callback", CallbackData = "stage:submit_exchange", Row = 0, Column = 0, IsEnabled = true },
                 // Row 1: تبادلات من | گروه های تبادل | نرخ ارز ها
                 new BotStageButtonEntity { StageId = studentExchangeStage.Id, TextFa = "تبادلات من", TextEn = "My Exchanges", ButtonType = "callback", CallbackData = "stage:my_exchanges", Row = 1, Column = 0, IsEnabled = true },
                 new BotStageButtonEntity { StageId = studentExchangeStage.Id, TextFa = "گروه های تبادل", TextEn = "Exchange Groups", ButtonType = "callback", CallbackData = "stage:exchange_groups", Row = 1, Column = 1, IsEnabled = true },
@@ -1073,6 +1085,24 @@ static async Task SeedDefaultDataAsync(ApplicationDbContext db)
                 new BotStageButtonEntity { StageId = studentExchangeStage.Id, TextFa = "شرایط و راهنما", TextEn = "Terms & Guide", ButtonType = "callback", CallbackData = "stage:exchange_guide", Row = 2, Column = 0, IsEnabled = true },
                 // Row 3: بازگشت
                 new BotStageButtonEntity { StageId = studentExchangeStage.Id, TextFa = "بازگشت", TextEn = "Back", ButtonType = "callback", CallbackData = "stage:new_request", Row = 3, Column = 0, IsEnabled = true }
+            );
+        }
+
+        // submit_exchange sub-menu (reply keyboard)
+        var submitExchangeStage = db.BotStages.FirstOrDefault(s => s.StageKey == "submit_exchange");
+        if (submitExchangeStage != null)
+        {
+            var oldSubmitExButtons = db.BotStageButtons.Where(b => b.StageId == submitExchangeStage.Id).ToList();
+            if (oldSubmitExButtons.Count > 0)
+                db.BotStageButtons.RemoveRange(oldSubmitExButtons);
+            db.BotStageButtons.AddRange(
+                // Row 0: خرید ارز | فروش ارز
+                new BotStageButtonEntity { StageId = submitExchangeStage.Id, TextFa = "خرید ارز", TextEn = "Buy Currency", ButtonType = "callback", CallbackData = "stage:buy_currency", Row = 0, Column = 0, IsEnabled = true },
+                new BotStageButtonEntity { StageId = submitExchangeStage.Id, TextFa = "فروش ارز", TextEn = "Sell Currency", ButtonType = "callback", CallbackData = "stage:sell_currency", Row = 0, Column = 1, IsEnabled = true },
+                // Row 1: تبادل
+                new BotStageButtonEntity { StageId = submitExchangeStage.Id, TextFa = "تبادل", TextEn = "Exchange", ButtonType = "callback", CallbackData = "stage:do_exchange", Row = 1, Column = 0, IsEnabled = true },
+                // Row 2: بازگشت
+                new BotStageButtonEntity { StageId = submitExchangeStage.Id, TextFa = "بازگشت", TextEn = "Back", ButtonType = "callback", CallbackData = "stage:student_exchange", Row = 2, Column = 0, IsEnabled = true }
             );
         }
 
