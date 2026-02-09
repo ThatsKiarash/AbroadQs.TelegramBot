@@ -49,9 +49,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
             return data.StartsWith("stage:", StringComparison.OrdinalIgnoreCase)
                 || data.StartsWith("lang:", StringComparison.OrdinalIgnoreCase)
                 || data.StartsWith("toggle:", StringComparison.OrdinalIgnoreCase)
-                || data == "start_kyc"
-                || data == "start_kyc_fix"
-                || data.StartsWith("country:", StringComparison.OrdinalIgnoreCase);
+                || data == "start_kyc";
         }
         var cmd = context.Command;
         if (string.Equals(cmd, "settings", StringComparison.OrdinalIgnoreCase)
