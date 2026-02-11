@@ -348,16 +348,23 @@ public sealed class KycStateHandler : IUpdateHandler
         if (state == "kyc_step_email")
         {
             var email = context.MessageText?.Trim();
-            await CleanUserMsg(chatId, context.IncomingMessageId, ct);
 
             if (string.IsNullOrEmpty(email) || !email.Contains('@') || !email.Contains('.'))
             {
+                await CleanUserMsg(chatId, context.IncomingMessageId, ct);
                 var msg = isFaLang
                     ? "لطفا یک آدرس ایمیل معتبر وارد کنید:\nمثال: <b>you@example.com</b>"
                     : "Please enter a valid email address:\nExample: <b>you@example.com</b>";
                 await EditOrReplace(chatId, prevBotMsgId, msg, EmailButtons(isFaLang), ct);
                 return true;
             }
+
+            // Show "sending..." feedback BEFORE attempting to send
+            await CleanUserMsg(chatId, context.IncomingMessageId, ct);
+            var sendingMsg = isFaLang
+                ? $"در حال ارسال کد تایید به <b>{email}</b> ..."
+                : $"Sending verification code to <b>{email}</b> ...";
+            await EditOrReplace(chatId, prevBotMsgId, sendingMsg, new List<IReadOnlyList<InlineButton>>(), ct);
 
             await _userRepo.SetEmailAsync(userId, email, ct).ConfigureAwait(false);
 
@@ -371,7 +378,7 @@ public sealed class KycStateHandler : IUpdateHandler
                 try
                 {
                     using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                    cts.CancelAfter(TimeSpan.FromSeconds(15));
+                    cts.CancelAfter(TimeSpan.FromSeconds(20));
                     sent = await _emailService.SendVerificationCodeAsync(email, otp, cts.Token).ConfigureAwait(false);
                 }
                 catch { sent = false; }
@@ -380,8 +387,8 @@ public sealed class KycStateHandler : IUpdateHandler
                 {
                     await _stateStore.SetStateAsync(userId, "kyc_step_email", ct).ConfigureAwait(false);
                     var errMsg = isFaLang
-                        ? "خطا در ارسال کد تایید ایمیل. لطفا دوباره تلاش کنید."
-                        : "Error sending email verification code. Please try again.";
+                        ? "خطا در ارسال کد تایید ایمیل. لطفا دوباره ایمیل خود را وارد کنید."
+                        : "Error sending email verification code. Please enter your email again.";
                     await EditOrReplace(chatId, prevBotMsgId, errMsg, EmailButtons(isFaLang), ct);
                     return true;
                 }

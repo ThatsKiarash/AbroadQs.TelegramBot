@@ -1,41 +1,36 @@
-"""Upload .NET EmailRelay app to Plesk server via FTP."""
-import ftplib
-import os
+"""Upload updated EmailRelay using app_offline.htm trick to release locks."""
+import ftplib, os, io, time
 
-FTP_HOST = "abroadqs.com"
-FTP_USER = "MyPlesk"
-FTP_PASS = "Kia135724!"
 PUBLISH_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "EmailRelay", "publish")
 
-print(f"Connecting to {FTP_HOST}...")
 ftp = ftplib.FTP(timeout=30)
-ftp.connect(FTP_HOST, 21)
+ftp.connect("abroadqs.com", 21)
 ftp.set_pasv(True)
-ftp.login(FTP_USER, FTP_PASS)
-ftp.cwd("httpdocs")
-
-# Create emailrelay directory
-try:
-    ftp.mkd("emailrelay")
-    print("Created emailrelay/ directory")
-except:
-    print("emailrelay/ exists")
-
-ftp.cwd("emailrelay")
+ftp.login("MyPlesk", "Kia135724!")
+ftp.cwd("httpdocs/emailrelay")
 print(f"In: {ftp.pwd()}")
 
-# Upload all files from publish directory
-for filename in os.listdir(PUBLISH_DIR):
-    filepath = os.path.join(PUBLISH_DIR, filename)
-    if os.path.isfile(filepath):
-        size = os.path.getsize(filepath)
-        print(f"Uploading {filename} ({size:,} bytes)...")
-        with open(filepath, "rb") as f:
-            ftp.storbinary(f"STOR {filename}", f)
-        print(f"  Done!")
+# Step 1: Upload app_offline.htm to stop the app and release file locks
+print("Step 1: Taking app offline...")
+offline_html = b"<html><body>Updating email relay, please wait...</body></html>"
+ftp.storbinary("STOR app_offline.htm", io.BytesIO(offline_html))
+print("  app_offline.htm uploaded - IIS will stop the app")
 
-# Verify
-print(f"\nFiles in emailrelay/: {ftp.nlst()}")
+# Wait a moment for IIS to release the files
+time.sleep(3)
+
+# Step 2: Upload updated files
+print("Step 2: Uploading updated files...")
+for filename in ["EmailRelay.dll", "EmailRelay.exe", "EmailRelay.pdb"]:
+    filepath = os.path.join(PUBLISH_DIR, filename)
+    size = os.path.getsize(filepath)
+    print(f"  Uploading {filename} ({size:,} bytes)...")
+    with open(filepath, "rb") as f:
+        ftp.storbinary(f"STOR {filename}", f)
+
+print("Step 3: Bringing app back online...")
+ftp.delete("app_offline.htm")
+print("  app_offline.htm deleted - IIS will restart the app")
+
 ftp.quit()
-print("\nAll files uploaded!")
-print("\nNext step: Configure 'emailrelay' as an IIS sub-application in Plesk")
+print("\nDone! EmailRelay updated and restarted.")

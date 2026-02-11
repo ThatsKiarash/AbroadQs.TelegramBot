@@ -8,6 +8,7 @@ var app = builder.Build();
 const string SECRET_TOKEN = "AbroadQs_Email_Relay_2026_Secure";
 const string FROM_EMAIL = "info@abroadqs.com";
 const string FROM_NAME = "AbroadQs";
+const string SMTP_PASSWORD = "Kia135724!";
 
 // Health check
 app.MapGet("/", () => Results.Json(new { ok = true, service = "EmailRelay" }));
@@ -30,76 +31,73 @@ app.MapPost("/", async (HttpContext ctx) =>
         if (string.IsNullOrEmpty(to) || string.IsNullOrEmpty(subject) || string.IsNullOrEmpty(htmlBody))
             return Results.Json(new { ok = false, error = "Missing to, subject, or body" }, statusCode: 400);
 
-        // Try sending via local SMTP first (Plesk mail server)
+        var errors = new List<string>();
+
+        // Attempt 1: localhost:25 WITH authentication
         try
         {
-            using var message = new MailMessage();
-            message.From = new MailAddress(FROM_EMAIL, FROM_NAME);
-            message.To.Add(to);
-            message.Subject = subject;
-            message.Body = htmlBody;
-            message.IsBodyHtml = true;
-
-            // Try localhost SMTP (Plesk's built-in mail)
+            using var msg = CreateMessage(to, subject, htmlBody);
             using var smtp = new SmtpClient("localhost", 25)
             {
+                Credentials = new NetworkCredential(FROM_EMAIL, SMTP_PASSWORD),
                 EnableSsl = false,
                 DeliveryMethod = SmtpDeliveryMethod.Network,
                 Timeout = 10000
             };
-            await smtp.SendMailAsync(message);
-            return Results.Json(new { ok = true, method = "localhost_smtp" });
+            await smtp.SendMailAsync(msg);
+            return Results.Json(new { ok = true, method = "localhost_25_auth" });
         }
-        catch (Exception ex1)
+        catch (Exception ex) { errors.Add($"25auth:{ex.Message}"); }
+
+        // Attempt 2: localhost:587 WITH authentication + STARTTLS
+        try
         {
-            // Try authenticated SMTP on the same server
-            try
+            using var msg = CreateMessage(to, subject, htmlBody);
+            using var smtp = new SmtpClient("localhost", 587)
             {
-                using var message = new MailMessage();
-                message.From = new MailAddress(FROM_EMAIL, FROM_NAME);
-                message.To.Add(to);
-                message.Subject = subject;
-                message.Body = htmlBody;
-                message.IsBodyHtml = true;
-
-                using var smtp = new SmtpClient("localhost", 587)
-                {
-                    EnableSsl = true,
-                    Credentials = new NetworkCredential(FROM_EMAIL, "Kia135724!"),
-                    DeliveryMethod = SmtpDeliveryMethod.Network,
-                    Timeout = 10000
-                };
-                await smtp.SendMailAsync(message);
-                return Results.Json(new { ok = true, method = "localhost_smtp_auth" });
-            }
-            catch (Exception ex2)
-            {
-                // Try direct connection on port 465
-                try
-                {
-                    using var message = new MailMessage();
-                    message.From = new MailAddress(FROM_EMAIL, FROM_NAME);
-                    message.To.Add(to);
-                    message.Subject = subject;
-                    message.Body = htmlBody;
-                    message.IsBodyHtml = true;
-
-                    using var smtp = new SmtpClient("localhost", 465)
-                    {
-                        EnableSsl = true,
-                        Credentials = new NetworkCredential(FROM_EMAIL, "Kia135724!"),
-                        DeliveryMethod = SmtpDeliveryMethod.Network,
-                        Timeout = 10000
-                    };
-                    await smtp.SendMailAsync(message);
-                    return Results.Json(new { ok = true, method = "localhost_smtp_ssl" });
-                }
-                catch (Exception ex3)
-                {
-                    return Results.Json(new { ok = false, error = $"All SMTP attempts failed. 1:{ex1.Message} 2:{ex2.Message} 3:{ex3.Message}" }, statusCode: 500);
-                }
-            }
+                Credentials = new NetworkCredential(FROM_EMAIL, SMTP_PASSWORD),
+                EnableSsl = true,
+                DeliveryMethod = SmtpDeliveryMethod.Network,
+                Timeout = 10000
+            };
+            await smtp.SendMailAsync(msg);
+            return Results.Json(new { ok = true, method = "localhost_587_auth" });
         }
+        catch (Exception ex) { errors.Add($"587auth:{ex.Message}"); }
+
+        // Attempt 3: server hostname with auth (in case localhost doesn't work)
+        try
+        {
+            using var msg = CreateMessage(to, subject, htmlBody);
+            using var smtp = new SmtpClient("windows5.centraldnserver.com", 25)
+            {
+                Credentials = new NetworkCredential(FROM_EMAIL, SMTP_PASSWORD),
+                EnableSsl = false,
+                DeliveryMethod = SmtpDeliveryMethod.Network,
+                Timeout = 10000
+            };
+            await smtp.SendMailAsync(msg);
+            return Results.Json(new { ok = true, method = "hostname_25_auth" });
+        }
+        catch (Exception ex) { errors.Add($"host25:{ex.Message}"); }
+
+        // Attempt 4: server hostname:465 with SSL  
+        try
+        {
+            using var msg = CreateMessage(to, subject, htmlBody);
+            using var smtp = new SmtpClient("windows5.centraldnserver.com", 465)
+            {
+                Credentials = new NetworkCredential(FROM_EMAIL, SMTP_PASSWORD),
+                EnableSsl = true,
+                DeliveryMethod = SmtpDeliveryMethod.Network,
+                Timeout = 10000
+            };
+            await smtp.SendMailAsync(msg);
+            return Results.Json(new { ok = true, method = "hostname_465_ssl" });
+        }
+        catch (Exception ex) { errors.Add($"host465:{ex.Message}"); }
+
+        return Results.Json(new { ok = false, error = string.Join(" | ", errors) }, statusCode: 500);
     }
     catch (Exception ex)
     {
@@ -108,3 +106,14 @@ app.MapPost("/", async (HttpContext ctx) =>
 });
 
 app.Run();
+
+static MailMessage CreateMessage(string to, string subject, string htmlBody)
+{
+    var msg = new MailMessage();
+    msg.From = new MailAddress(FROM_EMAIL, FROM_NAME);
+    msg.To.Add(to);
+    msg.Subject = subject;
+    msg.Body = htmlBody;
+    msg.IsBodyHtml = true;
+    return msg;
+}
