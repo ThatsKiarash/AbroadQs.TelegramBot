@@ -59,6 +59,8 @@ public sealed class TelegramUserRepository : ITelegramUserRepository
                 x.IsRegistered,
                 x.CleanChatMode,
                 x.PhoneNumber,
+                x.PhoneVerified,
+                x.PhoneVerificationMethod,
                 x.IsVerified,
                 x.VerificationPhotoFileId,
                 x.Email,
@@ -90,6 +92,8 @@ public sealed class TelegramUserRepository : ITelegramUserRepository
             entity.IsRegistered,
             entity.CleanChatMode,
             entity.PhoneNumber,
+            entity.PhoneVerified,
+            entity.PhoneVerificationMethod,
             entity.IsVerified,
             entity.VerificationPhotoFileId,
             entity.Email,
@@ -141,6 +145,17 @@ public sealed class TelegramUserRepository : ITelegramUserRepository
         var entity = await _db.TelegramUsers.FirstOrDefaultAsync(x => x.TelegramUserId == telegramUserId, cancellationToken).ConfigureAwait(false);
         if (entity == null) return;
         entity.PhoneNumber = phoneNumber;
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        if (_processingContext != null)
+            _processingContext.SqlAccessed = true;
+    }
+
+    public async Task SetPhoneVerifiedAsync(long telegramUserId, string method, CancellationToken cancellationToken = default)
+    {
+        var entity = await _db.TelegramUsers.FirstOrDefaultAsync(x => x.TelegramUserId == telegramUserId, cancellationToken).ConfigureAwait(false);
+        if (entity == null) return;
+        entity.PhoneVerified = true;
+        entity.PhoneVerificationMethod = method;
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         if (_processingContext != null)
             _processingContext.SqlAccessed = true;

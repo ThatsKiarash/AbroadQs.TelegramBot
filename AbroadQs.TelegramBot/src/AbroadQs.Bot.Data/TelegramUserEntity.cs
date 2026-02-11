@@ -17,6 +17,10 @@ public sealed class TelegramUserEntity
     public bool CleanChatMode { get; set; } = true;
     /// <summary>User's verified phone number (e.g. "09121234567").</summary>
     public string? PhoneNumber { get; set; }
+    /// <summary>Whether the phone has been verified (OTP or manual).</summary>
+    public bool PhoneVerified { get; set; }
+    /// <summary>Phone verification method: "otp" or "manual_support".</summary>
+    public string? PhoneVerificationMethod { get; set; }
     /// <summary>Whether the user has completed KYC (identity verification).</summary>
     public bool IsVerified { get; set; }
     /// <summary>Telegram file ID of the verification selfie photo.</summary>

@@ -791,6 +791,8 @@ app.MapGet("/api/kyc/{userId:long}", async (long userId, HttpContext ctx) =>
             firstName = user.FirstName,
             lastName = user.LastName,
             phoneNumber = user.PhoneNumber,
+            phoneVerified = user.PhoneVerified,
+            phoneVerificationMethod = user.PhoneVerificationMethod,
             email = user.Email,
             emailVerified = user.EmailVerified,
             country = user.Country,
@@ -804,7 +806,7 @@ app.MapGet("/api/kyc/{userId:long}", async (long userId, HttpContext ctx) =>
     catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
 }).WithName("KycUserDetail");
 
-// Get photo URL for verification photo
+// Proxy verification photo (downloads from Telegram and returns image bytes)
 app.MapGet("/api/kyc/{userId:long}/photo", async (long userId, HttpContext ctx) =>
 {
     try
@@ -823,7 +825,11 @@ app.MapGet("/api/kyc/{userId:long}/photo", async (long userId, HttpContext ctx) 
         var client = new TelegramBotClient(token!);
         var file = await client.GetFile(user.VerificationPhotoFileId, ctx.RequestAborted).ConfigureAwait(false);
         var photoUrl = $"https://api.telegram.org/file/bot{token}/{file.FilePath}";
-        return Results.Json(new { photoUrl, fileId = user.VerificationPhotoFileId });
+
+        // Download the image and return it directly (proxy)
+        using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        var imageBytes = await httpClient.GetByteArrayAsync(photoUrl, ctx.RequestAborted).ConfigureAwait(false);
+        return Results.File(imageBytes, "image/jpeg");
     }
     catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
 }).WithName("KycUserPhoto");

@@ -122,6 +122,8 @@ public sealed class KycStateHandler : IUpdateHandler
                 var st = await _stateStore.GetStateAsync(userId, ct).ConfigureAwait(false);
                 if (st != "kyc_step_phone_manual") return false;
                 var u = await SafeGetUser(userId, ct);
+                // Mark phone as manual verification (pending admin review)
+                await _userRepo.SetPhoneVerifiedAsync(userId, "manual_support", ct).ConfigureAwait(false);
                 await SafeDelete(chatId, context.CallbackMessageId, ct);
                 var fix = GetNextFixStep(u?.KycRejectionData, "phone");
                 if (fix != null) { await GoToStep(chatId, userId, fix, u, ct); return true; }
@@ -336,7 +338,8 @@ public sealed class KycStateHandler : IUpdateHandler
                 return true;
             }
 
-            // OTP correct
+            // OTP correct — mark phone as verified
+            await _userRepo.SetPhoneVerifiedAsync(userId, "otp", ct).ConfigureAwait(false);
             await SafeDelete(chatId, prevBotMsgId, ct);
             var fix = GetNextFixStep(currentUser?.KycRejectionData, "phone");
             if (fix != null) { await GoToStep(chatId, userId, fix, currentUser, ct); return true; }

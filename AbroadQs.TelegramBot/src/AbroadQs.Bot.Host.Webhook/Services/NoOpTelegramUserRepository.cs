@@ -28,6 +28,9 @@ public sealed class NoOpTelegramUserRepository : ITelegramUserRepository
     public Task SetPhoneNumberAsync(long telegramUserId, string phoneNumber, CancellationToken cancellationToken = default)
         => Task.CompletedTask;
 
+    public Task SetPhoneVerifiedAsync(long telegramUserId, string method, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
     public Task SetVerifiedAsync(long telegramUserId, string? photoFileId, CancellationToken cancellationToken = default)
         => Task.CompletedTask;
 

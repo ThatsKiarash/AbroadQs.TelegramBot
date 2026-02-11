@@ -15,6 +15,7 @@ public interface ITelegramUserRepository
     /// <summary>Toggle or set the clean-chat mode for a user.</summary>
     Task SetCleanChatModeAsync(long telegramUserId, bool enabled, CancellationToken cancellationToken = default);
     Task SetPhoneNumberAsync(long telegramUserId, string phoneNumber, CancellationToken cancellationToken = default);
+    Task SetPhoneVerifiedAsync(long telegramUserId, string method, CancellationToken cancellationToken = default);
     Task SetVerifiedAsync(long telegramUserId, string? photoFileId, CancellationToken cancellationToken = default);
     Task SetEmailAsync(long telegramUserId, string email, CancellationToken cancellationToken = default);
     Task SetEmailVerifiedAsync(long telegramUserId, CancellationToken cancellationToken = default);
@@ -31,6 +32,8 @@ public sealed record TelegramUserDto(
     bool IsRegistered,
     bool CleanChatMode,
     string? PhoneNumber,
+    bool PhoneVerified,
+    string? PhoneVerificationMethod,
     bool IsVerified,
     string? VerificationPhotoFileId,
     string? Email,

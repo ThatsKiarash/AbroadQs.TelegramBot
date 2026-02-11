@@ -302,6 +302,13 @@ namespace AbroadQs.Bot.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<bool>("PhoneVerified")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("PhoneVerificationMethod")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
                     b.Property<string>("PreferredLanguage")
                         .HasMaxLength(10)
                         .HasColumnType("nvarchar(10)");
