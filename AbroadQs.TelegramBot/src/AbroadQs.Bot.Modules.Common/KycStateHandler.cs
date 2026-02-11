@@ -4,7 +4,8 @@ namespace AbroadQs.Bot.Modules.Common;
 
 /// <summary>
 /// Multi-step KYC flow. Each step cleans up its messages immediately.
-/// No "..." dots are ever shown. Email is collected but OTP is skipped.
+/// No "..." dots are ever shown. Email OTP is sent for verification.
+/// Cancel deletes ALL tracked KYC flow messages.
 /// </summary>
 public sealed class KycStateHandler : IUpdateHandler
 {
@@ -12,6 +13,7 @@ public sealed class KycStateHandler : IUpdateHandler
     private readonly ITelegramUserRepository _userRepo;
     private readonly IUserConversationStateStore _stateStore;
     private readonly ISmsService? _smsService;
+    private readonly IEmailService? _emailService;
     private readonly IUserMessageStateRepository? _msgStateRepo;
 
     private const string SamplePhotoPath = "wwwroot/kyc_sample_photo.png";
@@ -26,13 +28,14 @@ public sealed class KycStateHandler : IUpdateHandler
         ITelegramUserRepository userRepo,
         IUserConversationStateStore stateStore,
         ISmsService? smsService = null,
-        IEmailService? emailService = null, // kept for DI compat, unused now
+        IEmailService? emailService = null,
         IUserMessageStateRepository? msgStateRepo = null)
     {
         _sender = sender;
         _userRepo = userRepo;
         _stateStore = stateStore;
         _smsService = smsService;
+        _emailService = emailService;
         _msgStateRepo = msgStateRepo;
     }
 
@@ -265,7 +268,7 @@ public sealed class KycStateHandler : IUpdateHandler
             return true;
         }
 
-        // ── Step: Email (collect only, no OTP) ───────────────────────
+        // ── Step: Email (collect + send OTP) ─────────────────────────
         if (state == "kyc_step_email")
         {
             var email = context.MessageText?.Trim();
@@ -281,6 +284,62 @@ public sealed class KycStateHandler : IUpdateHandler
             }
 
             await _userRepo.SetEmailAsync(userId, email, ct).ConfigureAwait(false);
+
+            // Generate and send email OTP
+            var otp = new Random().Next(10000, 99999).ToString();
+            await _stateStore.SetStateAsync(userId, $"kyc_step_email_otp:{otp}", ct).ConfigureAwait(false);
+
+            if (_emailService != null)
+            {
+                bool sent;
+                try
+                {
+                    using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    cts.CancelAfter(TimeSpan.FromSeconds(15));
+                    sent = await _emailService.SendVerificationCodeAsync(email, otp, cts.Token).ConfigureAwait(false);
+                }
+                catch { sent = false; }
+
+                if (!sent)
+                {
+                    await _stateStore.SetStateAsync(userId, "kyc_step_email", ct).ConfigureAwait(false);
+                    var errMsg = isFaLang
+                        ? "خطا در ارسال کد تایید ایمیل. لطفا دوباره تلاش کنید."
+                        : "Error sending email verification code. Please try again.";
+                    await EditOrReplace(chatId, prevBotMsgId, errMsg, EmailButtons(isFaLang), ct);
+                    return true;
+                }
+            }
+
+            await SafeDelete(chatId, prevBotMsgId, ct);
+            var maskedEmail = MaskEmail(email);
+            await SafeSendInline(chatId,
+                isFaLang
+                    ? $"کد تایید به ایمیل <b>{maskedEmail}</b> ارسال شد.\nلطفا کد ۵ رقمی را وارد کنید:"
+                    : $"Verification code sent to <b>{maskedEmail}</b>.\nPlease enter the 5-digit code:",
+                CancelRow(isFaLang), ct);
+            return true;
+        }
+
+        // ── Step: Email OTP verification ─────────────────────────────
+        if (state.StartsWith("kyc_step_email_otp:"))
+        {
+            var expected = state["kyc_step_email_otp:".Length..];
+            var entered = context.MessageText?.Trim();
+
+            await CleanUserMsg(chatId, context.IncomingMessageId, ct);
+
+            if (string.IsNullOrEmpty(entered) || entered != expected)
+            {
+                var msg2 = (entered == null || entered.Length == 0)
+                    ? (isFaLang ? "لطفا کد تایید ایمیل ۵ رقمی را وارد کنید:" : "Please enter the 5-digit email code:")
+                    : (isFaLang ? "کد وارد شده صحیح نیست. لطفا دوباره تلاش کنید:" : "Incorrect code. Please try again:");
+                await EditOrReplace(chatId, prevBotMsgId, msg2, CancelRow(isFaLang), ct);
+                return true;
+            }
+
+            // Email verified
+            await _userRepo.SetEmailVerifiedAsync(userId, ct).ConfigureAwait(false);
             await SafeDelete(chatId, prevBotMsgId, ct);
 
             var fix = GetNextFixStep(currentUser?.KycRejectionData, "email");
@@ -453,8 +512,23 @@ public sealed class KycStateHandler : IUpdateHandler
         var isFa = IsFa(user);
         await _stateStore.ClearStateAsync(userId, ct).ConfigureAwait(false);
 
-        // Delete the message that triggered cancel
+        // Delete the message that triggered cancel (inline button message)
         await SafeDelete(chatId, triggerMsgId, ct);
+
+        // Delete ALL tracked flow messages (bot + user messages from all KYC steps)
+        try
+        {
+            var flowIds = await _stateStore.GetAndClearFlowMessageIdsAsync(userId, ct).ConfigureAwait(false);
+            foreach (var id in flowIds)
+                await SafeDelete(chatId, id, ct);
+        }
+        catch { /* best effort */ }
+
+        // Also delete the last bot message if not already covered
+        var lastBotMsg = await GetLastBotMsgId(userId, ct);
+        if (lastBotMsg.HasValue && lastBotMsg != triggerMsgId)
+            await SafeDelete(chatId, lastBotMsg, ct);
+
         // Remove reply keyboard silently
         try { await _sender.RemoveReplyKeyboardSilentAsync(chatId, ct).ConfigureAwait(false); } catch { }
 
@@ -484,10 +558,23 @@ public sealed class KycStateHandler : IUpdateHandler
     //  Cleanup helpers — delete previous messages immediately
     // ═══════════════════════════════════════════════════════════════════
 
-    /// <summary>Delete the user's incoming message (if clean mode).</summary>
+    /// <summary>Delete the user's incoming message and track it for cleanup.</summary>
     private async Task CleanUserMsg(long chatId, int? msgId, CancellationToken ct)
     {
+        if (msgId.HasValue)
+            await TrackFlowMsg(chatId, msgId.Value, ct);
         await SafeDelete(chatId, msgId, ct);
+    }
+
+    /// <summary>Track a message ID in the flow for bulk cleanup on cancel.</summary>
+    private async Task TrackFlowMsg(long userId, int msgId, CancellationToken ct)
+    { try { await _stateStore.AddFlowMessageIdAsync(userId, msgId, ct).ConfigureAwait(false); } catch { } }
+
+    /// <summary>Track the last bot message ID in the flow.</summary>
+    private async Task TrackLastBotMsg(long userId, CancellationToken ct)
+    {
+        var id = await GetLastBotMsgId(userId, ct);
+        if (id.HasValue) await TrackFlowMsg(userId, id.Value, ct);
     }
 
     /// <summary>Get the last bot message ID from the state repo.</summary>
@@ -522,10 +609,16 @@ public sealed class KycStateHandler : IUpdateHandler
     // ═══════════════════════════════════════════════════════════════════
 
     private async Task SafeSendInline(long chatId, string text, List<IReadOnlyList<InlineButton>> kb, CancellationToken ct)
-    { try { await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, text, kb, ct).ConfigureAwait(false); } catch { } }
+    {
+        try { await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, text, kb, ct).ConfigureAwait(false); } catch { }
+        await TrackLastBotMsg(chatId, ct);
+    }
 
     private async Task SafeSendContactRequest(long chatId, string text, string btn, string cancel, CancellationToken ct)
-    { try { await _sender.SendContactRequestAsync(chatId, text, btn, cancel, ct).ConfigureAwait(false); } catch { } }
+    {
+        try { await _sender.SendContactRequestAsync(chatId, text, btn, cancel, ct).ConfigureAwait(false); } catch { }
+        await TrackLastBotMsg(chatId, ct);
+    }
 
     private async Task SafeDelete(long chatId, int? msgId, CancellationToken ct)
     { if (msgId.HasValue) try { await _sender.DeleteMessageAsync(chatId, msgId.Value, ct).ConfigureAwait(false); } catch { } }
@@ -570,6 +663,13 @@ public sealed class KycStateHandler : IUpdateHandler
 
     private static string MaskPhone(string p)
     { if (p.Length <= 4) return "****"; return p[..3] + new string('*', p.Length - 5) + p[^2..]; }
+
+    private static string MaskEmail(string email)
+    {
+        var at = email.IndexOf('@');
+        if (at <= 1) return "***" + email[at..];
+        return email[..2] + new string('*', at - 2) + email[at..];
+    }
 
     private static string GetCountryName(string code, bool isFa) => code switch
     {
