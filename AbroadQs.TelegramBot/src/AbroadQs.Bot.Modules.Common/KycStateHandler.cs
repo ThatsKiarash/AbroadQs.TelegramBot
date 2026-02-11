@@ -12,6 +12,7 @@ public sealed class KycStateHandler : IUpdateHandler
     private readonly IResponseSender _sender;
     private readonly ITelegramUserRepository _userRepo;
     private readonly IUserConversationStateStore _stateStore;
+    private readonly ISettingsRepository? _settingsRepo;
     private readonly ISmsService? _smsService;
     private readonly IEmailService? _emailService;
     private readonly IUserMessageStateRepository? _msgStateRepo;
@@ -22,11 +23,13 @@ public sealed class KycStateHandler : IUpdateHandler
     private const string CbSkipEmail   = "skip_email";
     private const string CbSkipCountry = "skip_country";
     private const string CbStartKycFix = "start_kyc_fix";
+    private const string CbPhoneManualContinue = "phone_manual_continue";
 
     public KycStateHandler(
         IResponseSender sender,
         ITelegramUserRepository userRepo,
         IUserConversationStateStore stateStore,
+        ISettingsRepository? settingsRepo = null,
         ISmsService? smsService = null,
         IEmailService? emailService = null,
         IUserMessageStateRepository? msgStateRepo = null)
@@ -34,6 +37,7 @@ public sealed class KycStateHandler : IUpdateHandler
         _sender = sender;
         _userRepo = userRepo;
         _stateStore = stateStore;
+        _settingsRepo = settingsRepo;
         _smsService = smsService;
         _emailService = emailService;
         _msgStateRepo = msgStateRepo;
@@ -49,7 +53,8 @@ public sealed class KycStateHandler : IUpdateHandler
             var cb = context.MessageText?.Trim() ?? "";
             return cb.StartsWith("country:", StringComparison.OrdinalIgnoreCase)
                 || cb == CbCancel || cb == CbSkipEmail
-                || cb == CbSkipCountry || cb == CbStartKycFix;
+                || cb == CbSkipCountry || cb == CbStartKycFix
+                || cb == CbPhoneManualContinue;
         }
         return !string.IsNullOrEmpty(context.MessageText) || context.HasContact || context.HasPhoto;
     }
@@ -112,6 +117,18 @@ public sealed class KycStateHandler : IUpdateHandler
                 return true;
             }
 
+            if (cb == CbPhoneManualContinue)
+            {
+                var st = await _stateStore.GetStateAsync(userId, ct).ConfigureAwait(false);
+                if (st != "kyc_step_phone_manual") return false;
+                var u = await SafeGetUser(userId, ct);
+                await SafeDelete(chatId, context.CallbackMessageId, ct);
+                var fix = GetNextFixStep(u?.KycRejectionData, "phone");
+                if (fix != null) { await GoToStep(chatId, userId, fix, u, ct); return true; }
+                await GoToStep(chatId, userId, "kyc_step_email", u, ct);
+                return true;
+            }
+
             if (cb.StartsWith("country:"))
             {
                 var st = await _stateStore.GetStateAsync(userId, ct).ConfigureAwait(false);
@@ -146,6 +163,21 @@ public sealed class KycStateHandler : IUpdateHandler
         var currentUser = await SafeGetUser(userId, ct);
         var isFaLang = IsFa(currentUser);
         var prevBotMsgId = await GetLastBotMsgId(userId, ct);
+
+        // ── Guard: prevent re-submission while pending review ────────
+        if (currentUser?.KycStatus?.Equals("pending_review", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            await SafeSendInline(chatId,
+                isFaLang
+                    ? "درخواست احراز هویت شما قبلا ثبت شده و در حال بررسی است. لطفا منتظر بمانید."
+                    : "Your verification request is already under review. Please wait.",
+                new List<IReadOnlyList<InlineButton>>
+                {
+                    new[] { new InlineButton(isFaLang ? "بازگشت به منوی اصلی" : "Back to Main Menu", "stage:main_menu") }
+                }, ct);
+            await _stateStore.ClearStateAsync(userId, ct).ConfigureAwait(false);
+            return true;
+        }
 
         // ── Step: Name ───────────────────────────────────────────────
         if (state == "kyc_step_name")
@@ -200,6 +232,44 @@ public sealed class KycStateHandler : IUpdateHandler
 
             var phone = context.ContactPhoneNumber!;
             await _userRepo.SetPhoneNumberAsync(userId, phone, ct).ConfigureAwait(false);
+
+            // Check if Iranian phone number
+            bool isIranianPhone = phone.StartsWith("+98") || phone.StartsWith("98") || phone.StartsWith("09");
+
+            if (!isIranianPhone)
+            {
+                // Non-Iranian: manual verification via support
+                var verifyCode = new Random().Next(10000, 99999).ToString();
+                var supportUsername = _settingsRepo != null
+                    ? (await _settingsRepo.GetValueAsync("SupportTelegramUsername", ct).ConfigureAwait(false) ?? "support")
+                    : "support";
+
+                await CleanUserMsg(chatId, context.IncomingMessageId, ct);
+                await SafeDelete(chatId, prevBotMsgId, ct);
+                try { await _sender.RemoveReplyKeyboardSilentAsync(chatId, ct).ConfigureAwait(false); } catch { }
+
+                var infoBlock = $"\u06a9\u062f \u062a\u0627\u06cc\u06cc\u062f: {verifyCode}\n\u0622\u06cc\u062f\u06cc \u062a\u0644\u06af\u0631\u0627\u0645: {userId}\n\u0634\u0645\u0627\u0631\u0647 \u062a\u0645\u0627\u0633: {phone}";
+                var msg = isFaLang
+                    ? $"\u0628\u0627 \u062a\u0648\u062c\u0647 \u0628\u0647 \u0627\u06cc\u0646\u06a9\u0647 \u0634\u0645\u0627\u0631\u0647 \u0634\u0645\u0627 \u0627\u06cc\u0631\u0627\u0646\u06cc \u0646\u06cc\u0633\u062a\u060c \u0627\u0645\u06a9\u0627\u0646 \u0627\u0631\u0633\u0627\u0644 \u06a9\u062f \u062a\u0627\u06cc\u06cc\u062f \u067e\u06cc\u0627\u0645\u06a9\u06cc \u0648\u062c\u0648\u062f \u0646\u062f\u0627\u0631\u062f.\n\n\u0628\u0631\u0627\u06cc \u062a\u0627\u06cc\u06cc\u062f \u0634\u0645\u0627\u0631\u0647 \u062a\u0645\u0627\u0633\u060c \u0644\u0637\u0641\u0627 \u0627\u0637\u0644\u0627\u0639\u0627\u062a \u0632\u06cc\u0631 \u0631\u0627 \u0628\u0647 \u067e\u0634\u062a\u06cc\u0628\u0627\u0646\u06cc \u0627\u0631\u0633\u0627\u0644 \u06a9\u0646\u06cc\u062f:\n\n<code>{infoBlock}</code>\n\n\u0645\u06cc\u200c\u062a\u0648\u0627\u0646\u06cc\u062f \u0628\u0627 \u0632\u062f\u0646 \u062f\u06a9\u0645\u0647 \u0632\u06cc\u0631 \u0627\u0637\u0644\u0627\u0639\u0627\u062a \u0631\u0627 \u0645\u0633\u062a\u0642\u06cc\u0645\u0627 \u0627\u0631\u0633\u0627\u0644 \u06a9\u0646\u06cc\u062f:"
+                    : $"SMS verification is not available for non-Iranian numbers.\n\nPlease send the following info to support:\n\n<code>{infoBlock}</code>\n\nYou can send directly using the button below:";
+
+                var prefilledText = Uri.EscapeDataString(infoBlock);
+                var deepLink = $"https://t.me/{supportUsername}?text={prefilledText}";
+
+                await _stateStore.SetStateAsync(userId, "kyc_step_phone_manual", ct).ConfigureAwait(false);
+
+                var kb = new List<IReadOnlyList<InlineButton>>
+                {
+                    new[] { new InlineButton(isFaLang ? "\u0627\u0631\u0633\u0627\u0644 \u0628\u0647 \u067e\u0634\u062a\u06cc\u0628\u0627\u0646\u06cc" : "Send to Support", null, deepLink) },
+                    new[] { new InlineButton(isFaLang ? "\u0627\u062f\u0627\u0645\u0647 \u0645\u0631\u0627\u062d\u0644" : "Continue", CbPhoneManualContinue) },
+                    new[] { new InlineButton(isFaLang ? "\u0644\u063a\u0648 \u0627\u062d\u0631\u0627\u0632 \u0647\u0648\u06cc\u062a" : "Cancel", CbCancel) },
+                };
+
+                await SafeSendInline(chatId, msg, kb, ct);
+                return true;
+            }
+
+            // Iranian phone: SMS OTP flow
             var otp = new Random().Next(10000, 99999).ToString();
             await _stateStore.SetStateAsync(userId, $"kyc_step_otp:{otp}", ct).ConfigureAwait(false);
 
@@ -219,11 +289,11 @@ public sealed class KycStateHandler : IUpdateHandler
                     await _stateStore.SetStateAsync(userId, "kyc_step_phone", ct).ConfigureAwait(false);
                     await CleanUserMsg(chatId, context.IncomingMessageId, ct);
                     var errMsg = isFaLang
-                        ? "خطا در ارسال کد تایید. لطفا دوباره شماره تلفن خود را به اشتراک بگذارید."
+                        ? "\u062e\u0637\u0627 \u062f\u0631 \u0627\u0631\u0633\u0627\u0644 \u06a9\u062f \u062a\u0627\u06cc\u06cc\u062f. \u0644\u0637\u0641\u0627 \u062f\u0648\u0628\u0627\u0631\u0647 \u0634\u0645\u0627\u0631\u0647 \u062a\u0644\u0641\u0646 \u062e\u0648\u062f \u0631\u0627 \u0628\u0647 \u0627\u0634\u062a\u0631\u0627\u06a9 \u0628\u06af\u0630\u0627\u0631\u06cc\u062f."
                         : "Error sending code. Please share your phone number again.";
                     await SafeSendContactRequest(chatId, errMsg,
-                        isFaLang ? "اشتراک‌گذاری شماره تلفن" : "Share Phone Number",
-                        isFaLang ? "لغو احراز هویت" : "Cancel", ct);
+                        isFaLang ? "\u0627\u0634\u062a\u0631\u0627\u06a9\u200c\u06af\u0630\u0627\u0631\u06cc \u0634\u0645\u0627\u0631\u0647 \u062a\u0644\u0641\u0646" : "Share Phone Number",
+                        isFaLang ? "\u0644\u063a\u0648 \u0627\u062d\u0631\u0627\u0632 \u0647\u0648\u06cc\u062a" : "Cancel", ct);
                     return true;
                 }
             }
@@ -231,15 +301,21 @@ public sealed class KycStateHandler : IUpdateHandler
             // Clean previous step
             await CleanUserMsg(chatId, context.IncomingMessageId, ct);
             await SafeDelete(chatId, prevBotMsgId, ct);
-            // Remove reply keyboard silently (no "..." dots!)
             try { await _sender.RemoveReplyKeyboardSilentAsync(chatId, ct).ConfigureAwait(false); } catch { }
 
             var masked = MaskPhone(phone);
             await SafeSendInline(chatId,
                 isFaLang
-                    ? $"کد تایید به شماره <b>{masked}</b> ارسال شد.\nلطفا کد 5 رقمی را وارد کنید:"
+                    ? $"\u06a9\u062f \u062a\u0627\u06cc\u06cc\u062f \u0628\u0647 \u0634\u0645\u0627\u0631\u0647 <b>{masked}</b> \u0627\u0631\u0633\u0627\u0644 \u0634\u062f.\n\u0644\u0637\u0641\u0627 \u06a9\u062f 5 \u0631\u0642\u0645\u06cc \u0631\u0627 \u0648\u0627\u0631\u062f \u06a9\u0646\u06cc\u062f:"
                     : $"Code sent to <b>{masked}</b>.\nPlease enter the 5-digit code:",
                 CancelRow(isFaLang), ct);
+            return true;
+        }
+
+        // ── Step: Phone Manual (waiting for support verification) ────
+        if (state == "kyc_step_phone_manual")
+        {
+            await CleanUserMsg(chatId, context.IncomingMessageId, ct);
             return true;
         }
 
@@ -468,10 +544,8 @@ public sealed class KycStateHandler : IUpdateHandler
                 row.Add(new InlineButton(isFa ? countries[j].fa : countries[j].en, $"country:{countries[j].code}"));
             kb.Add(row);
         }
-        kb.Add(new[] {
-            new InlineButton(isFa ? "رد کردن" : "Skip", CbSkipCountry),
-            new InlineButton(isFa ? "لغو" : "Cancel", CbCancel),
-        });
+        kb.Add(new[] { new InlineButton(isFa ? "رد کردن" : "Skip", CbSkipCountry) });
+        kb.Add(new[] { new InlineButton(isFa ? "لغو" : "Cancel", CbCancel) });
 
         await SafeSendInline(chatId, msg, kb, ct);
     }
@@ -549,10 +623,10 @@ public sealed class KycStateHandler : IUpdateHandler
     { new[] { new InlineButton(isFa ? "لغو احراز هویت" : "Cancel", CbCancel) } };
 
     private static List<IReadOnlyList<InlineButton>> EmailButtons(bool isFa) => new()
-    { new[] {
-        new InlineButton(isFa ? "رد کردن ایمیل" : "Skip Email", CbSkipEmail),
-        new InlineButton(isFa ? "لغو" : "Cancel", CbCancel),
-    } };
+    {
+        new[] { new InlineButton(isFa ? "رد کردن ایمیل" : "Skip Email", CbSkipEmail) },
+        new[] { new InlineButton(isFa ? "لغو" : "Cancel", CbCancel) },
+    };
 
     // ═══════════════════════════════════════════════════════════════════
     //  Cleanup helpers — delete previous messages immediately

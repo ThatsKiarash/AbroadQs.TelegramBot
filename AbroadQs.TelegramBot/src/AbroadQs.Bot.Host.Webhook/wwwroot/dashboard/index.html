@@ -127,6 +127,19 @@
                                         </div>
                                         <button type="submit" class="btn btn-primary">Save configuration</button>
                                     </form>
+                                    <hr class="my-3" />
+                                    <h2 class="h5 mb-3">Support Settings</h2>
+                                    <form id="supportTelegramForm" class="vstack gap-3 mb-3">
+                                        <div>
+                                            <label for="supportTelegramUsername" class="form-label">Support Telegram Username</label>
+                                            <div class="input-group">
+                                                <span class="input-group-text">@</span>
+                                                <input type="text" id="supportTelegramUsername" class="form-control" autocomplete="off" placeholder="support_username" aria-label="Support Telegram Username" />
+                                            </div>
+                                            <small class="form-text text-muted">Telegram username for phone verification support (non-Iranian users). Users will be directed to send verification info to this account.</small>
+                                        </div>
+                                        <button type="submit" class="btn btn-primary">Save support settings</button>
+                                    </form>
                                     <div class="d-flex flex-wrap gap-2">
                                         <button type="button" class="btn btn-outline-secondary" id="btnTestToken">Test token</button>
                                         <button type="button" class="btn btn-outline-primary" id="btnSetWebhook">Set webhook</button>
@@ -1338,11 +1351,44 @@
             }
         };
 
+        // ===== Support Telegram Username =====
+        async function loadSupportTelegram() {
+            try {
+                const r = await fetch(base + '/api/settings/support-telegram');
+                const data = await r.json().catch(() => ({}));
+                if (r.ok && data.username) {
+                    document.getElementById('supportTelegramUsername').value = data.username;
+                }
+            } catch(_) {}
+        }
+
+        document.getElementById('supportTelegramForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            var username = (document.getElementById('supportTelegramUsername').value || '').trim();
+            if (!username) {
+                Swal.fire({ icon: 'warning', title: 'Username is required', timer: 2000, showConfirmButton: false });
+                return;
+            }
+            try {
+                const r = await fetch(base + '/api/settings/support-telegram', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: username })
+                });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok) throw new Error(data.detail || data.error || 'Error');
+                Swal.fire({ icon: 'success', title: 'Saved', text: 'Support Telegram username updated.', timer: 2500, showConfirmButton: false });
+            } catch(err) {
+                Swal.fire({ icon: 'error', title: 'Error', text: err.message });
+            }
+        });
+
         loadTokenIntoInput();
         loadUpdateMode();
         loadWebhookInfo();
         loadConnectionStatus();
         loadBotStatus();
+        loadSupportTelegram();
         loadUsers();
         refreshWebhookMessages();
         setInterval(refreshWebhookMessages, 10000);

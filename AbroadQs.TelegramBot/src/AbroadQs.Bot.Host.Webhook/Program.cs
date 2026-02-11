@@ -924,6 +924,37 @@ app.MapPost("/api/kyc/{userId:long}/reject", async (long userId, HttpContext ctx
     catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
 }).WithName("KycReject");
 
+// ===== Support Telegram Username Setting =====
+app.MapGet("/api/settings/support-telegram", async (HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var repo = scope.ServiceProvider.GetService<ISettingsRepository>();
+        if (repo == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+        var username = await repo.GetValueAsync("SupportTelegramUsername", ctx.RequestAborted).ConfigureAwait(false);
+        return Results.Json(new { username = username ?? "" });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("SupportTelegramGet");
+
+app.MapPost("/api/settings/support-telegram", async (HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var repo = scope.ServiceProvider.GetService<ISettingsRepository>();
+        if (repo == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+        var body = await ctx.Request.ReadFromJsonAsync<SetSupportTelegramRequest>(ctx.RequestAborted).ConfigureAwait(false);
+        var username = (body?.Username ?? "").Trim().TrimStart('@');
+        if (string.IsNullOrEmpty(username))
+            return Results.BadRequest(new { detail = "Username is required" });
+        await repo.SetValueAsync("SupportTelegramUsername", username, ctx.RequestAborted).ConfigureAwait(false);
+        return Results.Json(new { ok = true, username });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("SupportTelegramSet");
+
 // تست: اگر این 200 برگردونه، مسیرهای API درست ثبت شدن
 app.MapGet("/api/ping", () => Results.Json(new { ok = true })).WithName("Ping");
 
@@ -1475,3 +1506,4 @@ record SetWebhookRequest(string? Url);
 record SetTokenRequest(string? Token);
 record SetUpdateModeRequest(string? Mode);
 record KycRejectRequest(Dictionary<string, string>? Reasons);
+record SetSupportTelegramRequest(string? Username);
