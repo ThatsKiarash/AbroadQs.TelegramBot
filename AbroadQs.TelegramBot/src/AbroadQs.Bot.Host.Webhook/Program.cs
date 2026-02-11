@@ -59,7 +59,7 @@ builder.Services.AddSingleton<AbroadQs.Bot.Contracts.IEmailService>(sp =>
     new AbroadQs.Bot.Host.Webhook.Services.EmailOtpService(
         "abroadqs.com", 465, "info@abroadqs.com", "Kia135724!",
         sp.GetRequiredService<ILogger<AbroadQs.Bot.Host.Webhook.Services.EmailOtpService>>(),
-        relayUrl: "https://abroadqs.com/api/email_relay.php",
+        relayUrl: "https://abroadqs.com/emailrelay",
         relayToken: "AbroadQs_Email_Relay_2026_Secure",
         httpClientFactory: sp.GetRequiredService<IHttpClientFactory>()));
 
