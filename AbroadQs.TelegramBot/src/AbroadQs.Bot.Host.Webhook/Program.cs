@@ -1087,26 +1087,36 @@ app.MapPost("/api/exchange/requests/{id:int}/approve", async (int id, HttpContex
             if (!string.IsNullOrEmpty(channelId))
             {
                 var currFa = AbroadQs.Bot.Modules.Common.ExchangeStateHandler.GetCurrencyNameFa(req.Currency);
+                var currFlag = AbroadQs.Bot.Modules.Common.ExchangeStateHandler.GetCurrencyFlag(req.Currency);
                 var txFa = req.TransactionType == "buy" ? "خرید" : req.TransactionType == "sell" ? "فروش" : "تبادل";
                 var roleFa = req.TransactionType == "buy" ? "خریدار" : req.TransactionType == "sell" ? "فروشنده" : "متقاضی تبادل";
                 var txHashtag = $"#{txFa}_{currFa.Replace(" ", "_")}";
+                // Delivery label (no sensitive info: no IBAN, no PayPal email, no bank name)
                 var deliveryFa = req.DeliveryMethod switch
                 {
-                    "bank" => req.AccountType == "company"
-                        ? $"حواله بانکی حساب شرکتی{(req.Country != null ? $" به {req.Country}" : "")}"
-                        : $"حواله بانکی حساب شخصی{(req.Country != null ? $" به {req.Country}" : "")}",
+                    "bank" => $"حواله بانکی{(req.Country != null ? $" ({req.Country})" : "")}",
                     "paypal" => "پی‌پال",
-                    "cash" => "اسکناس",
+                    "cash" => $"اسکناس (حضوری){(!string.IsNullOrEmpty(req.City) ? $" — {req.City}" : (req.Country != null ? $" — {req.Country}" : ""))}",
                     _ => req.DeliveryMethod
                 };
 
-                var text = $"❗ حواله جدید بابت {txHashtag}\n\n" +
-                    $"💎 {roleFa}: <b>{req.UserDisplayName}</b>\n" +
-                    $"💰 مبلغ: <b>{req.Amount:N0}</b> {currFa}\n" +
-                    $"💲 نرخ پیشنهادی: <b>{req.ProposedRate:N0}</b> تومان\n" +
-                    $"🏦 نوع حواله: {deliveryFa}\n" +
-                    (!string.IsNullOrEmpty(req.Description) ? $"✍ توضیحات: {req.Description}\n" : "") +
-                    $"\n🏷 مبلغ کل: <b>{req.TotalAmount:N0}</b> تومان";
+                var adSb = new System.Text.StringBuilder();
+                adSb.AppendLine($"❗ آگهی {txFa} ارز {txHashtag}");
+                adSb.AppendLine();
+                adSb.AppendLine($"👤 {roleFa}: <b>{req.UserDisplayName}</b>");
+                adSb.AppendLine($"💰 مبلغ: {currFlag} <b>{req.Amount:N0}</b> {currFa}");
+                if (req.TransactionType == "exchange" && !string.IsNullOrEmpty(req.DestinationCurrency))
+                {
+                    var destFlag = AbroadQs.Bot.Modules.Common.ExchangeStateHandler.GetCurrencyFlag(req.DestinationCurrency);
+                    var destFa = AbroadQs.Bot.Modules.Common.ExchangeStateHandler.GetCurrencyNameFa(req.DestinationCurrency);
+                    adSb.AppendLine($"➡️ مقصد: {destFlag} <b>{destFa}</b>");
+                }
+                adSb.AppendLine($"💲 نرخ پیشنهادی: <b>{req.ProposedRate:N0}</b> تومان");
+                adSb.AppendLine($"🚚 روش تحویل: {deliveryFa}");
+                if (!string.IsNullOrEmpty(req.Description))
+                    adSb.AppendLine($"📝 توضیحات: {req.Description}");
+                adSb.AppendLine($"\n🏷 مبلغ کل: <b>{req.TotalAmount:N0}</b> تومان");
+                var text = adSb.ToString();
 
                 try
                 {

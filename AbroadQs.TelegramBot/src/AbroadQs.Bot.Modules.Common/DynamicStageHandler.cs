@@ -447,11 +447,17 @@ public sealed class DynamicStageHandler : IUpdateHandler
 
         if (data == "exc_grp:submit")
         {
-            // Set state for group submission flow
-            await _stateStore.SetStateAsync(userId, "exc_grp_submit_name", ct).ConfigureAwait(false);
+            // Delegate to GroupStateHandler submission flow (uses reply keyboard)
+            if (_groupHandler != null)
+            {
+                await TryDeleteAsync(chatId, editMessageId, ct);
+                await _groupHandler.ShowGroupsMenu(chatId, null, ct).ConfigureAwait(false);
+                return;
+            }
+            // Fallback if no group handler
             var msg = isFa
-                ? "<b>📝 ثبت گروه جدید</b>\n\nنام گروه تلگرام خود را وارد کنید:"
-                : "<b>📝 Submit New Group</b>\n\nEnter the name of your Telegram group:";
+                ? "<b>📝 ثبت گروه جدید</b>\n\nبخش ثبت گروه فعلاً در دسترس نیست."
+                : "<b>📝 Submit New Group</b>\n\nGroup submission is currently unavailable.";
             await EditOrSendInlineAsync(chatId, msg, new List<IReadOnlyList<InlineButton>>
             {
                 new[] { new InlineButton(isFa ? "🔙 بازگشت" : "🔙 Back", "stage:exchange_groups") }
@@ -1019,11 +1025,16 @@ public sealed class DynamicStageHandler : IUpdateHandler
                 // ── Exchange Groups (from reply-kb) ─────────────────
                 if (string.Equals(targetStage, "exchange_groups", StringComparison.OrdinalIgnoreCase))
                 {
-                    var user = await _userRepo.GetByTelegramUserIdAsync(userId, cancellationToken).ConfigureAwait(false);
                     if (cleanMode)
                         await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
                     await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
-                    await ShowExchangeGroupsList(chatId, user, null, cancellationToken).ConfigureAwait(false);
+                    if (_groupHandler != null)
+                        await _groupHandler.ShowGroupsMenu(chatId, null, cancellationToken).ConfigureAwait(false);
+                    else
+                    {
+                        var user = await _userRepo.GetByTelegramUserIdAsync(userId, cancellationToken).ConfigureAwait(false);
+                        await ShowExchangeGroupsList(chatId, user, null, cancellationToken).ConfigureAwait(false);
+                    }
                     return true;
                 }
 

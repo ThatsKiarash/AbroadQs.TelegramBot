@@ -116,7 +116,14 @@ public sealed class ExchangeStateHandler : IUpdateHandler
             {
                 var st = await _stateStore.GetStateAsync(userId, ct).ConfigureAwait(false);
                 if (st == null || !st.StartsWith("exc_")) return false;
-                await DoCancelAsync(chatId, userId, context.CallbackMessageId, ct);
+                try { await DoCancelAsync(chatId, userId, context.CallbackMessageId, ct); }
+                catch
+                {
+                    await _stateStore.ClearStateAsync(userId, ct).ConfigureAwait(false);
+                    await _stateStore.ClearAllFlowDataAsync(userId, ct).ConfigureAwait(false);
+                    await SafeSendInline(chatId, "⚠️ خطایی رخ داد. لطفاً دوباره تلاش کنید.",
+                        new List<IReadOnlyList<InlineButton>> { new[] { new InlineButton("🏠 منوی اصلی", "stage:main_menu") } }, ct);
+                }
                 return true;
             }
 
@@ -124,7 +131,14 @@ public sealed class ExchangeStateHandler : IUpdateHandler
             {
                 var st = await _stateStore.GetStateAsync(userId, ct).ConfigureAwait(false);
                 if (st != "exc_preview") return false;
-                await DoConfirmAsync(chatId, userId, context.CallbackMessageId, ct);
+                try { await DoConfirmAsync(chatId, userId, context.CallbackMessageId, ct); }
+                catch
+                {
+                    await _stateStore.ClearStateAsync(userId, ct).ConfigureAwait(false);
+                    await _stateStore.ClearAllFlowDataAsync(userId, ct).ConfigureAwait(false);
+                    await SafeSendInline(chatId, "⚠️ خطایی در ثبت درخواست رخ داد. لطفاً دوباره تلاش کنید.",
+                        new List<IReadOnlyList<InlineButton>> { new[] { new InlineButton("🏠 منوی اصلی", "stage:main_menu") } }, ct);
+                }
                 return true;
             }
 
@@ -195,16 +209,18 @@ public sealed class ExchangeStateHandler : IUpdateHandler
         }
 
         // Buy/Sell: currency → amount → delivery → [delivery-specific] → rate → desc → preview
+        // Always compute based on chosen delivery; if not yet chosen, use bank (longest) so total doesn't jump.
+        var effectiveDelivery = string.IsNullOrEmpty(delivery) ? "bank" : delivery;
         var buySellSteps = new List<string> { "exc_currency", "exc_amount", "exc_delivery" };
-        if (delivery == "bank")
+        if (effectiveDelivery == "bank")
         {
             buySellSteps.AddRange(new[] { "exc_account", "exc_country", "exc_iban", "exc_bank_name" });
         }
-        else if (delivery == "paypal")
+        else if (effectiveDelivery == "paypal")
         {
             buySellSteps.Add("exc_paypal_email");
         }
-        else if (delivery == "cash")
+        else if (effectiveDelivery == "cash")
         {
             buySellSteps.AddRange(new[] { "exc_country", "exc_city", "exc_meeting" });
         }
@@ -1121,13 +1137,13 @@ public sealed class ExchangeStateHandler : IUpdateHandler
             var accFa = accountType == "company" ? "شرکتی" : "شخصی";
             sb.AppendLine($"🏦 حواله بانکی ({accFa})");
             if (!string.IsNullOrEmpty(country)) sb.AppendLine($"🌍 کشور: {country}");
-            if (!string.IsNullOrEmpty(iban)) sb.AppendLine($"🔢 IBAN: <code>{iban}</code>");
-            if (!string.IsNullOrEmpty(bankName)) sb.AppendLine($"🏛 بانک: {bankName}");
+            if (!string.IsNullOrEmpty(iban)) sb.AppendLine($"🔒 IBAN: <tg-spoiler>{iban}</tg-spoiler> <i>(خصوصی)</i>");
+            if (!string.IsNullOrEmpty(bankName)) sb.AppendLine($"🔒 بانک: <tg-spoiler>{bankName}</tg-spoiler> <i>(خصوصی)</i>");
         }
         else if (delivery == "paypal")
         {
             sb.AppendLine("💳 پی‌پال");
-            if (!string.IsNullOrEmpty(paypalEmail)) sb.AppendLine($"📧 ایمیل: {paypalEmail}");
+            if (!string.IsNullOrEmpty(paypalEmail)) sb.AppendLine($"🔒 ایمیل: <tg-spoiler>{paypalEmail}</tg-spoiler> <i>(خصوصی)</i>");
         }
         else if (delivery == "cash")
         {
@@ -1137,6 +1153,9 @@ public sealed class ExchangeStateHandler : IUpdateHandler
             if (!string.IsNullOrEmpty(city)) sb.AppendLine($"🏙 شهر: {city}");
             if (!string.IsNullOrEmpty(meetingPref)) sb.AppendLine($"📍 ملاقات: {meetingPref}");
         }
+        // Note about private info
+        if (!string.IsNullOrEmpty(iban) || !string.IsNullOrEmpty(paypalEmail) || !string.IsNullOrEmpty(bankName))
+            sb.AppendLine("\n🔒 <i>اطلاعات بانکی/پی‌پال فقط برای شما و ادمین قابل مشاهده است و در آگهی عمومی نمایش داده نمی‌شود.</i>");
 
         if (!string.IsNullOrEmpty(description))
             sb.AppendLine($"📝 توضیحات: {description}");
