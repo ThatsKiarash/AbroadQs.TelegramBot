@@ -33,6 +33,7 @@ public sealed class NavasanApiService
         ("aed_sell", "AED", "درهم امارات", "UAE Dirham"),
         ("inr", "INR", "روپیه هند", "Indian Rupee"),
         ("usdt", "USDT", "تتر", "Tether"),
+        ("afn", "AFN", "افغانی", "Afghan Afghani"),
     };
 
     public NavasanApiService(
@@ -132,10 +133,7 @@ public sealed class NavasanApiService
 
                     if (rate > 0)
                     {
-                        // Navasan returns Rial values, convert to Toman
-                        rate /= 10m;
-                        change /= 10m;
-
+                        // Navasan values are already in Toman — no conversion needed
                         rates.Add(new ExchangeRateDto(
                             Id: 0,
                             CurrencyCode: ourCode,

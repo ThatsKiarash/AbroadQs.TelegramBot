@@ -18,11 +18,13 @@ public sealed class ExchangeStateHandler : IUpdateHandler
 
     private const string CbConfirm = "exc_confirm";
     private const string CbCancel = "exc_cancel";
-    private const string BtnBack = "🔙 بازگشت";
-    private const string BtnCancel = "❌ انصراف";
-    private const string BtnSkipDesc = "⏭ بدون توضیحات";
+    private const string BtnBack = "بازگشت";
+    private const string BtnCancel = "انصراف";
+    private const string BtnSkipDesc = "بدون توضیحات";
+    private const string BtnMarketRate = "نرخ بازار";
+    private const string BtnCustomRate = "نرخ دلخواه";
 
-    // 6 popular currencies for reply keyboard
+    // 8 currencies for reply keyboard (including TRY and AFN)
     private static readonly (string code, string flag, string nameFa)[] Currencies =
     {
         ("USD", "🇺🇸", "دلار"),
@@ -30,7 +32,9 @@ public sealed class ExchangeStateHandler : IUpdateHandler
         ("GBP", "🇬🇧", "پوند"),
         ("CAD", "🇨🇦", "دلار کانادا"),
         ("AED", "🇦🇪", "درهم"),
-        ("USDT", "💎", "تتر"),
+        ("TRY", "🇹🇷", "لیر"),
+        ("AFN", "🇦🇫", "افغانی"),
+        ("USDT", "💲", "تتر"),
     };
 
     // 20 popular countries for reply keyboard
@@ -87,9 +91,18 @@ public sealed class ExchangeStateHandler : IUpdateHandler
             var cb = context.MessageText?.Trim() ?? "";
             await SafeAnswerCallback(context.CallbackQueryId, null, ct);
 
+            // Delete message and redirect to main menu
             if (cb.StartsWith("exc_del_msg:"))
             {
                 await SafeDelete(chatId, context.CallbackMessageId, ct);
+                await _stateStore.ClearStateAsync(userId, ct).ConfigureAwait(false);
+                await _stateStore.SetReplyStageAsync(userId, "main_menu", ct).ConfigureAwait(false);
+                // Show a small inline redirect to main menu
+                await SafeSendInline(chatId, "پیام حذف شد.",
+                    new List<IReadOnlyList<InlineButton>>
+                    {
+                        new[] { new InlineButton("بازگشت به منوی اصلی", "stage:main_menu") },
+                    }, ct);
                 return true;
             }
 
@@ -147,6 +160,7 @@ public sealed class ExchangeStateHandler : IUpdateHandler
             case "exc_country": return await HandleCountryInput(chatId, userId, text, context.IncomingMessageId, ct);
             case "exc_amount": return await HandleAmountInput(chatId, userId, text, context.IncomingMessageId, ct);
             case "exc_rate": return await HandleRateInput(chatId, userId, text, context.IncomingMessageId, ct);
+            case "exc_rate_custom": return await HandleRateCustomInput(chatId, userId, text, context.IncomingMessageId, ct);
             case "exc_desc": return await HandleDescInput(chatId, userId, text, context.IncomingMessageId, ct);
             default: return false;
         }
@@ -180,6 +194,7 @@ public sealed class ExchangeStateHandler : IUpdateHandler
                     await ShowDeliveryStep(chatId, userId, ct);
                 break;
             case "exc_rate":
+            case "exc_rate_custom":
                 await ShowAmountStep(chatId, userId, ct);
                 break;
             case "exc_desc":
@@ -212,21 +227,21 @@ public sealed class ExchangeStateHandler : IUpdateHandler
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  Step 1: Currency — Reply Keyboard, 6 currencies
+    //  Step 1: Currency — Reply Keyboard, 8 currencies
     // ═══════════════════════════════════════════════════════════════
 
     private async Task ShowCurrencyStep(long chatId, long userId, CancellationToken ct)
     {
         await _stateStore.SetStateAsync(userId, "exc_currency", ct).ConfigureAwait(false);
 
-        var msg = "💱 <b>انتخاب ارز</b>\n\nارز مورد نظر خود را انتخاب کنید:";
+        var msg = "<b>انتخاب ارز</b>\n\nارز مورد نظر خود را انتخاب کنید:";
 
         var kb = new List<IReadOnlyList<string>>();
-        // 3 per row
-        for (int i = 0; i < Currencies.Length; i += 3)
+        // 4 per row
+        for (int i = 0; i < Currencies.Length; i += 4)
         {
             var row = new List<string>();
-            for (int j = i; j < Math.Min(i + 3, Currencies.Length); j++)
+            for (int j = i; j < Math.Min(i + 4, Currencies.Length); j++)
                 row.Add($"{Currencies[j].flag} {Currencies[j].nameFa}");
             kb.Add(row);
         }
@@ -241,7 +256,7 @@ public sealed class ExchangeStateHandler : IUpdateHandler
         if (match.code == null)
         {
             await CleanUserMsg(chatId, userMsgId, ct);
-            return true; // ignore invalid input, keep keyboard
+            return true;
         }
 
         await _stateStore.SetFlowDataAsync(userId, "currency", match.code, ct).ConfigureAwait(false);
@@ -268,12 +283,12 @@ public sealed class ExchangeStateHandler : IUpdateHandler
         var flag = GetCurrencyFlag(currency);
         var currFa = GetCurrencyNameFa(currency);
 
-        var msg = $"🔄 <b>نوع معامله</b>\n\n{flag} {currFa} — خرید یا فروش؟";
+        var msg = $"<b>نوع معامله</b>\n\n{flag} {currFa} — خرید یا فروش؟";
 
         var kb = new List<IReadOnlyList<string>>
         {
-            new[] { "📥 خرید", "📤 فروش" },
-            new[] { "🔁 تبادل" },
+            new[] { "خرید", "فروش" },
+            new[] { "تبادل" },
             new[] { BtnBack, BtnCancel },
         };
 
@@ -308,12 +323,12 @@ public sealed class ExchangeStateHandler : IUpdateHandler
     {
         await _stateStore.SetStateAsync(userId, "exc_delivery", ct).ConfigureAwait(false);
 
-        var msg = "📦 <b>روش تحویل</b>\n\nنحوه تحویل ارز را انتخاب کنید:";
+        var msg = "<b>روش تحویل</b>\n\nنحوه تحویل ارز را انتخاب کنید:";
 
         var kb = new List<IReadOnlyList<string>>
         {
-            new[] { "🏦 حواله بانکی" },
-            new[] { "💳 پی‌پال", "💵 اسکناس" },
+            new[] { "حواله بانکی" },
+            new[] { "پی‌پال", "اسکناس" },
             new[] { BtnBack, BtnCancel },
         };
 
@@ -352,11 +367,11 @@ public sealed class ExchangeStateHandler : IUpdateHandler
     {
         await _stateStore.SetStateAsync(userId, "exc_account", ct).ConfigureAwait(false);
 
-        var msg = "🏛 <b>نوع حساب</b>\n\nحساب مقصد شخصی است یا شرکتی؟";
+        var msg = "<b>نوع حساب</b>\n\nحساب مقصد شخصی است یا شرکتی؟";
 
         var kb = new List<IReadOnlyList<string>>
         {
-            new[] { "👤 شخصی", "🏢 شرکتی" },
+            new[] { "شخصی", "شرکتی" },
             new[] { BtnBack, BtnCancel },
         };
 
@@ -390,10 +405,9 @@ public sealed class ExchangeStateHandler : IUpdateHandler
     {
         await _stateStore.SetStateAsync(userId, "exc_country", ct).ConfigureAwait(false);
 
-        var msg = "🌍 <b>کشور مقصد</b>\n\nحساب بانکی در کدام کشور است؟";
+        var msg = "<b>کشور مقصد</b>\n\nحساب بانکی در کدام کشور است؟";
 
         var kb = new List<IReadOnlyList<string>>();
-        // 4 per row
         for (int i = 0; i < Countries.Length; i += 4)
         {
             var row = new List<string>();
@@ -401,7 +415,7 @@ public sealed class ExchangeStateHandler : IUpdateHandler
                 row.Add($"{Countries[j].flag} {Countries[j].name}");
             kb.Add(row);
         }
-        kb.Add(new[] { "🌐 سایر" });
+        kb.Add(new[] { "سایر" });
         kb.Add(new[] { BtnBack, BtnCancel });
 
         await SafeSendReplyKb(chatId, msg, kb, ct);
@@ -411,10 +425,7 @@ public sealed class ExchangeStateHandler : IUpdateHandler
     {
         string? countryName = null;
 
-        if (text.Contains("سایر"))
-        {
-            countryName = "سایر";
-        }
+        if (text == "سایر") countryName = "سایر";
         else
         {
             var match = Countries.FirstOrDefault(c => text.Contains(c.name));
@@ -452,11 +463,11 @@ public sealed class ExchangeStateHandler : IUpdateHandler
         {
             var cachedRate = await _exchangeRepo.GetRateAsync(currency, ct).ConfigureAwait(false);
             if (cachedRate != null && cachedRate.Rate > 0)
-                rateInfo = $"\n\n💹 نرخ لحظه‌ای {flag} {currFa}: <b>{cachedRate.Rate:N0}</b> تومان";
+                rateInfo = $"\n\nنرخ لحظه‌ای {flag} {currFa}: <b>{cachedRate.Rate:N0}</b> تومان";
         }
         catch { }
 
-        var msg = $"💰 <b>مقدار ارز</b>\n\nچه مقدار {flag} {currFa} مد نظر دارید؟{rateInfo}\n\n" +
+        var msg = $"<b>مقدار ارز</b>\n\nچه مقدار {flag} {currFa} مد نظر دارید؟{rateInfo}\n\n" +
                   "یکی از مقادیر زیر را بزنید یا عدد دلخواه تایپ کنید:";
 
         var kb = new List<IReadOnlyList<string>>
@@ -475,7 +486,7 @@ public sealed class ExchangeStateHandler : IUpdateHandler
         if (!decimal.TryParse(text.Replace(",", "").Replace("٫", ""), out var amount) || amount <= 0)
         {
             await CleanUserMsg(chatId, userMsgId, ct);
-            return true; // ignore invalid, keep keyboard
+            return true;
         }
 
         await _stateStore.SetFlowDataAsync(userId, "amount", amount.ToString("F0"), ct).ConfigureAwait(false);
@@ -486,7 +497,7 @@ public sealed class ExchangeStateHandler : IUpdateHandler
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  Step 6: Rate — Show market rate + ±10% range, enforce limits
+    //  Step 6: Rate — 2 buttons: market rate / custom rate
     // ═══════════════════════════════════════════════════════════════
 
     private async Task ShowRateStep(long chatId, long userId, CancellationToken ct)
@@ -498,40 +509,109 @@ public sealed class ExchangeStateHandler : IUpdateHandler
         var amountStr = await _stateStore.GetFlowDataAsync(userId, "amount", ct).ConfigureAwait(false) ?? "0";
         decimal.TryParse(amountStr, out var amount);
 
-        var msg = $"💲 <b>نرخ پیشنهادی</b>\n\nنرخ مورد نظر خود را (تومان) برای هر واحد {flag} {currFa} وارد کنید:";
-        var replyKb = new List<IReadOnlyList<string>>();
+        var msg = $"<b>نرخ پیشنهادی</b>\n\nنرخ مورد نظر خود را برای هر واحد {flag} {currFa} انتخاب کنید:";
+        decimal marketRate = 0;
 
         try
         {
             var cachedRate = await _exchangeRepo.GetRateAsync(currency, ct).ConfigureAwait(false);
             if (cachedRate != null && cachedRate.Rate > 0)
             {
-                var market = cachedRate.Rate;
-                var min10 = Math.Round(market * 0.90m, 0);
-                var max10 = Math.Round(market * 1.10m, 0);
-                var total = amount * market;
+                marketRate = cachedRate.Rate;
+                var min10 = Math.Round(marketRate * 0.90m, 0);
+                var max10 = Math.Round(marketRate * 1.10m, 0);
+                var total = amount * marketRate;
 
-                msg = $"💲 <b>نرخ پیشنهادی</b>\n\n" +
-                      $"💹 نرخ بازار: <b>{market:N0}</b> تومان\n" +
-                      $"📉 ۱۰٪ پایین‌تر: <b>{min10:N0}</b> تومان\n" +
-                      $"📈 ۱۰٪ بالاتر: <b>{max10:N0}</b> تومان\n\n" +
-                      $"📊 {amount:N0} {flag} × {market:N0} = <b>{total:N0}</b> تومان\n\n" +
-                      $"نرخ پیشنهادی خود را تایپ کنید (بین {min10:N0} تا {max10:N0}):";
+                msg = $"<b>نرخ پیشنهادی</b>\n\n" +
+                      $"نرخ بازار {flag} {currFa}: <b>{marketRate:N0}</b> تومان\n" +
+                      $"محدوده مجاز: {min10:N0} تا {max10:N0} تومان\n\n" +
+                      $"{amount:N0} {flag} x {marketRate:N0} = <b>{total:N0}</b> تومان\n\n" +
+                      "نرخ بازار را انتخاب کنید یا نرخ دلخواه وارد کنید:";
 
-                // Quick rate buttons
-                var r95 = Math.Round(market * 0.95m, 0);
-                var r105 = Math.Round(market * 1.05m, 0);
-                replyKb.Add(new[] { $"{min10:N0}", $"{r95:N0}", $"{market:N0}" });
-                replyKb.Add(new[] { $"{r105:N0}", $"{max10:N0}" });
+                // Store market rate for quick use
+                await _stateStore.SetFlowDataAsync(userId, "market_rate", marketRate.ToString("F0"), ct).ConfigureAwait(false);
             }
         }
         catch { }
 
-        replyKb.Add(new[] { BtnBack, BtnCancel });
-        await SafeSendReplyKb(chatId, msg, replyKb, ct);
+        var kb = new List<IReadOnlyList<string>>
+        {
+            new[] { BtnMarketRate, BtnCustomRate },
+            new[] { BtnBack, BtnCancel },
+        };
+
+        await SafeSendReplyKb(chatId, msg, kb, ct);
     }
 
     private async Task<bool> HandleRateInput(long chatId, long userId, string text, int? userMsgId, CancellationToken ct)
+    {
+        // User chose "market rate"
+        if (text == BtnMarketRate)
+        {
+            var mktStr = await _stateStore.GetFlowDataAsync(userId, "market_rate", ct).ConfigureAwait(false) ?? "";
+            if (decimal.TryParse(mktStr, out var mktRate) && mktRate > 0)
+            {
+                await _stateStore.SetFlowDataAsync(userId, "rate", mktRate.ToString("F0"), ct).ConfigureAwait(false);
+                await CleanUserMsg(chatId, userMsgId, ct);
+                await DeletePrevBotMsg(chatId, userId, ct);
+                await ShowDescStep(chatId, userId, ct);
+                return true;
+            }
+            // No market rate available — fallback to custom
+        }
+
+        // User chose "custom rate" — show input prompt
+        if (text == BtnCustomRate)
+        {
+            await CleanUserMsg(chatId, userMsgId, ct);
+            await DeletePrevBotMsg(chatId, userId, ct);
+            await ShowCustomRateInput(chatId, userId, ct);
+            return true;
+        }
+
+        // If they typed a number directly, treat as custom rate
+        if (decimal.TryParse(text.Replace(",", "").Replace("٫", ""), out var directRate) && directRate > 0)
+        {
+            return await ValidateAndSaveRate(chatId, userId, directRate, userMsgId, ct);
+        }
+
+        await CleanUserMsg(chatId, userMsgId, ct);
+        return true;
+    }
+
+    private async Task ShowCustomRateInput(long chatId, long userId, CancellationToken ct)
+    {
+        await _stateStore.SetStateAsync(userId, "exc_rate_custom", ct).ConfigureAwait(false);
+        var currency = await _stateStore.GetFlowDataAsync(userId, "currency", ct).ConfigureAwait(false) ?? "";
+        var flag = GetCurrencyFlag(currency);
+        var currFa = GetCurrencyNameFa(currency);
+
+        var msg = $"<b>وارد کردن نرخ دلخواه</b>\n\nنرخ پیشنهادی خود را (تومان) برای هر واحد {flag} {currFa} تایپ کنید:";
+
+        try
+        {
+            var cachedRate = await _exchangeRepo.GetRateAsync(currency, ct).ConfigureAwait(false);
+            if (cachedRate != null && cachedRate.Rate > 0)
+            {
+                var min10 = Math.Round(cachedRate.Rate * 0.90m, 0);
+                var max10 = Math.Round(cachedRate.Rate * 1.10m, 0);
+                msg = $"<b>وارد کردن نرخ دلخواه</b>\n\n" +
+                      $"نرخ بازار: <b>{cachedRate.Rate:N0}</b> تومان\n" +
+                      $"محدوده مجاز: <b>{min10:N0}</b> تا <b>{max10:N0}</b> تومان\n\n" +
+                      "نرخ مورد نظر خود را تایپ کنید:";
+            }
+        }
+        catch { }
+
+        var kb = new List<IReadOnlyList<string>>
+        {
+            new[] { BtnBack, BtnCancel },
+        };
+
+        await SafeSendReplyKb(chatId, msg, kb, ct);
+    }
+
+    private async Task<bool> HandleRateCustomInput(long chatId, long userId, string text, int? userMsgId, CancellationToken ct)
     {
         if (!decimal.TryParse(text.Replace(",", "").Replace("٫", ""), out var rate) || rate <= 0)
         {
@@ -539,7 +619,11 @@ public sealed class ExchangeStateHandler : IUpdateHandler
             return true;
         }
 
-        // Validate ±10% range
+        return await ValidateAndSaveRate(chatId, userId, rate, userMsgId, ct);
+    }
+
+    private async Task<bool> ValidateAndSaveRate(long chatId, long userId, decimal rate, int? userMsgId, CancellationToken ct)
+    {
         var currency = await _stateStore.GetFlowDataAsync(userId, "currency", ct).ConfigureAwait(false) ?? "";
         try
         {
@@ -554,16 +638,17 @@ public sealed class ExchangeStateHandler : IUpdateHandler
                     await CleanUserMsg(chatId, userMsgId, ct);
                     await DeletePrevBotMsg(chatId, userId, ct);
 
-                    var errMsg = $"⚠️ <b>نرخ خارج از محدوده مجاز</b>\n\n" +
+                    var errMsg = $"<b>نرخ خارج از محدوده مجاز</b>\n\n" +
                                  $"نرخ شما: <b>{rate:N0}</b> تومان\n" +
                                  $"محدوده مجاز: <b>{min10:N0}</b> تا <b>{max10:N0}</b> تومان\n\n" +
-                                 "لطفاً نرخی در محدوده مجاز وارد کنید:";
+                                 "لطفا نرخی در محدوده مجاز وارد کنید:";
 
                     var kb = new List<IReadOnlyList<string>>
                     {
-                        new[] { $"{min10:N0}", $"{Math.Round(cachedRate.Rate, 0):N0}", $"{max10:N0}" },
                         new[] { BtnBack, BtnCancel },
                     };
+                    // Stay in custom rate state
+                    await _stateStore.SetStateAsync(userId, "exc_rate_custom", ct).ConfigureAwait(false);
                     await SafeSendReplyKb(chatId, errMsg, kb, ct);
                     return true;
                 }
@@ -586,9 +671,8 @@ public sealed class ExchangeStateHandler : IUpdateHandler
     {
         await _stateStore.SetStateAsync(userId, "exc_desc", ct).ConfigureAwait(false);
 
-        var msg = "✍️ <b>توضیحات (اختیاری)</b>\n\n" +
-                  "توضیحات اضافی خود را تایپ کنید یا رد کنید.\n" +
-                  "<i>مثال: فوری نیاز دارم، قابل مذاکره، ...</i>";
+        var msg = "<b>توضیحات (اختیاری)</b>\n\n" +
+                  "توضیحات اضافی خود را تایپ کنید یا رد کنید.";
 
         var kb = new List<IReadOnlyList<string>>
         {
@@ -616,8 +700,6 @@ public sealed class ExchangeStateHandler : IUpdateHandler
     private async Task ShowPreviewStep(long chatId, long userId, CancellationToken ct)
     {
         await _stateStore.SetStateAsync(userId, "exc_preview", ct).ConfigureAwait(false);
-
-        // Remove reply keyboard before showing inline
         await RemoveReplyKbSilent(chatId, ct);
 
         var currency = await _stateStore.GetFlowDataAsync(userId, "currency", ct).ConfigureAwait(false) ?? "";
@@ -628,13 +710,11 @@ public sealed class ExchangeStateHandler : IUpdateHandler
         var amountStr = await _stateStore.GetFlowDataAsync(userId, "amount", ct).ConfigureAwait(false) ?? "0";
         var rateStr = await _stateStore.GetFlowDataAsync(userId, "rate", ct).ConfigureAwait(false) ?? "0";
         var description = await _stateStore.GetFlowDataAsync(userId, "description", ct).ConfigureAwait(false);
-        var displayName = await _stateStore.GetFlowDataAsync(userId, "display_name", ct).ConfigureAwait(false)
-            ?? $"User_{userId}";
+        var displayName = await _stateStore.GetFlowDataAsync(userId, "display_name", ct).ConfigureAwait(false) ?? $"User_{userId}";
 
         decimal.TryParse(amountStr, out var amount);
         decimal.TryParse(rateStr, out var rate);
 
-        // Fee
         decimal feePercent = 0;
         try
         {
@@ -662,14 +742,13 @@ public sealed class ExchangeStateHandler : IUpdateHandler
         var deliveryFa = delivery switch
         {
             "bank" => accountType == "company"
-                ? $"🏢 حواله بانکی شرکتی{(country != null ? $" — {country}" : "")}"
-                : $"👤 حواله بانکی شخصی{(country != null ? $" — {country}" : "")}",
-            "paypal" => "💳 پی‌پال",
-            "cash" => "💵 اسکناس",
+                ? $"حواله بانکی شرکتی{(country != null ? $" — {country}" : "")}"
+                : $"حواله بانکی شخصی{(country != null ? $" — {country}" : "")}",
+            "paypal" => "پی‌پال",
+            "cash" => "اسکناس",
             _ => delivery
         };
 
-        // Market comparison
         var marketComp = "";
         try
         {
@@ -684,25 +763,25 @@ public sealed class ExchangeStateHandler : IUpdateHandler
         }
         catch { }
 
-        var preview = $"📋 <b>پیش‌نمایش درخواست {txFa}</b>\n" +
+        var preview = $"<b>پیش‌نمایش درخواست {txFa}</b>\n" +
                       "━━━━━━━━━━━━━━━━━━━\n\n" +
-                      $"👤 {displayName}\n" +
-                      $"🪙 {flag} <b>{amount:N0}</b> {currFa}\n" +
-                      $"💲 نرخ: <b>{rate:N0}</b> تومان{marketComp}\n" +
-                      $"📦 {deliveryFa}\n" +
-                      (!string.IsNullOrEmpty(description) ? $"✍ {description}\n" : "") +
+                      $"{displayName}\n" +
+                      $"{flag} <b>{amount:N0}</b> {currFa}\n" +
+                      $"نرخ: <b>{rate:N0}</b> تومان{marketComp}\n" +
+                      $"تحویل: {deliveryFa}\n" +
+                      (!string.IsNullOrEmpty(description) ? $"توضیحات: {description}\n" : "") +
                       "\n━━━━━━━━━━━━━━━━━━━\n" +
-                      $"💰 {amount:N0} × {rate:N0} = {subtotal:N0} تومان\n" +
+                      $"{amount:N0} x {rate:N0} = {subtotal:N0} تومان\n" +
                       (feePercent > 0
-                          ? $"🏷 کارمزد ({feePercent:F1}%): {(txType == "buy" ? "+" : "-")}{feeAmount:N0} تومان\n"
+                          ? $"کارمزد ({feePercent:F1}%): {(txType == "buy" ? "+" : "-")}{feeAmount:N0} تومان\n"
                           : "") +
-                      $"💵 <b>مبلغ نهایی: {totalAmount:N0} تومان</b>\n\n" +
-                      "⚠️ <i>با تأیید، درخواست جهت بررسی ارسال می‌شود.</i>";
+                      $"<b>مبلغ نهایی: {totalAmount:N0} تومان</b>\n\n" +
+                      "<i>با تایید، درخواست جهت بررسی ارسال می‌شود.</i>";
 
         var inlineKb = new List<IReadOnlyList<InlineButton>>
         {
-            new[] { new InlineButton("✅ تأیید و ارسال", CbConfirm) },
-            new[] { new InlineButton("❌ انصراف", CbCancel) },
+            new[] { new InlineButton("تایید و ارسال", CbConfirm) },
+            new[] { new InlineButton("انصراف", CbCancel) },
         };
 
         await SafeSendInline(chatId, preview, inlineKb, ct);
@@ -746,7 +825,6 @@ public sealed class ExchangeStateHandler : IUpdateHandler
 
         await _exchangeRepo.CreateRequestAsync(dto, ct).ConfigureAwait(false);
 
-        // Clean up state
         await _stateStore.ClearStateAsync(userId, ct).ConfigureAwait(false);
         await _stateStore.ClearAllFlowDataAsync(userId, ct).ConfigureAwait(false);
         await SafeDelete(chatId, triggerMsgId, ct);
@@ -754,16 +832,16 @@ public sealed class ExchangeStateHandler : IUpdateHandler
         var flag = GetCurrencyFlag(currency);
         var currFa = GetCurrencyNameFa(currency);
 
-        var msg = $"✅ <b>درخواست ثبت شد!</b>\n\n" +
-                  $"📌 شماره: <b>#{requestNumber}</b>\n" +
-                  $"🪙 {flag} {amount:N0} {currFa} — {rate:N0} تومان\n" +
-                  $"💵 مبلغ نهایی: <b>{totalAmount:N0}</b> تومان\n\n" +
-                  "⏳ در انتظار بررسی ادمین — نتیجه اطلاع داده می‌شود.";
+        var msg = $"<b>درخواست ثبت شد</b>\n\n" +
+                  $"شماره: #{requestNumber}\n" +
+                  $"{flag} {amount:N0} {currFa} — {rate:N0} تومان\n" +
+                  $"مبلغ نهایی: <b>{totalAmount:N0}</b> تومان\n\n" +
+                  "در انتظار بررسی — نتیجه اطلاع داده می‌شود.";
 
         var kb = new List<IReadOnlyList<InlineButton>>
         {
-            new[] { new InlineButton("🗑 پاک کردن پیام", "exc_del_msg:0") },
-            new[] { new InlineButton("🔙 منوی اصلی", "stage:main_menu") },
+            new[] { new InlineButton("حذف پیام", "exc_del_msg:0") },
+            new[] { new InlineButton("بازگشت به منوی اصلی", "stage:main_menu") },
         };
 
         await SafeSendInline(chatId, msg, kb, ct);
@@ -780,12 +858,11 @@ public sealed class ExchangeStateHandler : IUpdateHandler
         await SafeDelete(chatId, triggerMsgId, ct);
         await RemoveReplyKbSilent(chatId, ct);
 
-        await SafeSendInline(chatId,
-            "❌ درخواست لغو شد.",
+        await SafeSendInline(chatId, "درخواست لغو شد.",
             new List<IReadOnlyList<InlineButton>>
             {
-                new[] { new InlineButton("🗑 پاک کردن", "exc_del_msg:0") },
-                new[] { new InlineButton("🔙 منوی اصلی", "stage:main_menu") },
+                new[] { new InlineButton("حذف پیام", "exc_del_msg:0") },
+                new[] { new InlineButton("بازگشت به منوی اصلی", "stage:main_menu") },
             }, ct);
     }
 
@@ -795,7 +872,7 @@ public sealed class ExchangeStateHandler : IUpdateHandler
 
     public static List<IReadOnlyList<InlineButton>> NotificationButtons(bool isFa, int? channelMsgId = null) => new()
     {
-        new[] { new InlineButton(isFa ? "🗑 پاک کردن پیام" : "🗑 Delete", "exc_del_msg:0") },
+        new[] { new InlineButton(isFa ? "حذف پیام" : "Delete", "exc_del_msg:0") },
     };
 
     // ═══════════════════════════════════════════════════════════════
@@ -846,7 +923,7 @@ public sealed class ExchangeStateHandler : IUpdateHandler
         "USD" => "🇺🇸", "EUR" => "🇪🇺", "GBP" => "🇬🇧", "CAD" => "🇨🇦",
         "SEK" => "🇸🇪", "CHF" => "🇨🇭", "TRY" => "🇹🇷", "NOK" => "🇳🇴",
         "AUD" => "🇦🇺", "DKK" => "🇩🇰", "AED" => "🇦🇪", "INR" => "🇮🇳",
-        "USDT" => "💎", _ => "💱"
+        "AFN" => "🇦🇫", "USDT" => "💲", _ => ""
     };
 
     public static string GetCurrencyNameFa(string code) => code.ToUpperInvariant() switch
@@ -855,7 +932,7 @@ public sealed class ExchangeStateHandler : IUpdateHandler
         "CAD" => "دلار کانادا", "SEK" => "کرون سوئد", "CHF" => "فرانک سوییس",
         "TRY" => "لیر ترکیه", "NOK" => "کرون نروژ", "AUD" => "دلار استرالیا",
         "DKK" => "کرون دانمارک", "AED" => "درهم امارات", "INR" => "روپیه هند",
-        "USDT" => "تتر", _ => code
+        "AFN" => "افغانی", "USDT" => "تتر", _ => code
     };
 
     internal static string GetCurrencyNameEn(string code) => code.ToUpperInvariant() switch
@@ -864,7 +941,7 @@ public sealed class ExchangeStateHandler : IUpdateHandler
         "CAD" => "Canadian Dollar", "SEK" => "Swedish Krona", "CHF" => "Swiss Franc",
         "TRY" => "Turkish Lira", "NOK" => "Norwegian Krone", "AUD" => "Australian Dollar",
         "DKK" => "Danish Krone", "AED" => "UAE Dirham", "INR" => "Indian Rupee",
-        "USDT" => "Tether", _ => code
+        "AFN" => "Afghan Afghani", "USDT" => "Tether", _ => code
     };
 
     private static string GetCountryName(string code) => code switch
