@@ -97,10 +97,17 @@ public sealed class NavasanApiService
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-            var data = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json);
 
-            if (data == null)
-                return (false, "Invalid response from Navasan API.");
+            // Use JsonDocument for safer parsing — avoids type mismatch issues
+            using var doc = JsonDocument.Parse(json, new JsonDocumentOptions
+            {
+                AllowTrailingCommas = true,
+                CommentHandling = JsonCommentHandling.Skip
+            });
+
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+                return (false, "Invalid response from Navasan API (expected JSON object).");
 
             // Increment usage counter
             used++;
@@ -109,22 +116,19 @@ public sealed class NavasanApiService
             var rates = new List<ExchangeRateDto>();
             foreach (var (navasanCode, ourCode, nameFa, nameEn) in CurrencyMap)
             {
-                if (data.TryGetValue(navasanCode, out var item))
+                try
                 {
+                    if (!root.TryGetProperty(navasanCode, out var item)) continue;
+                    if (item.ValueKind != JsonValueKind.Object) continue;
+
                     decimal rate = 0;
                     decimal change = 0;
 
                     if (item.TryGetProperty("value", out var valueProp))
-                    {
-                        var valueStr = valueProp.GetString() ?? valueProp.ToString();
-                        decimal.TryParse(valueStr, out rate);
-                    }
+                        rate = SafeParseDecimal(valueProp);
 
                     if (item.TryGetProperty("change", out var changeProp))
-                    {
-                        var changeStr = changeProp.GetString() ?? changeProp.ToString();
-                        decimal.TryParse(changeStr, out change);
-                    }
+                        change = SafeParseDecimal(changeProp);
 
                     if (rate > 0)
                     {
@@ -143,6 +147,10 @@ public sealed class NavasanApiService
                             LastUpdatedAt: DateTimeOffset.UtcNow));
                     }
                 }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to parse rate for {Code}", navasanCode);
+                }
             }
 
             await _exchangeRepo.SaveRatesAsync(rates, ct).ConfigureAwait(false);
@@ -154,6 +162,50 @@ public sealed class NavasanApiService
         {
             _logger.LogWarning(ex, "Navasan API fetch failed");
             return (false, $"API error: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Safely parse a JsonElement that may be String, Number, or other.
+    /// Uses GetRawText() as the primary approach to avoid type mismatch exceptions.
+    /// </summary>
+    private static decimal SafeParseDecimal(JsonElement el)
+    {
+        try
+        {
+            // For numbers, use TryGetDecimal first (most reliable for Number kind)
+            if (el.ValueKind == JsonValueKind.Number)
+            {
+                if (el.TryGetDecimal(out var d)) return d;
+                // Fallback for extreme precision floats
+                if (el.TryGetDouble(out var dbl)) return (decimal)dbl;
+                return 0;
+            }
+
+            // For strings, extract and parse
+            if (el.ValueKind == JsonValueKind.String)
+            {
+                var s = el.GetString();
+                if (string.IsNullOrWhiteSpace(s)) return 0;
+                return decimal.TryParse(s, System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 0;
+            }
+
+            // For any other type, use raw text
+            var raw = el.GetRawText().Trim('"', ' ');
+            return decimal.TryParse(raw, System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out var fallback) ? fallback : 0;
+        }
+        catch
+        {
+            // Ultimate fallback — never crash
+            try
+            {
+                var raw = el.GetRawText().Trim('"', ' ');
+                return decimal.TryParse(raw, System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 0;
+            }
+            catch { return 0; }
         }
     }
 }

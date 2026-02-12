@@ -118,6 +118,7 @@ if (!string.IsNullOrWhiteSpace(connStr))
     builder.Services.AddScoped<IPermissionRepository, PermissionRepository>();
     builder.Services.AddScoped<IExchangeRepository, ExchangeRepository>();
     builder.Services.AddScoped<NavasanApiService>();
+    builder.Services.AddHostedService<RateAutoRefreshService>();
 }
 else
 {
@@ -1112,14 +1113,27 @@ app.MapPost("/api/exchange/requests/{id:int}/approve", async (int id, HttpContex
 
         await repo.UpdateStatusAsync(id, "approved", null, channelMsgId, ctx.RequestAborted).ConfigureAwait(false);
 
-        // Notify user
+        // Notify user with clean-chat delete button
         if (botClient != null && botClient is not PlaceholderTelegramBotClient)
         {
             try
             {
-                await botClient.SendMessage(req.TelegramUserId,
-                    $"✅ درخواست شماره <b>#{req.RequestNumber}</b> تایید و در کانال منتشر شد.",
-                    parseMode: Telegram.Bot.Types.Enums.ParseMode.Html).ConfigureAwait(false);
+                var currFaShort = AbroadQs.Bot.Modules.Common.ExchangeStateHandler.GetCurrencyNameFa(req.Currency);
+                var flag = AbroadQs.Bot.Modules.Common.ExchangeStateHandler.GetCurrencyFlag(req.Currency);
+                var approveMsg = $"✅ <b>درخواست #{req.RequestNumber} تأیید شد!</b>\n\n" +
+                    $"{flag} {req.Amount:N0} {currFaShort} — {req.ProposedRate:N0} تومان\n" +
+                    $"💵 مبلغ نهایی: <b>{req.TotalAmount:N0}</b> تومان\n\n" +
+                    "📢 آگهی شما در کانال منتشر شد.";
+
+                var approveKb = new Telegram.Bot.Types.ReplyMarkups.InlineKeyboardMarkup(new[]
+                {
+                    new[] { Telegram.Bot.Types.ReplyMarkups.InlineKeyboardButton.WithCallbackData("🗑 پاک کردن پیام", "exc_del_msg:0") },
+                    new[] { Telegram.Bot.Types.ReplyMarkups.InlineKeyboardButton.WithCallbackData("🔙 منوی اصلی", "stage:main_menu") },
+                });
+
+                await botClient.SendMessage(req.TelegramUserId, approveMsg,
+                    parseMode: Telegram.Bot.Types.Enums.ParseMode.Html,
+                    replyMarkup: approveKb).ConfigureAwait(false);
             }
             catch { }
         }
@@ -1144,15 +1158,24 @@ app.MapPost("/api/exchange/requests/{id:int}/reject", async (int id, HttpContext
 
         await repo.UpdateStatusAsync(id, "rejected", body?.Note, null, ctx.RequestAborted).ConfigureAwait(false);
 
-        // Notify user
+        // Notify user with clean-chat delete button
         if (botClient != null && botClient is not PlaceholderTelegramBotClient)
         {
             try
             {
-                var note = !string.IsNullOrEmpty(body?.Note) ? $"\nدلیل: {body.Note}" : "";
-                await botClient.SendMessage(req.TelegramUserId,
-                    $"❌ درخواست شماره <b>#{req.RequestNumber}</b> رد شد.{note}",
-                    parseMode: Telegram.Bot.Types.Enums.ParseMode.Html).ConfigureAwait(false);
+                var note = !string.IsNullOrEmpty(body?.Note) ? $"\n\n📝 دلیل: {body.Note}" : "";
+                var rejectMsg = $"❌ <b>درخواست #{req.RequestNumber} رد شد.</b>{note}\n\n" +
+                    "<i>در صورت نیاز می‌توانید درخواست جدیدی ثبت کنید.</i>";
+
+                var rejectKb = new Telegram.Bot.Types.ReplyMarkups.InlineKeyboardMarkup(new[]
+                {
+                    new[] { Telegram.Bot.Types.ReplyMarkups.InlineKeyboardButton.WithCallbackData("🗑 پاک کردن پیام", "exc_del_msg:0") },
+                    new[] { Telegram.Bot.Types.ReplyMarkups.InlineKeyboardButton.WithCallbackData("🔙 منوی اصلی", "stage:main_menu") },
+                });
+
+                await botClient.SendMessage(req.TelegramUserId, rejectMsg,
+                    parseMode: Telegram.Bot.Types.Enums.ParseMode.Html,
+                    replyMarkup: rejectKb).ConfigureAwait(false);
             }
             catch { }
         }

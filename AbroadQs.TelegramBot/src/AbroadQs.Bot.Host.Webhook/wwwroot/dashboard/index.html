@@ -1757,6 +1757,24 @@
         };
 
         window.rejectExcReq = async function(id) {
+            // Fully dispose Bootstrap modal to release focus trap before SweetAlert opens
+            var bsModalEl = document.getElementById('excReqDetailModal');
+            var bsModal = bootstrap.Modal.getInstance(bsModalEl);
+            if (bsModal) {
+                bsModal.hide();
+                // Wait for the hidden.bs.modal event to ensure focus trap is fully released
+                await new Promise(function(resolve) {
+                    var handler = function() {
+                        bsModalEl.removeEventListener('hidden.bs.modal', handler);
+                        resolve();
+                    };
+                    bsModalEl.addEventListener('hidden.bs.modal', handler);
+                    // Safety timeout in case the event doesn't fire
+                    setTimeout(resolve, 600);
+                });
+                bsModal.dispose();
+            }
+
             const { value: note } = await Swal.fire({
                 title: 'Reject Request',
                 input: 'textarea',
@@ -1764,7 +1782,12 @@
                 inputPlaceholder: 'Enter reason...',
                 showCancelButton: true,
                 confirmButtonText: 'Reject',
-                confirmButtonColor: '#dc3545'
+                confirmButtonColor: '#dc3545',
+                didOpen: function() {
+                    // Force focus into the SweetAlert textarea
+                    var ta = document.querySelector('.swal2-textarea');
+                    if (ta) setTimeout(function() { ta.focus(); }, 100);
+                }
             });
             if (note === undefined) return; // cancelled
             try {
@@ -1777,7 +1800,6 @@
                 if (!r.ok) throw new Error(data.detail || data.error || 'Error');
                 Swal.fire({ icon: 'info', title: 'Rejected', text: 'User has been notified.', timer: 2500 });
                 loadExchangeRequests();
-                try { bootstrap.Modal.getInstance(document.getElementById('excReqDetailModal'))?.hide(); } catch(_){}
             } catch(e) {
                 Swal.fire({ icon: 'error', title: 'Error', text: e.message });
             }
