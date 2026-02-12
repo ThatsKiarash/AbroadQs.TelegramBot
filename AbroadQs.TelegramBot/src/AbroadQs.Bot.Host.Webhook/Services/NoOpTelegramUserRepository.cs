@@ -45,4 +45,16 @@ public sealed class NoOpTelegramUserRepository : ITelegramUserRepository
 
     public Task SetKycStatusAsync(long telegramUserId, string status, string? rejectionData = null, CancellationToken cancellationToken = default)
         => Task.CompletedTask;
+
+    public Task SetBioAsync(long telegramUserId, string? bio, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task SetGitHubUrlAsync(long telegramUserId, string? url, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task SetLinkedInUrlAsync(long telegramUserId, string? url, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task SetInstagramUrlAsync(long telegramUserId, string? url, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
 }

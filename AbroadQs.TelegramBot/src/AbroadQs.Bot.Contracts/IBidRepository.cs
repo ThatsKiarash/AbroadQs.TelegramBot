@@ -8,6 +8,8 @@ public interface IBidRepository
     Task<int> GetBidCountForRequestAsync(int exchangeRequestId, CancellationToken ct = default);
     Task UpdateBidStatusAsync(int id, string status, CancellationToken ct = default);
     Task SetChannelReplyMessageIdAsync(int id, int channelReplyMessageId, CancellationToken ct = default);
+    /// <summary>Phase 4: List bids placed by a specific user (for My Proposals).</summary>
+    Task<IReadOnlyList<AdBidDto>> ListBidsByUserAsync(long userId, int page = 0, int pageSize = 10, CancellationToken ct = default);
 }
 
 public sealed record AdBidDto(

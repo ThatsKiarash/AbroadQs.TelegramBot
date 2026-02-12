@@ -24,6 +24,9 @@
                 <a href="#" class="nav-link" data-page="stages">Bot Stages</a>
                 <a href="#" class="nav-link" data-page="permissions">Permissions</a>
                 <a href="#" class="nav-link" data-page="channel-settings">Channel Settings</a>
+                <a href="#" class="nav-link" data-page="tickets">Tickets</a>
+                <a href="#" class="nav-link" data-page="projects">Projects</a>
+                <a href="#" class="nav-link" data-page="questions">Questions</a>
             </nav>
         </aside>
         <div class="sidebar-backdrop" id="sidebarBackdrop" aria-hidden="true"></div>
@@ -384,6 +387,41 @@
                     </div></div>
                 </section>
 
+                <!-- ===== PAGE: Tickets ===== -->
+                <section class="dashboard-section page-section" id="page-tickets" style="display:none;">
+                    <h1 class="h4 mb-3">Support Tickets</h1>
+                    <div class="mb-3 d-flex gap-2">
+                        <select id="ticketStatusFilter" class="form-select" style="max-width:200px"><option value="">All</option><option value="open">Open</option><option value="in_progress">In Progress</option><option value="closed">Closed</option></select>
+                        <button class="btn btn-primary btn-sm" onclick="loadTickets()">Filter</button>
+                    </div>
+                    <div class="table-responsive"><table class="table table-sm table-hover"><thead><tr><th>#</th><th>User</th><th>Subject</th><th>Category</th><th>Priority</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody id="ticketsBody"><tr><td colspan="8" class="text-muted text-center">Click filter to load</td></tr></tbody></table></div>
+                    <div id="ticketDetailPanel" style="display:none;" class="mt-4">
+                        <h5 id="ticketDetailTitle">Ticket #</h5>
+                        <div id="ticketMessages" class="border rounded p-3 mb-3" style="max-height:400px;overflow-y:auto;"></div>
+                        <div class="input-group"><textarea id="ticketReplyText" class="form-control" rows="2" placeholder="Reply..."></textarea><button class="btn btn-primary" onclick="replyTicket()">Send</button><button class="btn btn-outline-danger" onclick="closeTicket()">Close</button></div>
+                    </div>
+                </section>
+
+                <!-- ===== PAGE: Projects ===== -->
+                <section class="dashboard-section page-section" id="page-projects" style="display:none;">
+                    <h1 class="h4 mb-3">Student Projects</h1>
+                    <div class="mb-3 d-flex gap-2">
+                        <select id="projectStatusFilter" class="form-select" style="max-width:200px"><option value="">All</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="completed">Completed</option></select>
+                        <button class="btn btn-primary btn-sm" onclick="loadProjects()">Filter</button>
+                    </div>
+                    <div class="table-responsive"><table class="table table-sm table-hover"><thead><tr><th>#</th><th>User</th><th>Title</th><th>Category</th><th>Budget</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody id="projectsBody"><tr><td colspan="8" class="text-muted text-center">Click filter to load</td></tr></tbody></table></div>
+                </section>
+
+                <!-- ===== PAGE: Questions ===== -->
+                <section class="dashboard-section page-section" id="page-questions" style="display:none;">
+                    <h1 class="h4 mb-3">International Questions</h1>
+                    <div class="mb-3 d-flex gap-2">
+                        <select id="questionStatusFilter" class="form-select" style="max-width:200px"><option value="">All</option><option value="open">Open</option><option value="answered">Answered</option><option value="closed">Closed</option></select>
+                        <button class="btn btn-primary btn-sm" onclick="loadQuestions()">Filter</button>
+                    </div>
+                    <div class="table-responsive"><table class="table table-sm table-hover"><thead><tr><th>#</th><th>User</th><th>Title</th><th>Category</th><th>Bounty</th><th>Status</th><th>Created</th></tr></thead><tbody id="questionsBody"><tr><td colspan="7" class="text-muted text-center">Click filter to load</td></tr></tbody></table></div>
+                </section>
+
             </main>
         </div>
     </div>
@@ -621,6 +659,22 @@
     async function loadUserPerms(){if(!currentPermUserId)return;try{const r=await fetch(base+'/api/users/'+currentPermUserId+'/permissions');const perms=await r.json();document.getElementById('userPermsBody').innerHTML=perms.map(p=>`<tr><td><code>${p.permissionKey}</code></td><td>${new Date(p.grantedAt).toLocaleString()}</td><td><button class="btn btn-sm btn-outline-danger" onclick="revokeUserPerm('${p.permissionKey}')">Revoke</button></td></tr>`).join('');}catch(e){console.error(e);}}
     document.getElementById('btnGrantPerm').addEventListener('click',async()=>{if(!currentPermUserId)return;const key=document.getElementById('grantPermKey').value.trim();if(!key)return;await fetch(base+'/api/users/'+currentPermUserId+'/permissions/'+key,{method:'POST'});document.getElementById('grantPermKey').value='';loadUserPerms();});
     async function revokeUserPerm(key){if(!currentPermUserId)return;await fetch(base+'/api/users/'+currentPermUserId+'/permissions/'+key,{method:'DELETE'});loadUserPerms();}
+
+    // ===== Tickets =====
+    let currentTicketId=null;
+    async function loadTickets(){try{const st=document.getElementById('ticketStatusFilter').value;const r=await fetch(base+'/api/tickets?status='+st+'&page=0');const d=await r.json();if(!d.tickets){document.getElementById('ticketsBody').innerHTML='<tr><td colspan="8" class="text-muted text-center">Error loading</td></tr>';return;}document.getElementById('ticketsBody').innerHTML=d.tickets.map(t=>`<tr><td>${t.id}</td><td>${t.telegramUserId}</td><td>${esc(t.subject||'')}</td><td>${esc(t.category||'')}</td><td>${esc(t.priority||'')}</td><td><span class="badge bg-${t.status==='open'?'warning':t.status==='in_progress'?'info':'secondary'}">${t.status}</span></td><td>${new Date(t.createdAt).toLocaleDateString()}</td><td><button class="btn btn-sm btn-outline-primary" onclick="viewTicket(${t.id})">View</button></td></tr>`).join('');}catch(e){console.error(e);}}
+    async function viewTicket(id){currentTicketId=id;document.getElementById('ticketDetailPanel').style.display='block';document.getElementById('ticketDetailTitle').textContent='Ticket #'+id;try{const r=await fetch(base+'/api/tickets/'+id);const d=await r.json();document.getElementById('ticketMessages').innerHTML=d.messages.map(m=>`<div class="mb-2 p-2 rounded ${m.senderType==='admin'?'bg-primary text-white':'bg-light'}"><small class="fw-bold">${esc(m.senderName||m.senderType)}</small><br>${esc(m.text)}<br><small class="text-muted">${new Date(m.createdAt).toLocaleString()}</small></div>`).join('')||'<p class="text-muted">No messages</p>';}catch(e){console.error(e);}}
+    async function replyTicket(){if(!currentTicketId)return;const text=document.getElementById('ticketReplyText').value.trim();if(!text)return;try{await fetch(base+'/api/tickets/'+currentTicketId+'/reply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,senderName:'Admin'})});document.getElementById('ticketReplyText').value='';viewTicket(currentTicketId);}catch(e){Swal.fire('Error',e.message,'error');}}
+    async function closeTicket(){if(!currentTicketId)return;try{await fetch(base+'/api/tickets/'+currentTicketId+'/close',{method:'POST'});Swal.fire({icon:'success',title:'Ticket closed',timer:2000});loadTickets();document.getElementById('ticketDetailPanel').style.display='none';}catch(e){Swal.fire('Error',e.message,'error');}}
+
+    // ===== Projects =====
+    async function loadProjects(){try{const st=document.getElementById('projectStatusFilter').value;const r=await fetch(base+'/api/projects?status='+st+'&page=0');const d=await r.json();if(!d.projects){document.getElementById('projectsBody').innerHTML='<tr><td colspan="8" class="text-muted text-center">Error loading</td></tr>';return;}document.getElementById('projectsBody').innerHTML=d.projects.map(p=>`<tr><td>${p.id}</td><td>${p.telegramUserId}</td><td>${esc(p.title||'')}</td><td>${esc(p.category||'')}</td><td>${p.budget} ${esc(p.currency||'')}</td><td><span class="badge bg-${p.status==='pending'?'warning':p.status==='approved'?'success':p.status==='rejected'?'danger':'secondary'}">${p.status}</span></td><td>${new Date(p.createdAt).toLocaleDateString()}</td><td>${p.status==='pending'?`<button class="btn btn-sm btn-success" onclick="approveProject(${p.id})">Approve</button> <button class="btn btn-sm btn-danger" onclick="rejectProject(${p.id})">Reject</button>`:''} <button class="btn btn-sm btn-outline-info" onclick="showProjectBids(${p.id})">Bids</button></td></tr>`).join('');}catch(e){console.error(e);}}
+    async function approveProject(id){await fetch(base+'/api/projects/'+id+'/approve',{method:'POST'});Swal.fire({icon:'success',title:'Approved',timer:1500});loadProjects();}
+    async function rejectProject(id){await fetch(base+'/api/projects/'+id+'/reject',{method:'POST'});Swal.fire({icon:'info',title:'Rejected',timer:1500});loadProjects();}
+    async function showProjectBids(id){try{const r=await fetch(base+'/api/projects/'+id+'/bids');const d=await r.json();Swal.fire({title:'Bids for Project #'+id,html:d.bids&&d.bids.length?'<table class="table table-sm"><thead><tr><th>Bidder</th><th>Amount</th><th>Duration</th><th>Status</th></tr></thead><tbody>'+d.bids.map(b=>`<tr><td>${b.bidderTelegramUserId}</td><td>${b.proposedAmount}</td><td>${esc(b.proposedDuration||'-')}</td><td>${b.status}</td></tr>`).join('')+'</tbody></table>':'<p class="text-muted">No bids</p>',width:600});}catch(e){Swal.fire('Error',e.message,'error');}}
+
+    // ===== Questions =====
+    async function loadQuestions(){try{const st=document.getElementById('questionStatusFilter').value;const r=await fetch(base+'/api/questions?status='+st+'&page=0');const d=await r.json();if(!d.questions){document.getElementById('questionsBody').innerHTML='<tr><td colspan="7" class="text-muted text-center">Error loading</td></tr>';return;}document.getElementById('questionsBody').innerHTML=d.questions.map(q=>`<tr><td>${q.id}</td><td>${q.telegramUserId}</td><td>${esc(q.title||'')}</td><td>${esc(q.category||'')}</td><td>${q.bountyAmount}</td><td><span class="badge bg-${q.status==='open'?'success':q.status==='answered'?'info':'secondary'}">${q.status}</span></td><td>${new Date(q.createdAt).toLocaleDateString()}</td></tr>`).join('');}catch(e){console.error(e);}}
 
     // ===== Init =====
     loadTokenIntoInput();loadUpdateMode();loadWebhookInfo();loadConnectionStatus();loadBotStatus();refreshWebhookMessages();

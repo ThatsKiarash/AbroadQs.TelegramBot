@@ -12,6 +12,7 @@ public interface IWalletRepository
     Task<PaymentDto> CreatePaymentAsync(PaymentDto payment, CancellationToken ct = default);
     Task<PaymentDto?> GetPaymentByIdGetAsync(long gatewayIdGet, CancellationToken ct = default);
     Task UpdatePaymentStatusAsync(int id, string status, string? gatewayTransactionId = null, CancellationToken ct = default);
+    Task<IReadOnlyList<PaymentDto>> GetPaymentsAsync(long telegramUserId, int page = 0, int pageSize = 20, CancellationToken ct = default);
 }
 
 public sealed record WalletDto(int Id, long TelegramUserId, decimal Balance, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);

@@ -62,6 +62,14 @@ public sealed class BidRepository : IBidRepository
         await _db.SaveChangesAsync(ct).ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyList<AdBidDto>> ListBidsByUserAsync(long userId, int page = 0, int pageSize = 10, CancellationToken ct = default)
+    {
+        var items = await _db.AdBids.Where(b => b.BidderTelegramUserId == userId)
+            .OrderByDescending(b => b.CreatedAt).Skip(page * pageSize).Take(pageSize)
+            .ToListAsync(ct).ConfigureAwait(false);
+        return items.Select(ToDto).ToList();
+    }
+
     private static AdBidDto ToDto(AdBidEntity e) => new(
         e.Id, e.ExchangeRequestId, e.BidderTelegramUserId, e.BidderDisplayName,
         e.BidAmount, e.BidRate, e.Message, e.Status, e.ChannelReplyMessageId, e.CreatedAt);

@@ -121,6 +121,13 @@ if (!string.IsNullOrWhiteSpace(connStr))
     builder.Services.AddScoped<IWalletRepository, WalletRepository>();
     builder.Services.AddScoped<IBidRepository, BidRepository>();
     builder.Services.AddScoped<IGroupRepository, GroupRepository>();
+    builder.Services.AddScoped<ISystemMessageRepository, SystemMessageRepository>();
+    builder.Services.AddScoped<ITicketRepository, TicketRepository>();
+    builder.Services.AddScoped<IStudentProjectRepository, StudentProjectRepository>();
+    builder.Services.AddScoped<IProjectBidRepository, ProjectBidRepository>();
+    builder.Services.AddScoped<IInternationalQuestionRepository, InternationalQuestionRepository>();
+    builder.Services.AddScoped<ISponsorshipRepository, SponsorshipRepository>();
+    builder.Services.AddScoped<ICryptoWalletRepository, CryptoWalletRepository>();
     builder.Services.AddScoped<NavasanApiService>();
     builder.Services.AddHostedService<RateAutoRefreshService>();
 
@@ -134,6 +141,22 @@ if (!string.IsNullOrWhiteSpace(connStr))
         var apiKey = settingsRepo?.GetValueAsync("bitpay_api_key").GetAwaiter().GetResult() ?? "";
         var testMode = settingsRepo?.GetValueAsync("bitpay_test_mode").GetAwaiter().GetResult() == "true";
         return new AbroadQs.Bot.Host.Webhook.Services.BitPayService(http, logger, apiKey, testMode);
+    });
+
+    // Payment gateway abstraction (adapts BitPayService to IPaymentGatewayService)
+    builder.Services.AddScoped<IPaymentGatewayService>(sp =>
+        new BitPayPaymentGatewayAdapter(
+            sp.GetRequiredService<AbroadQs.Bot.Host.Webhook.Services.BitPayService>(),
+            sp.GetRequiredService<IWalletRepository>()));
+
+    // Phase 8: Crypto wallet service (TRX/ETH address generation, monitoring)
+    builder.Services.AddSingleton(sp =>
+    {
+        var logger = sp.GetRequiredService<ILogger<AbroadQs.Bot.Host.Webhook.Services.CryptoWalletService>>();
+        var settingsRepo = sp.GetService<ISettingsRepository>();
+        var tronApiKey = settingsRepo?.GetValueAsync("crypto_tron_api_key").GetAwaiter().GetResult() ?? "";
+        var masterAddr = settingsRepo?.GetValueAsync("crypto_master_wallet_address").GetAwaiter().GetResult() ?? "";
+        return new AbroadQs.Bot.Host.Webhook.Services.CryptoWalletService(logger, tronApiKey, masterAddr);
     });
 }
 else
@@ -1811,9 +1834,77 @@ static async Task SeedDefaultDataAsync(ApplicationDbContext db)
                 "<b>Exchange Rates</b>\n\nView up-to-date exchange rates for various currencies.",
                 true, null, "student_exchange", 13),
             ("exchange_guide",
-                "<b>شرایط و راهنما</b>\n\nاز این بخش می‌توانید با شرایط، قوانین و راهنمای تبادل ارز دانشجویی آشنا شوید.",
-                "<b>Terms & Guide</b>\n\nLearn about the terms, rules and guidelines for student currency exchange.",
+                "<b>شرایط و راهنما</b>\n\nاز بخش‌های زیر برای آشنایی با قوانین و راهنمای خدمات استفاده کنید.",
+                "<b>Terms & Guide</b>\n\nUse the sections below to learn about our services and guidelines.",
                 true, null, "student_exchange", 14),
+            ("guide_exchange",
+                "<b>📖 راهنمای تبادل ارز</b>\n━━━━━━━━━━━━━━━━━━━\n\n" +
+                "۱. ابتدا احراز هویت خود را تکمیل کنید.\n" +
+                "۲. نوع درخواست (خرید/فروش/تبادل) را انتخاب کنید.\n" +
+                "۳. ارز، مبلغ و نرخ پیشنهادی خود را وارد کنید.\n" +
+                "۴. پس از تأیید ادمین، آگهی شما در کانال منتشر می‌شود.\n" +
+                "۵. سایر کاربران پیشنهاد قیمت می‌دهند.\n" +
+                "۶. پس از توافق، تبادل انجام و تراکنش ثبت می‌شود.\n\n" +
+                "⚠️ حداقل مبلغ تبادل: ۱۰۰ واحد ارز\n" +
+                "⚠️ کارمزد: بر اساس تنظیمات سیستم (معمولاً ۱-۳٪)",
+                "<b>📖 Exchange Guide</b>\n━━━━━━━━━━━━━━━━━━━\n\n" +
+                "1. Complete your identity verification first.\n" +
+                "2. Select request type (buy/sell/exchange).\n" +
+                "3. Enter currency, amount and your proposed rate.\n" +
+                "4. After admin approval, your ad is posted to the channel.\n" +
+                "5. Other users submit price proposals.\n" +
+                "6. After agreement, exchange is completed and recorded.\n\n" +
+                "⚠️ Minimum exchange: 100 currency units\n" +
+                "⚠️ Fee: Based on system settings (usually 1-3%)",
+                true, null, "exchange_guide", 14),
+            ("guide_groups",
+                "<b>👥 راهنمای گروه‌ها</b>\n━━━━━━━━━━━━━━━━━━━\n\n" +
+                "گروه‌های تبادل برای ارتباط مستقیم بین کاربران ایجاد شده‌اند.\n\n" +
+                "• هر کاربر می‌تواند گروه خود را ثبت کند.\n" +
+                "• گروه‌ها پس از تأیید ادمین نمایش داده می‌شوند.\n" +
+                "• لینک عضویت به صورت خودکار نمایش داده می‌شود.",
+                "<b>👥 Groups Guide</b>\n━━━━━━━━━━━━━━━━━━━\n\n" +
+                "Exchange groups are created for direct user-to-user communication.\n\n" +
+                "• Any user can register their group.\n" +
+                "• Groups are shown after admin approval.\n" +
+                "• Join links are displayed automatically.",
+                true, null, "exchange_guide", 15),
+            ("guide_wallet",
+                "<b>💰 راهنمای کیف پول</b>\n━━━━━━━━━━━━━━━━━━━\n\n" +
+                "• کیف پول شما برای پرداخت کارمزد و هزینه آگهی استفاده می‌شود.\n" +
+                "• شارژ از طریق درگاه پرداخت آنلاین (بیت‌پی) انجام می‌شود.\n" +
+                "• انتقال وجه بین کاربران با نام کاربری امکان‌پذیر است.\n" +
+                "• تاریخچه تراکنش‌ها قابل مشاهده است.",
+                "<b>💰 Wallet Guide</b>\n━━━━━━━━━━━━━━━━━━━\n\n" +
+                "• Your wallet is used for paying fees and ad costs.\n" +
+                "• Top up via online payment gateway (BitPay).\n" +
+                "• User-to-user transfers by username are supported.\n" +
+                "• Full transaction history is available.",
+                true, null, "exchange_guide", 16),
+            ("guide_projects",
+                "<b>📁 راهنمای پروژه‌ها</b>\n━━━━━━━━━━━━━━━━━━━\n\n" +
+                "• پروژه دانشجویی خود را ثبت و منتشر کنید.\n" +
+                "• سایر کاربران می‌توانند پیشنهاد همکاری ارسال کنند.\n" +
+                "• پس از پذیرش پیشنهاد، پروژه وارد مرحله اجرا می‌شود.\n" +
+                "• پس از تکمیل، هر دو طرف تأیید می‌کنند.",
+                "<b>📁 Projects Guide</b>\n━━━━━━━━━━━━━━━━━━━\n\n" +
+                "• Post and publish your student project.\n" +
+                "• Other users can submit collaboration proposals.\n" +
+                "• After accepting a proposal, the project enters execution phase.\n" +
+                "• Both parties confirm upon completion.",
+                true, null, "exchange_guide", 17),
+            ("guide_faq",
+                "<b>❓ سوالات متداول</b>\n━━━━━━━━━━━━━━━━━━━\n\n" +
+                "<b>س: آیا احراز هویت اجباری است؟</b>\nج: بله، برای استفاده از خدمات تبادل ارز باید احراز هویت کنید.\n\n" +
+                "<b>س: کارمزد چقدر است؟</b>\nج: کارمزد بر اساس نوع تراکنش و مبلغ متفاوت است.\n\n" +
+                "<b>س: آیا می‌توانم درخواست خود را لغو کنم؟</b>\nج: تا زمانی که درخواست مچ نشده باشد، امکان لغو وجود دارد.\n\n" +
+                "<b>س: چگونه با پشتیبانی ارتباط برقرار کنم؟</b>\nج: از بخش تیکت‌ها استفاده کنید.",
+                "<b>❓ FAQ</b>\n━━━━━━━━━━━━━━━━━━━\n\n" +
+                "<b>Q: Is identity verification mandatory?</b>\nA: Yes, verification is required for currency exchange services.\n\n" +
+                "<b>Q: What are the fees?</b>\nA: Fees vary by transaction type and amount.\n\n" +
+                "<b>Q: Can I cancel my request?</b>\nA: You can cancel as long as the request hasn't been matched.\n\n" +
+                "<b>Q: How do I contact support?</b>\nA: Use the Tickets section.",
+                true, null, "exchange_guide", 18),
             ("finance",
                 "<b>امور مالی</b>\n\nاز این بخش می‌توانید وضعیت تراکنش‌ها و حساب مالی خود را مشاهده کنید.",
                 "<b>Finance</b>\n\nView your transactions and financial account status from this section.",
@@ -1950,6 +2041,22 @@ static async Task SeedDefaultDataAsync(ApplicationDbContext db)
             );
         }
 
+        // exchange_guide sub-menu (Phase 1.5: Terms & Guide sub-stages)
+        var guideStage = db.BotStages.FirstOrDefault(s => s.StageKey == "exchange_guide");
+        if (guideStage != null)
+        {
+            var oldGuideButtons = db.BotStageButtons.Where(b => b.StageId == guideStage.Id).ToList();
+            if (oldGuideButtons.Count > 0)
+                db.BotStageButtons.RemoveRange(oldGuideButtons);
+            db.BotStageButtons.AddRange(
+                new BotStageButtonEntity { StageId = guideStage.Id, TextFa = "📖 راهنمای تبادل", TextEn = "📖 Exchange Guide", ButtonType = "callback", TargetStageKey = "guide_exchange", Row = 0, Column = 0, IsEnabled = true },
+                new BotStageButtonEntity { StageId = guideStage.Id, TextFa = "👥 راهنمای گروه‌ها", TextEn = "👥 Groups Guide", ButtonType = "callback", TargetStageKey = "guide_groups", Row = 0, Column = 1, IsEnabled = true },
+                new BotStageButtonEntity { StageId = guideStage.Id, TextFa = "💰 راهنمای کیف پول", TextEn = "💰 Wallet Guide", ButtonType = "callback", TargetStageKey = "guide_wallet", Row = 1, Column = 0, IsEnabled = true },
+                new BotStageButtonEntity { StageId = guideStage.Id, TextFa = "📁 راهنمای پروژه‌ها", TextEn = "📁 Projects Guide", ButtonType = "callback", TargetStageKey = "guide_projects", Row = 1, Column = 1, IsEnabled = true },
+                new BotStageButtonEntity { StageId = guideStage.Id, TextFa = "❓ سوالات متداول", TextEn = "❓ FAQ", ButtonType = "callback", TargetStageKey = "guide_faq", Row = 2, Column = 0, IsEnabled = true }
+            );
+        }
+
         var langSelectStage = db.BotStages.FirstOrDefault(s => s.StageKey == "lang_select");
         if (langSelectStage != null && !db.BotStageButtons.Any(b => b.StageId == langSelectStage.Id))
         {
@@ -2083,6 +2190,131 @@ static string GetUpdatePreview(Update u)
     if (u.ChosenInlineResult != null) return $"UpdateId: {id}, Type: ChosenInlineResult";
     return $"UpdateId: {id}, Type: Unknown";
 }
+
+// ═══════════════════════════════════════════════════════════════════
+//  Phase 2-8: REST API Endpoints for admin dashboard / integrations
+// ═══════════════════════════════════════════════════════════════════
+
+// ── Wallet API ───────────────────────────────────────────────────
+app.MapGet("/api/wallet/{userId:long}/transactions", async (long userId, int page, HttpContext ctx, CancellationToken ct) =>
+{
+    using var scope = app.Services.CreateScope();
+    var walletRepo = scope.ServiceProvider.GetService<IWalletRepository>();
+    if (walletRepo == null) return Results.Json(new { detail = "Wallet not configured." }, statusCode: 500);
+    var txns = await walletRepo.GetTransactionsAsync(userId, page, 20, ct).ConfigureAwait(false);
+    var balance = await walletRepo.GetBalanceAsync(userId, ct).ConfigureAwait(false);
+    return Results.Json(new { balance, transactions = txns });
+}).WithName("WalletTransactions");
+
+app.MapGet("/api/payments/{userId:long}", async (long userId, int page, HttpContext ctx, CancellationToken ct) =>
+{
+    using var scope = app.Services.CreateScope();
+    var walletRepo = scope.ServiceProvider.GetService<IWalletRepository>();
+    if (walletRepo == null) return Results.Json(new { detail = "Wallet not configured." }, statusCode: 500);
+    var payments = await walletRepo.GetPaymentsAsync(userId, page, 20, ct).ConfigureAwait(false);
+    return Results.Json(new { payments });
+}).WithName("UserPayments");
+
+// ── Tickets API ──────────────────────────────────────────────────
+app.MapGet("/api/tickets", async (string? status, int page, HttpContext ctx, CancellationToken ct) =>
+{
+    using var scope = app.Services.CreateScope();
+    var ticketRepo = scope.ServiceProvider.GetService<ITicketRepository>();
+    if (ticketRepo == null) return Results.Json(new { detail = "Tickets not configured." }, statusCode: 500);
+    var tickets = await ticketRepo.ListTicketsAsync(status: status, page: page, pageSize: 20, ct: ct).ConfigureAwait(false);
+    return Results.Json(new { tickets });
+}).WithName("ListTickets");
+
+app.MapGet("/api/tickets/{id:int}", async (int id, HttpContext ctx, CancellationToken ct) =>
+{
+    using var scope = app.Services.CreateScope();
+    var ticketRepo = scope.ServiceProvider.GetService<ITicketRepository>();
+    if (ticketRepo == null) return Results.Json(new { detail = "Tickets not configured." }, statusCode: 500);
+    var ticket = await ticketRepo.GetTicketAsync(id, ct).ConfigureAwait(false);
+    if (ticket == null) return Results.Json(new { detail = "Not found." }, statusCode: 404);
+    var messages = await ticketRepo.GetMessagesAsync(id, ct).ConfigureAwait(false);
+    return Results.Json(new { ticket, messages });
+}).WithName("TicketDetail");
+
+app.MapPost("/api/tickets/{id:int}/reply", async (int id, HttpContext ctx, CancellationToken ct) =>
+{
+    using var scope = app.Services.CreateScope();
+    var ticketRepo = scope.ServiceProvider.GetService<ITicketRepository>();
+    if (ticketRepo == null) return Results.Json(new { detail = "Tickets not configured." }, statusCode: 500);
+    var body = await new StreamReader(ctx.Request.Body).ReadToEndAsync(ct).ConfigureAwait(false);
+    var json = System.Text.Json.JsonDocument.Parse(body);
+    var text = json.RootElement.GetProperty("text").GetString() ?? "";
+    var senderName = json.RootElement.TryGetProperty("senderName", out var sn) ? sn.GetString() : "Admin";
+    await ticketRepo.AddMessageAsync(new TicketMessageDto(0, id, "admin", senderName, text, null, default), ct).ConfigureAwait(false);
+    await ticketRepo.UpdateTicketStatusAsync(id, "in_progress", ct).ConfigureAwait(false);
+    return Results.Json(new { ok = true });
+}).WithName("ReplyTicket");
+
+app.MapPost("/api/tickets/{id:int}/close", async (int id, HttpContext ctx, CancellationToken ct) =>
+{
+    using var scope = app.Services.CreateScope();
+    var ticketRepo = scope.ServiceProvider.GetService<ITicketRepository>();
+    if (ticketRepo == null) return Results.Json(new { detail = "Tickets not configured." }, statusCode: 500);
+    await ticketRepo.UpdateTicketStatusAsync(id, "closed", ct).ConfigureAwait(false);
+    return Results.Json(new { ok = true });
+}).WithName("CloseTicket");
+
+// ── Projects API ─────────────────────────────────────────────────
+app.MapGet("/api/projects", async (string? status, int page, HttpContext ctx, CancellationToken ct) =>
+{
+    using var scope = app.Services.CreateScope();
+    var projRepo = scope.ServiceProvider.GetService<IStudentProjectRepository>();
+    if (projRepo == null) return Results.Json(new { detail = "Projects not configured." }, statusCode: 500);
+    var projects = await projRepo.ListAsync(status: status, page: page, pageSize: 20, ct: ct).ConfigureAwait(false);
+    return Results.Json(new { projects });
+}).WithName("ListProjects");
+
+app.MapPost("/api/projects/{id:int}/approve", async (int id, HttpContext ctx, CancellationToken ct) =>
+{
+    using var scope = app.Services.CreateScope();
+    var projRepo = scope.ServiceProvider.GetService<IStudentProjectRepository>();
+    if (projRepo == null) return Results.Json(new { detail = "Projects not configured." }, statusCode: 500);
+    await projRepo.UpdateStatusAsync(id, "approved", ct: ct).ConfigureAwait(false);
+    return Results.Json(new { ok = true });
+}).WithName("ApproveProject");
+
+app.MapPost("/api/projects/{id:int}/reject", async (int id, HttpContext ctx, CancellationToken ct) =>
+{
+    using var scope = app.Services.CreateScope();
+    var projRepo = scope.ServiceProvider.GetService<IStudentProjectRepository>();
+    if (projRepo == null) return Results.Json(new { detail = "Projects not configured." }, statusCode: 500);
+    await projRepo.UpdateStatusAsync(id, "rejected", ct: ct).ConfigureAwait(false);
+    return Results.Json(new { ok = true });
+}).WithName("RejectProject");
+
+app.MapGet("/api/projects/{id:int}/bids", async (int id, HttpContext ctx, CancellationToken ct) =>
+{
+    using var scope = app.Services.CreateScope();
+    var bidRepo = scope.ServiceProvider.GetService<IProjectBidRepository>();
+    if (bidRepo == null) return Results.Json(new { detail = "Project bids not configured." }, statusCode: 500);
+    var bids = await bidRepo.ListForProjectAsync(id, ct).ConfigureAwait(false);
+    return Results.Json(new { bids });
+}).WithName("ProjectBids");
+
+// ── International Questions API ──────────────────────────────────
+app.MapGet("/api/questions", async (string? status, int page, HttpContext ctx, CancellationToken ct) =>
+{
+    using var scope = app.Services.CreateScope();
+    var qRepo = scope.ServiceProvider.GetService<IInternationalQuestionRepository>();
+    if (qRepo == null) return Results.Json(new { detail = "Questions not configured." }, statusCode: 500);
+    var questions = await qRepo.ListAsync(status: status, page: page, pageSize: 20, ct: ct).ConfigureAwait(false);
+    return Results.Json(new { questions });
+}).WithName("ListQuestions");
+
+// ── Sponsorship API ──────────────────────────────────────────────
+app.MapGet("/api/sponsorships", async (string? status, int page, HttpContext ctx, CancellationToken ct) =>
+{
+    using var scope = app.Services.CreateScope();
+    var spRepo = scope.ServiceProvider.GetService<ISponsorshipRepository>();
+    if (spRepo == null) return Results.Json(new { detail = "Sponsorships not configured." }, statusCode: 500);
+    var requests = await spRepo.ListRequestsAsync(status: status, page: page, pageSize: 20, ct: ct).ConfigureAwait(false);
+    return Results.Json(new { requests });
+}).WithName("ListSponsorships");
 
 app.MapGet("/", () => Results.Ok("AbroadQs Telegram Bot (Webhook) is running."))
     .WithName("Health");

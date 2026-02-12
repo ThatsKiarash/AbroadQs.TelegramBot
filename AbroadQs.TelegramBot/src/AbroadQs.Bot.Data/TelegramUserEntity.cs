@@ -35,6 +35,14 @@ public sealed class TelegramUserEntity
     public string? KycStatus { get; set; }
     /// <summary>JSON with per-field rejection reasons, e.g. {"photo":"reason"}.</summary>
     public string? KycRejectionData { get; set; }
+    /// <summary>Phase 3: Short bio text.</summary>
+    public string? Bio { get; set; }
+    /// <summary>Phase 3: GitHub profile URL.</summary>
+    public string? GitHubUrl { get; set; }
+    /// <summary>Phase 3: LinkedIn profile URL.</summary>
+    public string? LinkedInUrl { get; set; }
+    /// <summary>Phase 3: Instagram profile URL.</summary>
+    public string? InstagramUrl { get; set; }
     public DateTimeOffset FirstSeenAt { get; set; }
     public DateTimeOffset LastSeenAt { get; set; }
 }

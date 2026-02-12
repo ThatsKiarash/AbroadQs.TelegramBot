@@ -25,6 +25,22 @@ public static class CommonModuleExtensions
         services.AddScoped<GroupStateHandler>();                       // Concrete registration for DI into DynamicStageHandler
         services.AddScoped<IUpdateHandler, GroupStateHandler>(sp => sp.GetRequiredService<GroupStateHandler>());
         services.AddScoped<IUpdateHandler, ProfileStateHandler>();   // Before DynamicStageHandler (state-driven)
+        services.AddScoped<FinanceHandler>();                         // Phase 2: Financial module
+        services.AddScoped<IUpdateHandler, FinanceHandler>(sp => sp.GetRequiredService<FinanceHandler>());
+        services.AddScoped<TicketHandler>();                          // Phase 4: Support tickets
+        services.AddScoped<IUpdateHandler, TicketHandler>(sp => sp.GetRequiredService<TicketHandler>());
+        services.AddScoped<StudentProjectHandler>();                  // Phase 5: Student projects
+        services.AddScoped<IUpdateHandler, StudentProjectHandler>(sp => sp.GetRequiredService<StudentProjectHandler>());
+        services.AddScoped<InternationalQuestionHandler>();           // Phase 6: International questions
+        services.AddScoped<IUpdateHandler, InternationalQuestionHandler>(sp => sp.GetRequiredService<InternationalQuestionHandler>());
+        services.AddScoped<SponsorshipHandler>();                    // Phase 7: Sponsorship
+        services.AddScoped<IUpdateHandler, SponsorshipHandler>(sp => sp.GetRequiredService<SponsorshipHandler>());
+        services.AddScoped<CurrencyPurchaseHandler>();               // Phase 8: Currency purchase
+        services.AddScoped<IUpdateHandler, CurrencyPurchaseHandler>(sp => sp.GetRequiredService<CurrencyPurchaseHandler>());
+        services.AddScoped<MyMessagesHandler>();                     // Phase 4: My Messages
+        services.AddScoped<IUpdateHandler, MyMessagesHandler>(sp => sp.GetRequiredService<MyMessagesHandler>());
+        services.AddScoped<MyProposalsHandler>();                    // Phase 4: My Proposals
+        services.AddScoped<IUpdateHandler, MyProposalsHandler>(sp => sp.GetRequiredService<MyProposalsHandler>());
         services.AddScoped<IUpdateHandler, DynamicStageHandler>();
         services.AddScoped<IUpdateHandler, UnknownCommandHandler>();
         return services;

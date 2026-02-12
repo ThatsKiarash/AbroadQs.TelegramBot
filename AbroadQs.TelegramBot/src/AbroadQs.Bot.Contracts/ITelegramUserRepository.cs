@@ -21,6 +21,12 @@ public interface ITelegramUserRepository
     Task SetEmailVerifiedAsync(long telegramUserId, CancellationToken cancellationToken = default);
     Task SetCountryAsync(long telegramUserId, string country, CancellationToken cancellationToken = default);
     Task SetKycStatusAsync(long telegramUserId, string status, string? rejectionData = null, CancellationToken cancellationToken = default);
+
+    // Phase 3: Profile fields
+    Task SetBioAsync(long telegramUserId, string? bio, CancellationToken cancellationToken = default);
+    Task SetGitHubUrlAsync(long telegramUserId, string? url, CancellationToken cancellationToken = default);
+    Task SetLinkedInUrlAsync(long telegramUserId, string? url, CancellationToken cancellationToken = default);
+    Task SetInstagramUrlAsync(long telegramUserId, string? url, CancellationToken cancellationToken = default);
 }
 
 public sealed record TelegramUserDto(
@@ -43,4 +49,8 @@ public sealed record TelegramUserDto(
     string? KycRejectionData,
     DateTimeOffset? RegisteredAt,
     DateTimeOffset FirstSeenAt,
-    DateTimeOffset LastSeenAt);
+    DateTimeOffset LastSeenAt,
+    string? Bio = null,
+    string? GitHubUrl = null,
+    string? LinkedInUrl = null,
+    string? InstagramUrl = null);

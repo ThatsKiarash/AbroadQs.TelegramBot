@@ -34,6 +34,55 @@ public sealed class UpdateDispatcher
             return;
         }
 
+        // ── Phase 1.3: Anti-spam — update_id deduplication ───────────
+        if (context.UserId.HasValue && _scopeFactory != null)
+        {
+            try
+            {
+                using var dedupScope = _scopeFactory.CreateScope();
+                var lastCmdStore = dedupScope.ServiceProvider.GetService<IUserLastCommandStore>();
+                if (lastCmdStore != null)
+                {
+                    // Check update_id dedup
+                    var lastUpdateKey = $"last_upd:{context.UserId.Value}";
+                    var lastUpdateId = await lastCmdStore.GetLastCommandAsync(context.UserId.Value + 9_000_000_000L, cancellationToken).ConfigureAwait(false);
+                    if (lastUpdateId == update.Id.ToString())
+                    {
+                        _logger.LogDebug("Duplicate update {UpdateId} for user {UserId}, skipping", update.Id, context.UserId);
+                        return;
+                    }
+                    await lastCmdStore.SetLastCommandAsync(context.UserId.Value + 9_000_000_000L, update.Id.ToString(), cancellationToken).ConfigureAwait(false);
+
+                    // Callback query dedup: lock per user+callback for 3s
+                    if (context.IsCallbackQuery && !string.IsNullOrEmpty(context.MessageText))
+                    {
+                        var cbKey = $"cb_lock:{context.UserId.Value}:{context.MessageText}";
+                        var cbLock = await lastCmdStore.GetLastCommandAsync(context.UserId.Value + 8_000_000_000L, cancellationToken).ConfigureAwait(false);
+                        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                        if (cbLock != null && long.TryParse(cbLock, out var lockTs) && now - lockTs < 3000)
+                        {
+                            _logger.LogDebug("Anti-spam: callback {Cb} blocked for user {UserId}", context.MessageText, context.UserId);
+                            // Answer callback to remove loading spinner
+                            try
+                            {
+                                using var ansScope = _scopeFactory.CreateScope();
+                                var sender = ansScope.ServiceProvider.GetService<IResponseSender>();
+                                if (sender != null && context.CallbackQueryId != null)
+                                    await sender.AnswerCallbackQueryAsync(context.CallbackQueryId, "لطفا صبر کنید...", cancellationToken).ConfigureAwait(false);
+                            }
+                            catch { }
+                            return;
+                        }
+                        await lastCmdStore.SetLastCommandAsync(context.UserId.Value + 8_000_000_000L, now.ToString(), cancellationToken).ConfigureAwait(false);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Anti-spam check failed for update {UpdateId}, continuing", update.Id);
+            }
+        }
+
         // Save/update user and message on every interaction
         if (context.UserId.HasValue && _scopeFactory != null)
         {

@@ -366,6 +366,9 @@ public sealed class BidStateHandler : IUpdateHandler
         };
         await SafeSendInline(chatId, msg, kb, ct);
 
+        // Update channel post with bid count (Phase 1.1)
+        await UpdateChannelPostBidCount(reqId, ct).ConfigureAwait(false);
+
         // Notify the ad owner about the new bid
         if (request != null)
         {
@@ -440,6 +443,45 @@ public sealed class BidStateHandler : IUpdateHandler
 
         // Update channel post: remove bid button, mark as closed
         await UpdateChannelPostClosed(request, bid, ct);
+    }
+
+    /// <summary>
+    /// Phase 1.1: Updates the channel post to show current bid count.
+    /// </summary>
+    private async Task UpdateChannelPostBidCount(int requestId, CancellationToken ct)
+    {
+        try
+        {
+            var request = await _exchangeRepo.GetRequestAsync(requestId, ct).ConfigureAwait(false);
+            if (request?.ChannelMessageId == null || _settingsRepo == null) return;
+
+            var channelId = await _settingsRepo.GetValueAsync("exchange_channel_id", ct).ConfigureAwait(false);
+            if (string.IsNullOrEmpty(channelId) || !long.TryParse(channelId, out var chatId) || chatId == 0) return;
+
+            var bidCount = await _bidRepo.GetBidCountForRequestAsync(requestId, ct).ConfigureAwait(false);
+            var currFa = ExchangeStateHandler.GetCurrencyNameFa(request.Currency);
+            var flag = ExchangeStateHandler.GetCurrencyFlag(request.Currency);
+            var txFa = request.TransactionType == "buy" ? "خرید" : request.TransactionType == "sell" ? "فروش" : "تبادل";
+            var roleFa = request.TransactionType == "buy" ? "خریدار" : request.TransactionType == "sell" ? "فروشنده" : "متقاضی تبادل";
+            var deliveryFa = request.DeliveryMethod switch { "bank" => "حواله بانکی", "paypal" => "پی‌پال", "cash" => "اسکناس", _ => request.DeliveryMethod };
+
+            var text = $"📢 <b>آگهی {txFa} ارز</b>\n\n" +
+                $"💎 {roleFa}: <b>{request.UserDisplayName}</b>\n" +
+                $"💰 مبلغ: <b>{request.Amount:N0}</b> {flag} {currFa}\n" +
+                $"💲 نرخ پیشنهادی: <b>{request.ProposedRate:N0}</b> تومان\n" +
+                $"🏦 نوع حواله: {deliveryFa}\n" +
+                (!string.IsNullOrEmpty(request.Description) ? $"📝 توضیحات: {request.Description}\n" : "") +
+                $"\n📊 پیشنهادات: {bidCount}";
+
+            var botUsername = await _settingsRepo.GetValueAsync("bot_username", ct).ConfigureAwait(false) ?? "AbroadQsBot";
+            var kb = new List<IReadOnlyList<InlineButton>>
+            {
+                new[] { new InlineButton($"📩 ارسال پیشنهاد ({bidCount})", null, $"https://t.me/{botUsername}?start=bid_{requestId}") },
+            };
+
+            await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, request.ChannelMessageId.Value, text, kb, ct).ConfigureAwait(false);
+        }
+        catch { /* swallow channel edit failures */ }
     }
 
     /// <summary>

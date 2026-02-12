@@ -124,6 +124,13 @@ public sealed class WalletRepository : IWalletRepository
         await _db.SaveChangesAsync(ct).ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyList<PaymentDto>> GetPaymentsAsync(long telegramUserId, int page = 0, int pageSize = 20, CancellationToken ct = default)
+    {
+        var items = await _db.Payments.Where(p => p.TelegramUserId == telegramUserId)
+            .OrderByDescending(p => p.CreatedAt).Skip(page * pageSize).Take(pageSize).ToListAsync(ct).ConfigureAwait(false);
+        return items.Select(ToPaymentDto).ToList();
+    }
+
     // ── Helpers ──
 
     private async Task<WalletEntity> EnsureWalletAsync(long telegramUserId, CancellationToken ct)

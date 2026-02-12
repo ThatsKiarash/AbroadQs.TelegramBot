@@ -70,7 +70,11 @@ public sealed class TelegramUserRepository : ITelegramUserRepository
                 x.KycRejectionData,
                 x.RegisteredAt,
                 x.FirstSeenAt,
-                x.LastSeenAt))
+                x.LastSeenAt,
+                x.Bio,
+                x.GitHubUrl,
+                x.LinkedInUrl,
+                x.InstagramUrl))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
         return list;
@@ -103,7 +107,11 @@ public sealed class TelegramUserRepository : ITelegramUserRepository
             entity.KycRejectionData,
             entity.RegisteredAt,
             entity.FirstSeenAt,
-            entity.LastSeenAt);
+            entity.LastSeenAt,
+            entity.Bio,
+            entity.GitHubUrl,
+            entity.LinkedInUrl,
+            entity.InstagramUrl);
     }
 
     public async Task UpdateProfileAsync(long telegramUserId, string? firstName, string? lastName, string? preferredLanguage, CancellationToken cancellationToken = default)
@@ -221,5 +229,38 @@ public sealed class TelegramUserRepository : ITelegramUserRepository
         }
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         if (_processingContext != null) _processingContext.SqlAccessed = true;
+    }
+
+    // Phase 3: Profile fields
+    public async Task SetBioAsync(long telegramUserId, string? bio, CancellationToken cancellationToken = default)
+    {
+        var entity = await _db.TelegramUsers.FirstOrDefaultAsync(x => x.TelegramUserId == telegramUserId, cancellationToken).ConfigureAwait(false);
+        if (entity == null) return;
+        entity.Bio = bio;
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task SetGitHubUrlAsync(long telegramUserId, string? url, CancellationToken cancellationToken = default)
+    {
+        var entity = await _db.TelegramUsers.FirstOrDefaultAsync(x => x.TelegramUserId == telegramUserId, cancellationToken).ConfigureAwait(false);
+        if (entity == null) return;
+        entity.GitHubUrl = url;
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task SetLinkedInUrlAsync(long telegramUserId, string? url, CancellationToken cancellationToken = default)
+    {
+        var entity = await _db.TelegramUsers.FirstOrDefaultAsync(x => x.TelegramUserId == telegramUserId, cancellationToken).ConfigureAwait(false);
+        if (entity == null) return;
+        entity.LinkedInUrl = url;
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task SetInstagramUrlAsync(long telegramUserId, string? url, CancellationToken cancellationToken = default)
+    {
+        var entity = await _db.TelegramUsers.FirstOrDefaultAsync(x => x.TelegramUserId == telegramUserId, cancellationToken).ConfigureAwait(false);
+        if (entity == null) return;
+        entity.InstagramUrl = url;
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 }

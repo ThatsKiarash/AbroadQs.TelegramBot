@@ -82,9 +82,21 @@ public sealed class ExchangeRepository : IExchangeRepository
         var startDate = new DateTimeOffset(year, month, 1, 0, 0, 0, TimeSpan.Zero);
         var endDate = startDate.AddMonths(1);
 
-        var q = _db.ExchangeRequests
+        // Phase 1.4: UNION own requests + requests where user placed a bid
+        var ownRequests = _db.ExchangeRequests
             .Where(r => r.TelegramUserId == userId)
-            .Where(r => r.CreatedAt >= startDate && r.CreatedAt < endDate);
+            .Where(r => r.CreatedAt >= startDate && r.CreatedAt < endDate)
+            .Select(r => r.Id);
+
+        var bidRequestIds = _db.AdBids
+            .Where(b => b.BidderTelegramUserId == userId)
+            .Join(_db.ExchangeRequests.Where(r => r.CreatedAt >= startDate && r.CreatedAt < endDate),
+                b => b.ExchangeRequestId, r => r.Id, (b, r) => r.Id);
+
+        var allIds = ownRequests.Union(bidRequestIds);
+
+        var q = _db.ExchangeRequests
+            .Where(r => allIds.Contains(r.Id));
 
         var totalCount = await q.CountAsync(ct).ConfigureAwait(false);
         var items = await q

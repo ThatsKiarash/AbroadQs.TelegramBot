@@ -26,6 +26,15 @@ public sealed class DynamicStageHandler : IUpdateHandler
     private readonly IExchangeRepository? _exchangeRepo;
     private readonly IGroupRepository? _groupRepo;
     private readonly GroupStateHandler? _groupHandler;
+    // Phase 2–8 handlers for routing stage: callbacks
+    private readonly FinanceHandler? _financeHandler;
+    private readonly TicketHandler? _ticketHandler;
+    private readonly StudentProjectHandler? _projectHandler;
+    private readonly InternationalQuestionHandler? _questionHandler;
+    private readonly SponsorshipHandler? _sponsorHandler;
+    private readonly CurrencyPurchaseHandler? _currencyHandler;
+    private readonly MyMessagesHandler? _myMessagesHandler;
+    private readonly MyProposalsHandler? _myProposalsHandler;
 
     private const int TradesPageSize = 5;
 
@@ -39,7 +48,15 @@ public sealed class DynamicStageHandler : IUpdateHandler
         ExchangeStateHandler? exchangeHandler = null,
         IExchangeRepository? exchangeRepo = null,
         IGroupRepository? groupRepo = null,
-        GroupStateHandler? groupHandler = null)
+        GroupStateHandler? groupHandler = null,
+        FinanceHandler? financeHandler = null,
+        TicketHandler? ticketHandler = null,
+        StudentProjectHandler? projectHandler = null,
+        InternationalQuestionHandler? questionHandler = null,
+        SponsorshipHandler? sponsorHandler = null,
+        CurrencyPurchaseHandler? currencyHandler = null,
+        MyMessagesHandler? myMessagesHandler = null,
+        MyProposalsHandler? myProposalsHandler = null)
     {
         _sender = sender;
         _stageRepo = stageRepo;
@@ -51,6 +68,14 @@ public sealed class DynamicStageHandler : IUpdateHandler
         _exchangeRepo = exchangeRepo;
         _groupRepo = groupRepo;
         _groupHandler = groupHandler;
+        _financeHandler = financeHandler;
+        _ticketHandler = ticketHandler;
+        _projectHandler = projectHandler;
+        _questionHandler = questionHandler;
+        _sponsorHandler = sponsorHandler;
+        _currencyHandler = currencyHandler;
+        _myMessagesHandler = myMessagesHandler;
+        _myProposalsHandler = myProposalsHandler;
     }
 
     public string? Command => null;
@@ -293,6 +318,67 @@ public sealed class DynamicStageHandler : IUpdateHandler
                     await ShowMyExchangesYears(chatId, currentUser, editMessageId, cancellationToken).ConfigureAwait(false);
                     return true;
                 }
+                // ── Phase 4: My Messages ──────────────────────────────
+                if (string.Equals(stageKey, "my_messages", StringComparison.OrdinalIgnoreCase) && _myMessagesHandler != null)
+                {
+                    if (editMessageId.HasValue) await TryDeleteAsync(chatId, editMessageId, cancellationToken);
+                    await _myMessagesHandler.ShowMenu(chatId, userId, currentUser?.PreferredLanguage, null, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+                // ── Phase 4: My Suggestions / Proposals ───────────────
+                if (string.Equals(stageKey, "my_suggestions", StringComparison.OrdinalIgnoreCase) && _myProposalsHandler != null)
+                {
+                    if (editMessageId.HasValue) await TryDeleteAsync(chatId, editMessageId, cancellationToken);
+                    await _myProposalsHandler.ShowMenu(chatId, userId, currentUser?.PreferredLanguage, null, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+
+                // ── Phase 2: Finance module ───────────────────────────
+                if (string.Equals(stageKey, "finance", StringComparison.OrdinalIgnoreCase) && _financeHandler != null)
+                {
+                    if (editMessageId.HasValue) await TryDeleteAsync(chatId, editMessageId, cancellationToken);
+                    await _financeHandler.ShowFinanceMenu(chatId, userId, currentUser?.PreferredLanguage, null, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+                // ── Phase 4: Support tickets ──────────────────────────
+                if (string.Equals(stageKey, "tickets", StringComparison.OrdinalIgnoreCase) && _ticketHandler != null)
+                {
+                    if (editMessageId.HasValue) await TryDeleteAsync(chatId, editMessageId, cancellationToken);
+                    await _ticketHandler.ShowTicketsMenu(chatId, userId, currentUser?.PreferredLanguage, null, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+                // ── Phase 5: Student projects ─────────────────────────
+                if ((string.Equals(stageKey, "student_project", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(stageKey, "student_projects", StringComparison.OrdinalIgnoreCase)) && _projectHandler != null)
+                {
+                    if (editMessageId.HasValue) await TryDeleteAsync(chatId, editMessageId, cancellationToken);
+                    await _projectHandler.ShowMenu(chatId, userId, currentUser?.PreferredLanguage, null, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+                // ── Phase 6: International questions ──────────────────
+                if ((string.Equals(stageKey, "international_question", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(stageKey, "intl_questions", StringComparison.OrdinalIgnoreCase)) && _questionHandler != null)
+                {
+                    if (editMessageId.HasValue) await TryDeleteAsync(chatId, editMessageId, cancellationToken);
+                    await _questionHandler.ShowMenu(chatId, userId, currentUser?.PreferredLanguage, null, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+                // ── Phase 7: Sponsorship ──────────────────────────────
+                if ((string.Equals(stageKey, "financial_sponsor", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(stageKey, "sponsorship", StringComparison.OrdinalIgnoreCase)) && _sponsorHandler != null)
+                {
+                    if (editMessageId.HasValue) await TryDeleteAsync(chatId, editMessageId, cancellationToken);
+                    await _sponsorHandler.ShowMenu(chatId, userId, currentUser?.PreferredLanguage, null, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+                // ── Phase 8: Direct currency purchase / crypto ────────
+                if (string.Equals(stageKey, "currency_purchase", StringComparison.OrdinalIgnoreCase) && _currencyHandler != null)
+                {
+                    if (editMessageId.HasValue) await TryDeleteAsync(chatId, editMessageId, cancellationToken);
+                    await _currencyHandler.ShowMenu(chatId, userId, currentUser?.PreferredLanguage, null, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+
                 // ── Exchange Groups: show group list ──────────────────
                 if (string.Equals(stageKey, "exchange_groups", StringComparison.OrdinalIgnoreCase))
                 {

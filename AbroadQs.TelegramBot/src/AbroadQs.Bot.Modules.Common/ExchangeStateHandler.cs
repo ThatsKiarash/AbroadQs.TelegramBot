@@ -24,6 +24,7 @@ public sealed class ExchangeStateHandler : IUpdateHandler
     private readonly IBotStageRepository? _stageRepo;
     private readonly IPermissionRepository? _permRepo;
     private readonly IWalletRepository? _walletRepo;
+    private readonly IPaymentGatewayService? _paymentGateway;
 
     private const string CbConfirm = "exc_confirm";
     private const string CbCancel = "exc_cancel";
@@ -69,7 +70,8 @@ public sealed class ExchangeStateHandler : IUpdateHandler
         IUserMessageStateRepository? msgStateRepo = null,
         IBotStageRepository? stageRepo = null,
         IPermissionRepository? permRepo = null,
-        IWalletRepository? walletRepo = null)
+        IWalletRepository? walletRepo = null,
+        IPaymentGatewayService? paymentGateway = null)
     {
         _sender = sender;
         _userRepo = userRepo;
@@ -80,6 +82,7 @@ public sealed class ExchangeStateHandler : IUpdateHandler
         _stageRepo = stageRepo;
         _permRepo = permRepo;
         _walletRepo = walletRepo;
+        _paymentGateway = paymentGateway;
     }
 
     public string? Command => null;
@@ -1259,9 +1262,42 @@ public sealed class ExchangeStateHandler : IUpdateHandler
                             // Debit wallet
                             await _walletRepo.DebitAsync(userId, adPrice, $"هزینه ثبت آگهی تبادل ارز", null, ct).ConfigureAwait(false);
                         }
+                        else if (paymentMethod == "gateway" && _paymentGateway != null && _walletRepo != null)
+                        {
+                            // Gateway payment — create BitPay payment link and send to user
+                            await SafeDelete(chatId, triggerMsgId, ct);
+                            await RemoveReplyKbSilent(chatId, ct);
+
+                            // Store pending exchange data so we can resume after payment
+                            await _stateStore.SetFlowDataAsync(userId, "pending_ad_fee", "true", ct).ConfigureAwait(false);
+
+                            var redirectUrl = "/api/payment/callback";
+                            var result = await _paymentGateway.CreatePaymentAsync(userId, (long)adPrice, "ad_fee", null, redirectUrl, ct).ConfigureAwait(false);
+
+                            if (result.Success && !string.IsNullOrEmpty(result.PaymentUrl))
+                            {
+                                var gatewayMsg = $"<b>💳 پرداخت هزینه آگهی</b>\n━━━━━━━━━━━━━━━━━━━\n\n" +
+                                                 $"💰 هزینه ثبت آگهی: <b>{adPrice:N0}</b> تومان\n\n" +
+                                                 "لطفاً روی دکمه زیر کلیک کرده و هزینه را پرداخت کنید.\n" +
+                                                 "پس از پرداخت موفق، آگهی شما به صورت خودکار ثبت خواهد شد.";
+                                var kb = new List<IReadOnlyList<InlineButton>>
+                                {
+                                    new[] { new InlineButton("💳 پرداخت آنلاین", null, result.PaymentUrl) },
+                                    new[] { new InlineButton("🔙 بازگشت", CbCancel) },
+                                };
+                                await SafeSendInline(chatId, gatewayMsg, kb, ct);
+                            }
+                            else
+                            {
+                                var errMsg = $"<b>⚠️ خطا در ایجاد لینک پرداخت</b>\n\n{result.Error ?? "لطفاً دوباره تلاش کنید."}";
+                                await _sender.SendTextMessageAsync(chatId, errMsg, ct).ConfigureAwait(false);
+                                await SendMainMenuAsync(chatId, userId, ct);
+                            }
+                            return;
+                        }
                         else if (paymentMethod == "gateway")
                         {
-                            // Gateway payment — inform user and block submission until paid
+                            // Gateway not configured — fallback: tell user to charge wallet
                             await SafeDelete(chatId, triggerMsgId, ct);
                             await RemoveReplyKbSilent(chatId, ct);
                             var gatewayMsg = $"<b>💳 پرداخت هزینه آگهی</b>\n━━━━━━━━━━━━━━━━━━━\n\n" +
