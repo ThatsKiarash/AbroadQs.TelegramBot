@@ -6,6 +6,7 @@ namespace AbroadQs.Bot.Modules.Common;
 /// Handles callbacks like "stage:xxx" — loads the stage from DB, checks permissions, and displays it.
 /// Also handles "lang:xx" callbacks for language selection.
 /// Also handles plain text messages that match reply keyboard buttons.
+/// Also handles "exc_hist:" callbacks for My Exchanges and "exc_rates:" for live rates.
 ///
 /// Message transition rules:
 ///   • Same type (inline → inline)      : editMessageText in-place
@@ -22,6 +23,9 @@ public sealed class DynamicStageHandler : IUpdateHandler
     private readonly IUserConversationStateStore _stateStore;
     private readonly IUserMessageStateRepository? _msgStateRepo;
     private readonly ExchangeStateHandler? _exchangeHandler;
+    private readonly IExchangeRepository? _exchangeRepo;
+
+    private const int TradesPageSize = 5;
 
     public DynamicStageHandler(
         IResponseSender sender,
@@ -30,7 +34,8 @@ public sealed class DynamicStageHandler : IUpdateHandler
         ITelegramUserRepository userRepo,
         IUserConversationStateStore stateStore,
         IUserMessageStateRepository? msgStateRepo = null,
-        ExchangeStateHandler? exchangeHandler = null)
+        ExchangeStateHandler? exchangeHandler = null,
+        IExchangeRepository? exchangeRepo = null)
     {
         _sender = sender;
         _stageRepo = stageRepo;
@@ -39,6 +44,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
         _stateStore = stateStore;
         _msgStateRepo = msgStateRepo;
         _exchangeHandler = exchangeHandler;
+        _exchangeRepo = exchangeRepo;
     }
 
     public string? Command => null;
@@ -52,6 +58,8 @@ public sealed class DynamicStageHandler : IUpdateHandler
             return data.StartsWith("stage:", StringComparison.OrdinalIgnoreCase)
                 || data.StartsWith("lang:", StringComparison.OrdinalIgnoreCase)
                 || data.StartsWith("toggle:", StringComparison.OrdinalIgnoreCase)
+                || data.StartsWith("exc_hist:", StringComparison.Ordinal)
+                || data.StartsWith("exc_rates:", StringComparison.Ordinal)
                 || data == "start_kyc";
         }
         var cmd = context.Command;
@@ -79,6 +87,20 @@ public sealed class DynamicStageHandler : IUpdateHandler
         // Answer callback to remove loading spinner (skip for toggle: — answered later with toast)
         if (context.IsCallbackQuery && context.CallbackQueryId != null && !data.StartsWith("toggle:", StringComparison.OrdinalIgnoreCase))
             await _sender.AnswerCallbackQueryAsync(context.CallbackQueryId, null, cancellationToken).ConfigureAwait(false);
+
+        // ── exc_hist: callback (My Exchanges navigation) ───────────────
+        if (data.StartsWith("exc_hist:", StringComparison.Ordinal))
+        {
+            await HandleExcHistCallback(chatId, userId, currentUser, data, editMessageId, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+
+        // ── exc_rates: callback (Exchange Rates actions) ───────────────
+        if (data.StartsWith("exc_rates:", StringComparison.Ordinal))
+        {
+            await HandleExcRatesCallback(chatId, userId, currentUser, data, editMessageId, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
 
         // ── lang:xx callback ──────────────────────────────────────────
         if (data.StartsWith("lang:", StringComparison.OrdinalIgnoreCase))
@@ -226,6 +248,20 @@ public sealed class DynamicStageHandler : IUpdateHandler
                     return true;
                 }
 
+                // ── Exchange Rates: show live rates ──────────────────
+                if (string.Equals(stageKey, "exchange_rates", StringComparison.OrdinalIgnoreCase))
+                {
+                    await ShowExchangeRates(chatId, currentUser, editMessageId, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+
+                // ── My Exchanges: show year selector ─────────────────
+                if (string.Equals(stageKey, "my_exchanges", StringComparison.OrdinalIgnoreCase))
+                {
+                    await ShowMyExchangesYears(chatId, currentUser, editMessageId, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+
                 // Same type: inline → inline: edit in place
                 await ShowStageInlineAsync(userId, stageKey, editMessageId, null, cancellationToken).ConfigureAwait(false);
             }
@@ -241,6 +277,373 @@ public sealed class DynamicStageHandler : IUpdateHandler
 
         return false;
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  Exchange Rates — live display
+    // ═══════════════════════════════════════════════════════════════════
+
+    private async Task ShowExchangeRates(long chatId, TelegramUserDto? user, int? editMessageId, CancellationToken ct)
+    {
+        var isFa = (user?.PreferredLanguage ?? "fa") == "fa";
+
+        IReadOnlyList<ExchangeRateDto> rates = Array.Empty<ExchangeRateDto>();
+        try
+        {
+            if (_exchangeRepo != null)
+                rates = await _exchangeRepo.GetRatesAsync(ct).ConfigureAwait(false);
+        }
+        catch { }
+
+        var text = isFa
+            ? "<b>💹 نرخ لحظه‌ای ارزها</b>\n" +
+              "━━━━━━━━━━━━━━━━━━━\n\n" +
+              "نرخ‌های زیر بر اساس آخرین داده‌های بازار آزاد به‌روزرسانی شده‌اند.\n" +
+              "برای مشاهده آخرین نرخ‌ها، دکمه «به‌روزرسانی» را بزنید.\n\n"
+            : "<b>💹 Live Exchange Rates</b>\n" +
+              "━━━━━━━━━━━━━━━━━━━\n\n" +
+              "Rates are based on the latest open market data.\n" +
+              "Press \"Refresh\" to get the latest rates.\n\n";
+
+        if (rates.Count == 0)
+        {
+            text += isFa
+                ? "⚠️ در حال حاضر نرخی در سیستم ثبت نشده است.\nلطفاً بعداً مراجعه کنید یا دکمه به‌روزرسانی را بزنید."
+                : "⚠️ No rates available at the moment.\nPlease try again later or press Refresh.";
+        }
+        else
+        {
+            foreach (var r in rates)
+            {
+                var flag = ExchangeStateHandler.GetCurrencyFlag(r.CurrencyCode);
+                var name = isFa
+                    ? (r.CurrencyNameFa ?? ExchangeStateHandler.GetCurrencyNameFa(r.CurrencyCode))
+                    : (r.CurrencyNameEn ?? ExchangeStateHandler.GetCurrencyNameEn(r.CurrencyCode));
+                var changeSign = r.Change >= 0 ? "+" : "";
+                var changeIcon = r.Change > 0 ? "📈" : r.Change < 0 ? "📉" : "➖";
+                var changeStr = r.Change != 0
+                    ? $" {changeIcon} <b>{changeSign}{r.Change:N0}</b>"
+                    : "";
+                text += $"{flag} <b>{name}</b>\n   {(isFa ? "نرخ" : "Rate")}: <b>{r.Rate:N0}</b> {(isFa ? "تومان" : "IRR")}{changeStr}\n\n";
+            }
+
+            // Show last updated time
+            var latest = rates.OrderByDescending(r => r.LastUpdatedAt).FirstOrDefault();
+            if (latest != null)
+            {
+                var updatedLocal = latest.LastUpdatedAt.ToOffset(TimeSpan.FromHours(3.5)); // Iran time
+                text += "━━━━━━━━━━━━━━━━━━━\n";
+                text += isFa
+                    ? $"🕐 آخرین به‌روزرسانی: <b>{updatedLocal:HH:mm}</b> — {updatedLocal:yyyy/MM/dd}\n"
+                    : $"🕐 Last updated: <b>{updatedLocal:HH:mm}</b> — {updatedLocal:yyyy/MM/dd}\n";
+                text += isFa
+                    ? "<i>نرخ‌ها ممکن است با نرخ نهایی معامله متفاوت باشند.</i>"
+                    : "<i>Rates may differ from the final transaction rate.</i>";
+            }
+        }
+
+        var kb = new List<IReadOnlyList<InlineButton>>
+        {
+            new[] { new InlineButton(isFa ? "🔄 به‌روزرسانی نرخ‌ها" : "🔄 Refresh Rates", "exc_rates:refresh") },
+            new[] { new InlineButton(isFa ? "🔙 بازگشت" : "🔙 Back", "stage:student_exchange") },
+        };
+
+        await SendOrEditTextAsync(chatId, text, kb, editMessageId, ct).ConfigureAwait(false);
+    }
+
+    private async Task HandleExcRatesCallback(long chatId, long userId, TelegramUserDto? user, string data, int? editMessageId, CancellationToken ct)
+    {
+        // exc_rates:refresh
+        if (data == "exc_rates:refresh")
+        {
+            await ShowExchangeRates(chatId, user, editMessageId, ct).ConfigureAwait(false);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  My Exchanges — year → month → paginated list
+    // ═══════════════════════════════════════════════════════════════════
+
+    private async Task ShowMyExchangesYears(long chatId, TelegramUserDto? user, int? editMessageId, CancellationToken ct)
+    {
+        var isFa = (user?.PreferredLanguage ?? "fa") == "fa";
+        var userId = user?.TelegramUserId ?? 0;
+        var firstSeen = user?.FirstSeenAt ?? DateTimeOffset.UtcNow;
+        var nowIran = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(3.5));
+
+        var startYear = firstSeen.Year;
+        var endYear = nowIran.Year;
+
+        // Get exchange counts per year
+        IReadOnlyDictionary<int, int> yearCounts = new Dictionary<int, int>();
+        try
+        {
+            if (_exchangeRepo != null)
+                yearCounts = await _exchangeRepo.GetUserExchangeCountByYearAsync(userId, ct).ConfigureAwait(false);
+        }
+        catch { }
+
+        var totalAll = yearCounts.Values.Sum();
+        var memberSince = firstSeen.ToOffset(TimeSpan.FromHours(3.5));
+
+        var text = isFa
+            ? "<b>📋 تبادلات من</b>\n" +
+              "━━━━━━━━━━━━━━━━━━━\n\n" +
+              "از این بخش می‌توانید تاریخچه کامل درخواست‌ها و تبادلات خود را مشاهده و پیگیری کنید.\n" +
+              "وضعیت هر درخواست به‌صورت لحظه‌ای به‌روزرسانی می‌شود.\n\n" +
+              $"📅 عضویت از: <b>{memberSince:yyyy/MM/dd}</b>\n" +
+              $"📊 مجموع درخواست‌ها: <b>{totalAll}</b>\n\n" +
+              "سال مورد نظر را انتخاب کنید:"
+            : "<b>📋 My Exchanges</b>\n" +
+              "━━━━━━━━━━━━━━━━━━━\n\n" +
+              "View and track the full history of your exchange requests.\n" +
+              "Each request's status is updated in real-time.\n\n" +
+              $"📅 Member since: <b>{memberSince:yyyy/MM/dd}</b>\n" +
+              $"📊 Total requests: <b>{totalAll}</b>\n\n" +
+              "Select a year:";
+
+        var kb = new List<IReadOnlyList<InlineButton>>();
+        // Show years in rows of 3
+        var years = new List<int>();
+        for (int y = endYear; y >= startYear; y--)
+            years.Add(y);
+
+        for (int i = 0; i < years.Count; i += 3)
+        {
+            var row = new List<InlineButton>();
+            for (int j = i; j < Math.Min(i + 3, years.Count); j++)
+            {
+                var y = years[j];
+                yearCounts.TryGetValue(y, out var count);
+                var label = count > 0 ? $"📁 {y} ({count})" : $"{y}";
+                row.Add(new InlineButton(label, $"exc_hist:y:{y}"));
+            }
+            kb.Add(row);
+        }
+
+        kb.Add(new[] { new InlineButton(isFa ? "🔙 بازگشت" : "🔙 Back", "stage:student_exchange") });
+
+        await SendOrEditTextAsync(chatId, text, kb, editMessageId, ct).ConfigureAwait(false);
+    }
+
+    private async Task ShowMyExchangesMonths(long chatId, TelegramUserDto? user, int year, int? editMessageId, CancellationToken ct)
+    {
+        var isFa = (user?.PreferredLanguage ?? "fa") == "fa";
+        var userId = user?.TelegramUserId ?? 0;
+
+        var monthNamesFa = new[] { "", "ژانویه", "فوریه", "مارس", "آوریل", "مه", "ژوئن", "ژوئیه", "اوت", "سپتامبر", "اکتبر", "نوامبر", "دسامبر" };
+        var monthNamesEn = new[] { "", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+
+        // Get exchange counts per month
+        IReadOnlyDictionary<int, int> monthCounts = new Dictionary<int, int>();
+        try
+        {
+            if (_exchangeRepo != null)
+                monthCounts = await _exchangeRepo.GetUserExchangeCountByMonthAsync(userId, year, ct).ConfigureAwait(false);
+        }
+        catch { }
+
+        var totalYear = monthCounts.Values.Sum();
+
+        var text = isFa
+            ? $"<b>📋 تبادلات من — {year}</b>\n" +
+              "━━━━━━━━━━━━━━━━━━━\n\n" +
+              $"📊 مجموع درخواست‌های سال {year}: <b>{totalYear}</b>\n\n" +
+              "ماه مورد نظر را انتخاب کنید.\n" +
+              "<i>ماه‌هایی که درخواست دارند با تعداد نمایش داده می‌شوند.</i>"
+            : $"<b>📋 My Exchanges — {year}</b>\n" +
+              "━━━━━━━━━━━━━━━━━━━\n\n" +
+              $"📊 Total requests in {year}: <b>{totalYear}</b>\n\n" +
+              "Select a month.\n" +
+              "<i>Months with requests show their count.</i>";
+
+        var kb = new List<IReadOnlyList<InlineButton>>();
+
+        // Show months in rows of 3
+        for (int i = 1; i <= 12; i += 3)
+        {
+            var row = new List<InlineButton>();
+            for (int m = i; m < Math.Min(i + 3, 13); m++)
+            {
+                var monthName = isFa ? monthNamesFa[m] : monthNamesEn[m];
+                monthCounts.TryGetValue(m, out var count);
+                var label = count > 0 ? $"{monthName} ({count})" : monthName;
+                row.Add(new InlineButton(label, $"exc_hist:m:{year}:{m}"));
+            }
+            kb.Add(row);
+        }
+
+        kb.Add(new[] { new InlineButton(isFa ? "🔙 بازگشت به سال‌ها" : "🔙 Back to years", "exc_hist:years") });
+
+        await SendOrEditTextAsync(chatId, text, kb, editMessageId, ct).ConfigureAwait(false);
+    }
+
+    private async Task ShowMyExchangesList(long chatId, TelegramUserDto? user, int year, int month, int page, int? editMessageId, CancellationToken ct)
+    {
+        var userId = user?.TelegramUserId ?? 0;
+        var isFa = (user?.PreferredLanguage ?? "fa") == "fa";
+
+        var monthNamesFa = new[] { "", "ژانویه", "فوریه", "مارس", "آوریل", "مه", "ژوئن", "ژوئیه", "اوت", "سپتامبر", "اکتبر", "نوامبر", "دسامبر" };
+        var monthNamesEn = new[] { "", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+        var monthName = isFa ? monthNamesFa[month] : monthNamesEn[month];
+
+        (IReadOnlyList<ExchangeRequestDto> items, int totalCount) = (Array.Empty<ExchangeRequestDto>(), 0);
+        try
+        {
+            if (_exchangeRepo != null)
+                (items, totalCount) = await _exchangeRepo.ListUserRequestsPagedAsync(userId, year, month, page, TradesPageSize, ct).ConfigureAwait(false);
+        }
+        catch { }
+
+        var totalPages = (int)Math.Ceiling((double)totalCount / TradesPageSize);
+        if (totalPages < 1) totalPages = 1;
+
+        var text = isFa
+            ? $"<b>📋 تبادلات من — {monthName} {year}</b>\n" +
+              "━━━━━━━━━━━━━━━━━━━\n\n"
+            : $"<b>📋 My Exchanges — {monthName} {year}</b>\n" +
+              "━━━━━━━━━━━━━━━━━━━\n\n";
+
+        if (totalCount == 0)
+        {
+            text += isFa
+                ? "📭 در این ماه هیچ درخواستی ثبت نشده است.\n\n" +
+                  "برای ثبت درخواست جدید، از بخش «ثبت درخواست تبادل» اقدام کنید."
+                : "📭 No requests found for this month.\n\n" +
+                  "To submit a new request, go to the \"Submit Exchange\" section.";
+        }
+        else
+        {
+            text += isFa
+                ? $"📊 مجموع: <b>{totalCount}</b> درخواست — صفحه <b>{page + 1}</b> از <b>{totalPages}</b>\n\n"
+                : $"📊 Total: <b>{totalCount}</b> requests — Page <b>{page + 1}</b> of <b>{totalPages}</b>\n\n";
+
+            foreach (var req in items)
+            {
+                var flag = ExchangeStateHandler.GetCurrencyFlag(req.Currency);
+                var currFa = isFa
+                    ? ExchangeStateHandler.GetCurrencyNameFa(req.Currency)
+                    : ExchangeStateHandler.GetCurrencyNameEn(req.Currency);
+                var statusIcon = GetStatusIcon(req.Status);
+                var statusLabel = isFa ? GetStatusLabelFa(req.Status) : GetStatusLabelEn(req.Status);
+                var txLabel = isFa
+                    ? (req.TransactionType == "buy" ? "خرید" : req.TransactionType == "sell" ? "فروش" : "تبادل")
+                    : (req.TransactionType == "buy" ? "Buy" : req.TransactionType == "sell" ? "Sell" : "Exchange");
+                var deliveryLabel = isFa
+                    ? (req.DeliveryMethod == "bank" ? "حواله بانکی" : req.DeliveryMethod == "paypal" ? "پی‌پال" : req.DeliveryMethod == "cash" ? "اسکناس" : req.DeliveryMethod)
+                    : (req.DeliveryMethod == "bank" ? "Bank Transfer" : req.DeliveryMethod == "paypal" ? "PayPal" : req.DeliveryMethod == "cash" ? "Cash" : req.DeliveryMethod);
+                var date = req.CreatedAt.ToOffset(TimeSpan.FromHours(3.5));
+
+                text += $"<b>#{req.RequestNumber}</b> {statusIcon} {statusLabel}\n" +
+                        (isFa
+                            ? $"   💱 {txLabel} {flag} <b>{req.Amount:N0}</b> {currFa}\n" +
+                              $"   💰 نرخ: {req.ProposedRate:N0} T — جمع: <b>{req.TotalAmount:N0}</b> T\n" +
+                              $"   🚚 {deliveryLabel}" +
+                              (!string.IsNullOrEmpty(req.Country) ? $" — {req.Country}" : "") + "\n" +
+                              $"   🕐 {date:yyyy/MM/dd HH:mm}\n"
+                            : $"   💱 {txLabel} {flag} <b>{req.Amount:N0}</b> {currFa}\n" +
+                              $"   💰 Rate: {req.ProposedRate:N0} T — Total: <b>{req.TotalAmount:N0}</b> T\n" +
+                              $"   🚚 {deliveryLabel}" +
+                              (!string.IsNullOrEmpty(req.Country) ? $" — {req.Country}" : "") + "\n" +
+                              $"   🕐 {date:yyyy/MM/dd HH:mm}\n");
+
+                if (!string.IsNullOrEmpty(req.AdminNote))
+                    text += isFa
+                        ? $"   📝 یادداشت ادمین: {req.AdminNote}\n"
+                        : $"   📝 Admin note: {req.AdminNote}\n";
+
+                text += "\n";
+            }
+        }
+
+        var kb = new List<IReadOnlyList<InlineButton>>();
+
+        // Pagination buttons
+        if (totalPages > 1)
+        {
+            var navRow = new List<InlineButton>();
+            if (page > 0)
+                navRow.Add(new InlineButton("◀️ قبلی", $"exc_hist:p:{year}:{month}:{page - 1}"));
+            navRow.Add(new InlineButton($"📄 {page + 1}/{totalPages}", "noop"));
+            if (page < totalPages - 1)
+                navRow.Add(new InlineButton("بعدی ▶️", $"exc_hist:p:{year}:{month}:{page + 1}"));
+            kb.Add(navRow);
+        }
+
+        kb.Add(new[] { new InlineButton(isFa ? "🔙 بازگشت به ماه‌ها" : "🔙 Back to months", $"exc_hist:y:{year}") });
+        kb.Add(new[] { new InlineButton(isFa ? "📅 بازگشت به سال‌ها" : "📅 Back to years", "exc_hist:years") });
+
+        await SendOrEditTextAsync(chatId, text, kb, editMessageId, ct).ConfigureAwait(false);
+    }
+
+    private async Task HandleExcHistCallback(long chatId, long userId, TelegramUserDto? user, string data, int? editMessageId, CancellationToken ct)
+    {
+        // exc_hist:years — back to year selector
+        if (data == "exc_hist:years")
+        {
+            await ShowMyExchangesYears(chatId, user, editMessageId, ct).ConfigureAwait(false);
+            return;
+        }
+
+        // exc_hist:y:YEAR — show months for year
+        if (data.StartsWith("exc_hist:y:"))
+        {
+            var yearStr = data["exc_hist:y:".Length..];
+            if (int.TryParse(yearStr, out var year))
+                await ShowMyExchangesMonths(chatId, user, year, editMessageId, ct).ConfigureAwait(false);
+            return;
+        }
+
+        // exc_hist:m:YEAR:MONTH — show paginated list page 0
+        if (data.StartsWith("exc_hist:m:"))
+        {
+            var parts = data["exc_hist:m:".Length..].Split(':');
+            if (parts.Length >= 2 && int.TryParse(parts[0], out var year) && int.TryParse(parts[1], out var month))
+                await ShowMyExchangesList(chatId, user, year, month, 0, editMessageId, ct).ConfigureAwait(false);
+            return;
+        }
+
+        // exc_hist:p:YEAR:MONTH:PAGE — navigate to specific page
+        if (data.StartsWith("exc_hist:p:"))
+        {
+            var parts = data["exc_hist:p:".Length..].Split(':');
+            if (parts.Length >= 3 && int.TryParse(parts[0], out var year) && int.TryParse(parts[1], out var month) && int.TryParse(parts[2], out var page))
+                await ShowMyExchangesList(chatId, user, year, month, page, editMessageId, ct).ConfigureAwait(false);
+            return;
+        }
+    }
+
+    private static string GetStatusIcon(string status) => status switch
+    {
+        "pending_approval" => "🟡",
+        "approved" => "🟢",
+        "rejected" => "🔴",
+        "posted" => "🔵",
+        "completed" => "✅",
+        "cancelled" => "⚫",
+        _ => "⚪"
+    };
+
+    private static string GetStatusLabelFa(string status) => status switch
+    {
+        "pending_approval" => "در انتظار بررسی",
+        "approved" => "تایید شده",
+        "rejected" => "رد شده",
+        "posted" => "منتشر شده",
+        "completed" => "تکمیل شده",
+        "cancelled" => "لغو شده",
+        _ => status
+    };
+
+    private static string GetStatusLabelEn(string status) => status switch
+    {
+        "pending_approval" => "Pending",
+        "approved" => "Approved",
+        "rejected" => "Rejected",
+        "posted" => "Posted",
+        "completed" => "Completed",
+        "cancelled" => "Cancelled",
+        _ => status
+    };
 
     // ═══════════════════════════════════════════════════════════════════
     //  Stage type registry
@@ -367,6 +770,26 @@ public sealed class DynamicStageHandler : IUpdateHandler
                     if (cleanMode)
                         await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
                     await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, profileText, profileKb, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+
+                // ── Exchange Rates (from reply-kb) ─────────────────
+                if (string.Equals(targetStage, "exchange_rates", StringComparison.OrdinalIgnoreCase))
+                {
+                    var user = await _userRepo.GetByTelegramUserIdAsync(userId, cancellationToken).ConfigureAwait(false);
+                    if (cleanMode)
+                        await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
+                    await ShowExchangeRates(chatId, user, null, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+
+                // ── My Exchanges (from reply-kb) ───────────────────
+                if (string.Equals(targetStage, "my_exchanges", StringComparison.OrdinalIgnoreCase))
+                {
+                    var user = await _userRepo.GetByTelegramUserIdAsync(userId, cancellationToken).ConfigureAwait(false);
+                    if (cleanMode)
+                        await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
+                    await ShowMyExchangesYears(chatId, user, null, cancellationToken).ConfigureAwait(false);
                     return true;
                 }
 

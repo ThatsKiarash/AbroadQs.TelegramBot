@@ -11,7 +11,14 @@ public interface IExchangeRepository
     Task<ExchangeRequestDto?> GetRequestAsync(int id, CancellationToken ct = default);
     Task<ExchangeRequestDto?> GetRequestByNumberAsync(int number, CancellationToken ct = default);
     Task<IReadOnlyList<ExchangeRequestDto>> ListRequestsAsync(string? status = null, long? userId = null, CancellationToken ct = default);
+    Task<(IReadOnlyList<ExchangeRequestDto> Items, int TotalCount)> ListUserRequestsPagedAsync(long userId, int year, int month, int page, int pageSize, CancellationToken ct = default);
     Task UpdateStatusAsync(int id, string status, string? adminNote = null, int? channelMsgId = null, CancellationToken ct = default);
+
+    /// <summary>Returns a dictionary of year → exchange count for a given user.</summary>
+    Task<IReadOnlyDictionary<int, int>> GetUserExchangeCountByYearAsync(long userId, CancellationToken ct = default);
+
+    /// <summary>Returns a dictionary of month (1-12) → exchange count for a given user in a specific year.</summary>
+    Task<IReadOnlyDictionary<int, int>> GetUserExchangeCountByMonthAsync(long userId, int year, CancellationToken ct = default);
 
     // ── Rates ────────────────────────────────────────────────────────
     Task<IReadOnlyList<ExchangeRateDto>> GetRatesAsync(CancellationToken ct = default);

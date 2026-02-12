@@ -70,6 +70,26 @@ public sealed class ExchangeRepository : IExchangeRepository
         return list.Select(ToDto).ToList();
     }
 
+    public async Task<(IReadOnlyList<ExchangeRequestDto> Items, int TotalCount)> ListUserRequestsPagedAsync(
+        long userId, int year, int month, int page, int pageSize, CancellationToken ct = default)
+    {
+        var startDate = new DateTimeOffset(year, month, 1, 0, 0, 0, TimeSpan.Zero);
+        var endDate = startDate.AddMonths(1);
+
+        var q = _db.ExchangeRequests
+            .Where(r => r.TelegramUserId == userId)
+            .Where(r => r.CreatedAt >= startDate && r.CreatedAt < endDate);
+
+        var totalCount = await q.CountAsync(ct).ConfigureAwait(false);
+        var items = await q
+            .OrderByDescending(r => r.CreatedAt)
+            .Skip(page * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct).ConfigureAwait(false);
+
+        return (items.Select(ToDto).ToList(), totalCount);
+    }
+
     public async Task UpdateStatusAsync(int id, string status, string? adminNote = null, int? channelMsgId = null, CancellationToken ct = default)
     {
         var e = await _db.ExchangeRequests.FindAsync(new object[] { id }, ct).ConfigureAwait(false);
@@ -79,6 +99,29 @@ public sealed class ExchangeRepository : IExchangeRepository
         if (adminNote != null) e.AdminNote = adminNote;
         if (channelMsgId.HasValue) e.ChannelMessageId = channelMsgId;
         await _db.SaveChangesAsync(ct).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyDictionary<int, int>> GetUserExchangeCountByYearAsync(long userId, CancellationToken ct = default)
+    {
+        var result = await _db.ExchangeRequests
+            .Where(r => r.TelegramUserId == userId)
+            .GroupBy(r => r.CreatedAt.Year)
+            .Select(g => new { Year = g.Key, Count = g.Count() })
+            .ToListAsync(ct).ConfigureAwait(false);
+        return result.ToDictionary(x => x.Year, x => x.Count);
+    }
+
+    public async Task<IReadOnlyDictionary<int, int>> GetUserExchangeCountByMonthAsync(long userId, int year, CancellationToken ct = default)
+    {
+        var startDate = new DateTimeOffset(year, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var endDate = startDate.AddYears(1);
+        var result = await _db.ExchangeRequests
+            .Where(r => r.TelegramUserId == userId)
+            .Where(r => r.CreatedAt >= startDate && r.CreatedAt < endDate)
+            .GroupBy(r => r.CreatedAt.Month)
+            .Select(g => new { Month = g.Key, Count = g.Count() })
+            .ToListAsync(ct).ConfigureAwait(false);
+        return result.ToDictionary(x => x.Month, x => x.Count);
     }
 
     // ── Rates ────────────────────────────────────────────────────────
