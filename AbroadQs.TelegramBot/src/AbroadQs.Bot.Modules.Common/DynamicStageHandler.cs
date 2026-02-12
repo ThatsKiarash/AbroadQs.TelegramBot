@@ -294,58 +294,62 @@ public sealed class DynamicStageHandler : IUpdateHandler
         }
         catch { }
 
-        var text = isFa
-            ? "<b>💹 نرخ لحظه‌ای ارزها</b>\n" +
-              "━━━━━━━━━━━━━━━━━━━\n\n" +
-              "نرخ‌های زیر بر اساس آخرین داده‌های بازار آزاد به‌روزرسانی شده‌اند.\n" +
-              "برای مشاهده آخرین نرخ‌ها، دکمه «به‌روزرسانی» را بزنید.\n\n"
-            : "<b>💹 Live Exchange Rates</b>\n" +
-              "━━━━━━━━━━━━━━━━━━━\n\n" +
-              "Rates are based on the latest open market data.\n" +
-              "Press \"Refresh\" to get the latest rates.\n\n";
+        string text;
+        var kb = new List<IReadOnlyList<InlineButton>>();
 
         if (rates.Count == 0)
         {
-            text += isFa
-                ? "⚠️ در حال حاضر نرخی در سیستم ثبت نشده است.\nلطفاً بعداً مراجعه کنید یا دکمه به‌روزرسانی را بزنید."
-                : "⚠️ No rates available at the moment.\nPlease try again later or press Refresh.";
+            text = isFa
+                ? "<b>💹 نرخ لحظه‌ای ارزها</b>\n" +
+                  "━━━━━━━━━━━━━━━━━━━\n\n" +
+                  "⚠️ در حال حاضر نرخی در سیستم ثبت نشده است.\n" +
+                  "لطفاً بعداً مراجعه کنید یا دکمه به‌روزرسانی را بزنید."
+                : "<b>💹 Live Exchange Rates</b>\n" +
+                  "━━━━━━━━━━━━━━━━━━━\n\n" +
+                  "⚠️ No rates available at the moment.\n" +
+                  "Please try again later or press Refresh.";
         }
         else
         {
-            foreach (var r in rates)
+            // Build inline buttons per currency — 2 per row
+            for (int i = 0; i < rates.Count; i += 2)
             {
-                var flag = ExchangeStateHandler.GetCurrencyFlag(r.CurrencyCode);
-                var name = isFa
-                    ? (r.CurrencyNameFa ?? ExchangeStateHandler.GetCurrencyNameFa(r.CurrencyCode))
-                    : (r.CurrencyNameEn ?? ExchangeStateHandler.GetCurrencyNameEn(r.CurrencyCode));
-                var changeSign = r.Change >= 0 ? "+" : "";
-                var changeIcon = r.Change > 0 ? "📈" : r.Change < 0 ? "📉" : "➖";
-                var changeStr = r.Change != 0
-                    ? $" {changeIcon} <b>{changeSign}{r.Change:N0}</b>"
-                    : "";
-                text += $"{flag} <b>{name}</b>\n   {(isFa ? "نرخ" : "Rate")}: <b>{r.Rate:N0}</b> {(isFa ? "تومان" : "IRR")}{changeStr}\n\n";
+                var row = new List<InlineButton>();
+                for (int j = i; j < Math.Min(i + 2, rates.Count); j++)
+                {
+                    var r = rates[j];
+                    var flag = ExchangeStateHandler.GetCurrencyFlag(r.CurrencyCode);
+                    var changeIcon = r.Change > 0 ? "📈" : r.Change < 0 ? "📉" : "";
+                    var label = $"{flag} {r.CurrencyCode} {r.Rate:N0} T {changeIcon}";
+                    row.Add(new InlineButton(label, "noop"));
+                }
+                kb.Add(row);
             }
 
-            // Show last updated time
+            // Show last updated time in the text
             var latest = rates.OrderByDescending(r => r.LastUpdatedAt).FirstOrDefault();
+            var updatedStr = "";
             if (latest != null)
             {
-                var updatedLocal = latest.LastUpdatedAt.ToOffset(TimeSpan.FromHours(3.5)); // Iran time
-                text += "━━━━━━━━━━━━━━━━━━━\n";
-                text += isFa
-                    ? $"🕐 آخرین به‌روزرسانی: <b>{updatedLocal:HH:mm}</b> — {updatedLocal:yyyy/MM/dd}\n"
-                    : $"🕐 Last updated: <b>{updatedLocal:HH:mm}</b> — {updatedLocal:yyyy/MM/dd}\n";
-                text += isFa
-                    ? "<i>نرخ‌ها ممکن است با نرخ نهایی معامله متفاوت باشند.</i>"
-                    : "<i>Rates may differ from the final transaction rate.</i>";
+                var updatedLocal = latest.LastUpdatedAt.ToOffset(TimeSpan.FromHours(3.5));
+                updatedStr = isFa
+                    ? $"\n🕐 آخرین به‌روزرسانی: <b>{updatedLocal:HH:mm}</b> — {updatedLocal:yyyy/MM/dd}"
+                    : $"\n🕐 Last updated: <b>{updatedLocal:HH:mm}</b> — {updatedLocal:yyyy/MM/dd}";
             }
+
+            text = isFa
+                ? "<b>💹 نرخ لحظه‌ای ارزها</b>\n" +
+                  "━━━━━━━━━━━━━━━━━━━\n\n" +
+                  "نرخ‌های زیر بر اساس آخرین داده‌های بازار آزاد هستند.\n" +
+                  "<i>نرخ‌ها ممکن است با نرخ نهایی معامله متفاوت باشند.</i>" + updatedStr
+                : "<b>💹 Live Exchange Rates</b>\n" +
+                  "━━━━━━━━━━━━━━━━━━━\n\n" +
+                  "Rates are based on the latest open market data.\n" +
+                  "<i>Rates may differ from the final transaction rate.</i>" + updatedStr;
         }
 
-        var kb = new List<IReadOnlyList<InlineButton>>
-        {
-            new[] { new InlineButton(isFa ? "🔄 به‌روزرسانی نرخ‌ها" : "🔄 Refresh Rates", "exc_rates:refresh") },
-            new[] { new InlineButton(isFa ? "🔙 بازگشت" : "🔙 Back", "stage:student_exchange") },
-        };
+        kb.Add(new[] { new InlineButton(isFa ? "🔄 به‌روزرسانی نرخ‌ها" : "🔄 Refresh Rates", "exc_rates:refresh") });
+        kb.Add(new[] { new InlineButton(isFa ? "🔙 بازگشت" : "🔙 Back", "stage:student_exchange") });
 
         await SendOrEditTextAsync(chatId, text, kb, editMessageId, ct).ConfigureAwait(false);
     }
@@ -497,65 +501,45 @@ public sealed class DynamicStageHandler : IUpdateHandler
         var totalPages = (int)Math.Ceiling((double)totalCount / TradesPageSize);
         if (totalPages < 1) totalPages = 1;
 
-        var text = isFa
-            ? $"<b>📋 تبادلات من — {monthName} {year}</b>\n" +
-              "━━━━━━━━━━━━━━━━━━━\n\n"
-            : $"<b>📋 My Exchanges — {monthName} {year}</b>\n" +
-              "━━━━━━━━━━━━━━━━━━━\n\n";
+        string text;
+        var kb = new List<IReadOnlyList<InlineButton>>();
 
         if (totalCount == 0)
         {
-            text += isFa
-                ? "📭 در این ماه هیچ درخواستی ثبت نشده است.\n\n" +
+            text = isFa
+                ? $"<b>📋 تبادلات من — {monthName} {year}</b>\n" +
+                  "━━━━━━━━━━━━━━━━━━━\n\n" +
+                  "📭 در این ماه هیچ درخواستی ثبت نشده است.\n\n" +
                   "برای ثبت درخواست جدید، از بخش «ثبت درخواست تبادل» اقدام کنید."
-                : "📭 No requests found for this month.\n\n" +
+                : $"<b>📋 My Exchanges — {monthName} {year}</b>\n" +
+                  "━━━━━━━━━━━━━━━━━━━\n\n" +
+                  "📭 No requests found for this month.\n\n" +
                   "To submit a new request, go to the \"Submit Exchange\" section.";
         }
         else
         {
-            text += isFa
-                ? $"📊 مجموع: <b>{totalCount}</b> درخواست — صفحه <b>{page + 1}</b> از <b>{totalPages}</b>\n\n"
-                : $"📊 Total: <b>{totalCount}</b> requests — Page <b>{page + 1}</b> of <b>{totalPages}</b>\n\n";
+            text = isFa
+                ? $"<b>📋 تبادلات من — {monthName} {year}</b>\n" +
+                  "━━━━━━━━━━━━━━━━━━━\n\n" +
+                  $"📊 مجموع: <b>{totalCount}</b> درخواست — صفحه <b>{page + 1}</b> از <b>{totalPages}</b>\n\n" +
+                  "برای مشاهده جزئیات هر درخواست، روی آن کلیک کنید:"
+                : $"<b>📋 My Exchanges — {monthName} {year}</b>\n" +
+                  "━━━━━━━━━━━━━━━━━━━\n\n" +
+                  $"📊 Total: <b>{totalCount}</b> requests — Page <b>{page + 1}</b> of <b>{totalPages}</b>\n\n" +
+                  "Tap a request to see its details:";
 
+            // Each request as an inline button
             foreach (var req in items)
             {
                 var flag = ExchangeStateHandler.GetCurrencyFlag(req.Currency);
-                var currFa = isFa
-                    ? ExchangeStateHandler.GetCurrencyNameFa(req.Currency)
-                    : ExchangeStateHandler.GetCurrencyNameEn(req.Currency);
                 var statusIcon = GetStatusIcon(req.Status);
-                var statusLabel = isFa ? GetStatusLabelFa(req.Status) : GetStatusLabelEn(req.Status);
                 var txLabel = isFa
                     ? (req.TransactionType == "buy" ? "خرید" : req.TransactionType == "sell" ? "فروش" : "تبادل")
-                    : (req.TransactionType == "buy" ? "Buy" : req.TransactionType == "sell" ? "Sell" : "Exchange");
-                var deliveryLabel = isFa
-                    ? (req.DeliveryMethod == "bank" ? "حواله بانکی" : req.DeliveryMethod == "paypal" ? "پی‌پال" : req.DeliveryMethod == "cash" ? "اسکناس" : req.DeliveryMethod)
-                    : (req.DeliveryMethod == "bank" ? "Bank Transfer" : req.DeliveryMethod == "paypal" ? "PayPal" : req.DeliveryMethod == "cash" ? "Cash" : req.DeliveryMethod);
-                var date = req.CreatedAt.ToOffset(TimeSpan.FromHours(3.5));
-
-                text += $"<b>#{req.RequestNumber}</b> {statusIcon} {statusLabel}\n" +
-                        (isFa
-                            ? $"   💱 {txLabel} {flag} <b>{req.Amount:N0}</b> {currFa}\n" +
-                              $"   💰 نرخ: {req.ProposedRate:N0} T — جمع: <b>{req.TotalAmount:N0}</b> T\n" +
-                              $"   🚚 {deliveryLabel}" +
-                              (!string.IsNullOrEmpty(req.Country) ? $" — {req.Country}" : "") + "\n" +
-                              $"   🕐 {date:yyyy/MM/dd HH:mm}\n"
-                            : $"   💱 {txLabel} {flag} <b>{req.Amount:N0}</b> {currFa}\n" +
-                              $"   💰 Rate: {req.ProposedRate:N0} T — Total: <b>{req.TotalAmount:N0}</b> T\n" +
-                              $"   🚚 {deliveryLabel}" +
-                              (!string.IsNullOrEmpty(req.Country) ? $" — {req.Country}" : "") + "\n" +
-                              $"   🕐 {date:yyyy/MM/dd HH:mm}\n");
-
-                if (!string.IsNullOrEmpty(req.AdminNote))
-                    text += isFa
-                        ? $"   📝 یادداشت ادمین: {req.AdminNote}\n"
-                        : $"   📝 Admin note: {req.AdminNote}\n";
-
-                text += "\n";
+                    : (req.TransactionType == "buy" ? "Buy" : req.TransactionType == "sell" ? "Sell" : "Exc");
+                var btnLabel = $"{statusIcon} #{req.RequestNumber} | {txLabel} {flag} {req.Amount:N0} {req.Currency}";
+                kb.Add(new[] { new InlineButton(btnLabel, $"exc_hist:d:{req.Id}:{year}:{month}:{page}") });
             }
         }
-
-        var kb = new List<IReadOnlyList<InlineButton>>();
 
         // Pagination buttons
         if (totalPages > 1)
@@ -575,12 +559,109 @@ public sealed class DynamicStageHandler : IUpdateHandler
         await SendOrEditTextAsync(chatId, text, kb, editMessageId, ct).ConfigureAwait(false);
     }
 
+    private async Task ShowMyExchangeDetail(long chatId, TelegramUserDto? user, int requestId, int year, int month, int page, int? editMessageId, CancellationToken ct)
+    {
+        var isFa = (user?.PreferredLanguage ?? "fa") == "fa";
+
+        ExchangeRequestDto? req = null;
+        try
+        {
+            if (_exchangeRepo != null)
+                req = await _exchangeRepo.GetRequestAsync(requestId, ct).ConfigureAwait(false);
+        }
+        catch { }
+
+        if (req == null)
+        {
+            var notFound = isFa ? "⚠️ درخواست یافت نشد." : "⚠️ Request not found.";
+            var kb404 = new List<IReadOnlyList<InlineButton>>
+            {
+                new[] { new InlineButton(isFa ? "🔙 بازگشت به لیست" : "🔙 Back to list", $"exc_hist:p:{year}:{month}:{page}") }
+            };
+            await SendOrEditTextAsync(chatId, notFound, kb404, editMessageId, ct).ConfigureAwait(false);
+            return;
+        }
+
+        var flag = ExchangeStateHandler.GetCurrencyFlag(req.Currency);
+        var currName = isFa
+            ? ExchangeStateHandler.GetCurrencyNameFa(req.Currency)
+            : ExchangeStateHandler.GetCurrencyNameEn(req.Currency);
+        var statusIcon = GetStatusIcon(req.Status);
+        var statusLabel = isFa ? GetStatusLabelFa(req.Status) : GetStatusLabelEn(req.Status);
+        var txLabel = isFa
+            ? (req.TransactionType == "buy" ? "خرید" : req.TransactionType == "sell" ? "فروش" : "تبادل")
+            : (req.TransactionType == "buy" ? "Buy" : req.TransactionType == "sell" ? "Sell" : "Exchange");
+        var deliveryLabel = isFa
+            ? (req.DeliveryMethod == "bank" ? "حواله بانکی" : req.DeliveryMethod == "paypal" ? "پی‌پال" : req.DeliveryMethod == "cash" ? "اسکناس" : req.DeliveryMethod)
+            : (req.DeliveryMethod == "bank" ? "Bank Transfer" : req.DeliveryMethod == "paypal" ? "PayPal" : req.DeliveryMethod == "cash" ? "Cash" : req.DeliveryMethod);
+        var date = req.CreatedAt.ToOffset(TimeSpan.FromHours(3.5));
+
+        var text = isFa
+            ? $"<b>📄 جزئیات درخواست #{req.RequestNumber}</b>\n" +
+              "━━━━━━━━━━━━━━━━━━━\n\n" +
+              $"{statusIcon} وضعیت: <b>{statusLabel}</b>\n\n" +
+              $"💱 نوع: <b>{txLabel}</b>\n" +
+              $"💵 ارز: {flag} <b>{req.Amount:N0}</b> {currName}\n" +
+              $"📊 نرخ: <b>{req.ProposedRate:N0}</b> تومان\n" +
+              $"🚚 تحویل: <b>{deliveryLabel}</b>" +
+              (!string.IsNullOrEmpty(req.AccountType)
+                  ? $" ({(req.AccountType == "company" ? "شرکتی" : "شخصی")})"
+                  : "") + "\n" +
+              (!string.IsNullOrEmpty(req.Country) ? $"🌍 کشور: <b>{req.Country}</b>\n" : "") +
+              (!string.IsNullOrEmpty(req.Description) ? $"📝 توضیحات: {req.Description}\n" : "") +
+              "\n━━━━━━━━━━━━━━━━━━━\n" +
+              $"💰 مبلغ کل: <b>{req.TotalAmount:N0}</b> تومان\n" +
+              (req.FeePercent > 0 ? $"📎 کارمزد: {req.FeePercent:F1}% ({req.FeeAmount:N0} T)\n" : "") +
+              $"🕐 تاریخ ثبت: {date:yyyy/MM/dd HH:mm}\n" +
+              (req.UpdatedAt.HasValue ? $"🔄 آخرین تغییر: {req.UpdatedAt.Value.ToOffset(TimeSpan.FromHours(3.5)):yyyy/MM/dd HH:mm}\n" : "") +
+              (!string.IsNullOrEmpty(req.AdminNote) ? $"\n📋 یادداشت ادمین: <i>{req.AdminNote}</i>\n" : "")
+            : $"<b>📄 Request #{req.RequestNumber} Details</b>\n" +
+              "━━━━━━━━━━━━━━━━━━━\n\n" +
+              $"{statusIcon} Status: <b>{statusLabel}</b>\n\n" +
+              $"💱 Type: <b>{txLabel}</b>\n" +
+              $"💵 Currency: {flag} <b>{req.Amount:N0}</b> {currName}\n" +
+              $"📊 Rate: <b>{req.ProposedRate:N0}</b> IRR\n" +
+              $"🚚 Delivery: <b>{deliveryLabel}</b>" +
+              (!string.IsNullOrEmpty(req.AccountType)
+                  ? $" ({(req.AccountType == "company" ? "Business" : "Personal")})"
+                  : "") + "\n" +
+              (!string.IsNullOrEmpty(req.Country) ? $"🌍 Country: <b>{req.Country}</b>\n" : "") +
+              (!string.IsNullOrEmpty(req.Description) ? $"📝 Note: {req.Description}\n" : "") +
+              "\n━━━━━━━━━━━━━━━━━━━\n" +
+              $"💰 Total: <b>{req.TotalAmount:N0}</b> IRR\n" +
+              (req.FeePercent > 0 ? $"📎 Fee: {req.FeePercent:F1}% ({req.FeeAmount:N0} T)\n" : "") +
+              $"🕐 Created: {date:yyyy/MM/dd HH:mm}\n" +
+              (req.UpdatedAt.HasValue ? $"🔄 Updated: {req.UpdatedAt.Value.ToOffset(TimeSpan.FromHours(3.5)):yyyy/MM/dd HH:mm}\n" : "") +
+              (!string.IsNullOrEmpty(req.AdminNote) ? $"\n📋 Admin note: <i>{req.AdminNote}</i>\n" : "");
+
+        var kb = new List<IReadOnlyList<InlineButton>>
+        {
+            new[] { new InlineButton(isFa ? "🔙 بازگشت به لیست تبادلات" : "🔙 Back to list", $"exc_hist:p:{year}:{month}:{page}") },
+            new[] { new InlineButton(isFa ? "📅 بازگشت به ماه‌ها" : "📅 Back to months", $"exc_hist:y:{year}") },
+        };
+
+        await SendOrEditTextAsync(chatId, text, kb, editMessageId, ct).ConfigureAwait(false);
+    }
+
     private async Task HandleExcHistCallback(long chatId, long userId, TelegramUserDto? user, string data, int? editMessageId, CancellationToken ct)
     {
         // exc_hist:years — back to year selector
         if (data == "exc_hist:years")
         {
             await ShowMyExchangesYears(chatId, user, editMessageId, ct).ConfigureAwait(false);
+            return;
+        }
+
+        // exc_hist:d:ID:YEAR:MONTH:PAGE — show detail of a single request
+        if (data.StartsWith("exc_hist:d:"))
+        {
+            var parts = data["exc_hist:d:".Length..].Split(':');
+            if (parts.Length >= 4
+                && int.TryParse(parts[0], out var reqId)
+                && int.TryParse(parts[1], out var dYear)
+                && int.TryParse(parts[2], out var dMonth)
+                && int.TryParse(parts[3], out var dPage))
+                await ShowMyExchangeDetail(chatId, user, reqId, dYear, dMonth, dPage, editMessageId, ct).ConfigureAwait(false);
             return;
         }
 
@@ -732,6 +813,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
                         };
                         if (cleanMode)
                             await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
+                        await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
                         await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, msg, keyboard, cancellationToken).ConfigureAwait(false);
                         return true;
                     }
@@ -760,7 +842,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
                     return true;
                 }
 
-                // Type change (reply-kb → inline): delete reply-kb msg, send new inline
+                // Type change (reply-kb → inline): delete reply-kb msg, remove keyboard, send new inline
                 if (string.Equals(targetStage, "profile", StringComparison.OrdinalIgnoreCase))
                 {
                     var user = await _userRepo.GetByTelegramUserIdAsync(userId, cancellationToken).ConfigureAwait(false);
@@ -769,6 +851,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
                     var (profileText, profileKb) = ProfileStateHandler.BuildProfileView(user, isFa);
                     if (cleanMode)
                         await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
+                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
                     await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, profileText, profileKb, cancellationToken).ConfigureAwait(false);
                     return true;
                 }
@@ -779,6 +862,8 @@ public sealed class DynamicStageHandler : IUpdateHandler
                     var user = await _userRepo.GetByTelegramUserIdAsync(userId, cancellationToken).ConfigureAwait(false);
                     if (cleanMode)
                         await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
+                    // Remove reply keyboard silently before sending inline
+                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
                     await ShowExchangeRates(chatId, user, null, cancellationToken).ConfigureAwait(false);
                     return true;
                 }
@@ -789,12 +874,16 @@ public sealed class DynamicStageHandler : IUpdateHandler
                     var user = await _userRepo.GetByTelegramUserIdAsync(userId, cancellationToken).ConfigureAwait(false);
                     if (cleanMode)
                         await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
+                    // Remove reply keyboard silently before sending inline
+                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
                     await ShowMyExchangesYears(chatId, user, null, cancellationToken).ConfigureAwait(false);
                     return true;
                 }
 
                 if (cleanMode)
                     await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
+                // Remove reply keyboard silently before showing inline stage
+                await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
                 await ShowStageInlineAsync(userId, targetStage, null, null, cancellationToken).ConfigureAwait(false);
                 return true;
             }
