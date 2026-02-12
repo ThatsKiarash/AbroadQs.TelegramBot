@@ -18,8 +18,8 @@ public sealed class ExchangeStateHandler : IUpdateHandler
 
     private const string CbConfirm = "exc_confirm";
     private const string CbCancel = "exc_cancel";
-    private const string BtnBack = "بازگشت";
-    private const string BtnCancel = "انصراف";
+    private const string BtnBack = "🔙 بازگشت";
+    private const string BtnCancel = "❌ انصراف";
     private const string BtnSkipDesc = "بدون توضیحات";
     private const string BtnMarketRate = "نرخ بازار";
     private const string BtnCustomRate = "نرخ دلخواه";
@@ -236,16 +236,14 @@ public sealed class ExchangeStateHandler : IUpdateHandler
 
         var msg = "<b>انتخاب ارز</b>\n\nارز مورد نظر خود را انتخاب کنید:";
 
-        var kb = new List<IReadOnlyList<string>>();
-        // 4 per row
-        for (int i = 0; i < Currencies.Length; i += 4)
+        // Layout: 3 — 2 — 3
+        var kb = new List<IReadOnlyList<string>>
         {
-            var row = new List<string>();
-            for (int j = i; j < Math.Min(i + 4, Currencies.Length); j++)
-                row.Add($"{Currencies[j].flag} {Currencies[j].nameFa}");
-            kb.Add(row);
-        }
-        kb.Add(new[] { BtnCancel });
+            new[] { $"{Currencies[0].flag} {Currencies[0].nameFa}", $"{Currencies[1].flag} {Currencies[1].nameFa}", $"{Currencies[2].flag} {Currencies[2].nameFa}" },
+            new[] { $"{Currencies[3].flag} {Currencies[3].nameFa}", $"{Currencies[4].flag} {Currencies[4].nameFa}" },
+            new[] { $"{Currencies[5].flag} {Currencies[5].nameFa}", $"{Currencies[6].flag} {Currencies[6].nameFa}", $"{Currencies[7].flag} {Currencies[7].nameFa}" },
+            new[] { BtnCancel },
+        };
 
         await SafeSendReplyKb(chatId, msg, kb, ct);
     }

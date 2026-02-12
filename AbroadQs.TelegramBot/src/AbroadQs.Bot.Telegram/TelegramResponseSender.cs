@@ -139,7 +139,7 @@ public sealed class TelegramResponseSender : IResponseSender
                 for (int c = 0; c < keyboard[r].Count; c++)
                     rows[r][c] = new KeyboardButton(keyboard[r][c]);
 
-            var markup = new ReplyKeyboardMarkup(rows) { ResizeKeyboard = true };
+            var markup = new ReplyKeyboardMarkup(rows) { ResizeKeyboard = true, IsPersistent = true };
 
             var result = await _client.SendMessage(
                 new ChatId(chatId),
@@ -229,7 +229,7 @@ public sealed class TelegramResponseSender : IResponseSender
                 for (int c = 0; c < keyboard[r].Count; c++)
                     rows[r][c] = new KeyboardButton(keyboard[r][c]);
 
-            var markup = new ReplyKeyboardMarkup(rows) { ResizeKeyboard = true };
+            var markup = new ReplyKeyboardMarkup(rows) { ResizeKeyboard = true, IsPersistent = true };
 
             // Send phantom message to set the new keyboard
             var result = await _client.SendMessage(
@@ -287,7 +287,7 @@ public sealed class TelegramResponseSender : IResponseSender
             if (!string.IsNullOrEmpty(cancelLabel))
                 rows.Add(new[] { new KeyboardButton(cancelLabel) });
 
-            var markup = new ReplyKeyboardMarkup(rows) { ResizeKeyboard = true, OneTimeKeyboard = true };
+            var markup = new ReplyKeyboardMarkup(rows) { ResizeKeyboard = true, IsPersistent = true, OneTimeKeyboard = true };
             var result = await _client.SendMessage(
                 new ChatId(chatId), text, parseMode: ParseMode.Html, replyMarkup: markup, cancellationToken: cancellationToken).ConfigureAwait(false);
 
