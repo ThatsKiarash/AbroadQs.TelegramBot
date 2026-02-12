@@ -13,12 +13,16 @@
             <div class="sidebar-brand">ABROADQS OPS</div>
             <nav class="nav flex-column sidebar-nav">
                 <a href="#" class="nav-link" data-page="overview">Overview</a>
+                <a href="#" class="nav-link" data-page="users">Users</a>
+                <a href="#" class="nav-link" data-page="kyc">Identity Verification</a>
                 <a href="#" class="nav-link" data-page="exchange-requests">Exchange Requests</a>
                 <a href="#" class="nav-link" data-page="ad-pricing">Ad Pricing</a>
                 <a href="#" class="nav-link" data-page="exchange-groups">Exchange Groups</a>
                 <a href="#" class="nav-link" data-page="bids">Bids</a>
                 <a href="#" class="nav-link" data-page="exchange-rates">Exchange Rates</a>
                 <a href="#" class="nav-link active" data-page="bot-ops">Bot Operations</a>
+                <a href="#" class="nav-link" data-page="stages">Bot Stages</a>
+                <a href="#" class="nav-link" data-page="permissions">Permissions</a>
                 <a href="#" class="nav-link" data-page="channel-settings">Channel Settings</a>
             </nav>
         </aside>
@@ -40,9 +44,68 @@
                         <div class="col-6 col-md-3"><div class="card shadow-sm text-center p-3"><div class="text-muted small">Pending Requests</div><div class="h4 mb-0" id="ov-pending">-</div></div></div>
                         <div class="col-6 col-md-3"><div class="card shadow-sm text-center p-3"><div class="text-muted small">Active Bids</div><div class="h4 mb-0" id="ov-bids">-</div></div></div>
                         <div class="col-6 col-md-3"><div class="card shadow-sm text-center p-3"><div class="text-muted small">Pending Groups</div><div class="h4 mb-0" id="ov-groups">-</div></div></div>
+                        <div class="col-6 col-md-3"><div class="card shadow-sm text-center p-3"><div class="text-muted small">Total Users</div><div class="h4 mb-0" id="ov-users">-</div></div></div>
+                        <div class="col-6 col-md-3"><div class="card shadow-sm text-center p-3"><div class="text-muted small">Pending KYC</div><div class="h4 mb-0" id="ov-kyc">-</div></div></div>
                         <div class="col-6 col-md-3"><div class="card shadow-sm text-center p-3"><div class="text-muted small">Bot Status</div><div class="h4 mb-0" id="ov-bot">-</div></div></div>
                     </div>
                 </section>
+
+                <!-- ===== PAGE: Users ===== -->
+                <section class="dashboard-section page-section" id="page-users" style="display:none;">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <div>
+                            <h1 class="h4 mb-1">Bot Users</h1>
+                            <p class="text-muted mb-0">Users who have interacted with the Telegram bot.</p>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="btnRefreshUsers">Refresh</button>
+                    </div>
+                    <div class="card shadow-sm">
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover mb-0">
+                                    <thead class="table-dark">
+                                        <tr><th>Telegram ID</th><th>Username</th><th>First Name</th><th>Last Name</th><th>First Seen</th><th>Last Seen</th><th>Actions</th></tr>
+                                    </thead>
+                                    <tbody id="usersTableBody"><tr><td colspan="7" class="text-center text-muted">Loading...</td></tr></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ===== PAGE: KYC ===== -->
+                <section class="dashboard-section page-section" id="page-kyc" style="display:none;">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <div>
+                            <h1 class="h4 mb-1">Identity Verification (KYC)</h1>
+                            <p class="text-muted mb-0">Review and manage user identity verification submissions.</p>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <select class="form-select form-select-sm" id="kycFilter" style="width:auto;">
+                                <option value="pending">Pending Review</option>
+                                <option value="all">All Submissions</option>
+                            </select>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="btnRefreshKyc">Refresh</button>
+                        </div>
+                    </div>
+                    <div class="card shadow-sm">
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover mb-0">
+                                    <thead class="table-dark"><tr><th>User ID</th><th>Name</th><th>Phone</th><th>Email</th><th>Country</th><th>Status</th><th>Actions</th></tr></thead>
+                                    <tbody id="kycTableBody"><tr><td colspan="7" class="text-center text-muted">Loading...</td></tr></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- KYC Detail Modal -->
+                <div class="modal fade" id="kycDetailModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-lg"><div class="modal-content">
+                    <div class="modal-header"><h5 class="modal-title" id="kycDetailTitle">KYC Details</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                    <div class="modal-body" id="kycDetailBody"><div class="text-center text-muted">Loading...</div></div>
+                    <div class="modal-footer" id="kycDetailFooter"></div>
+                </div></div></div>
 
                 <!-- ===== PAGE: Exchange Requests ===== -->
                 <section class="dashboard-section page-section" id="page-exchange-requests" style="display:none;">
@@ -65,13 +128,10 @@
                     </div>
                     <div class="table-responsive" style="max-height:600px; overflow-y:auto;">
                         <table class="table table-sm table-hover">
-                            <thead class="table-dark sticky-top">
-                                <tr><th>#</th><th>User</th><th>Type</th><th>Currency</th><th>Amount</th><th>Rate</th><th>Delivery</th><th>Status</th><th>Date</th><th>Actions</th></tr>
-                            </thead>
+                            <thead class="table-dark sticky-top"><tr><th>#</th><th>User</th><th>Type</th><th>Currency</th><th>Amount</th><th>Rate</th><th>Delivery</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
                             <tbody id="excReqTable"><tr><td colspan="10" class="text-center text-muted">Loading...</td></tr></tbody>
                         </table>
                     </div>
-                    <!-- Request Detail Modal -->
                     <div class="modal fade" id="reqDetailModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content">
                         <div class="modal-header"><h5 class="modal-title">Request Details</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                         <div class="modal-body" id="reqDetailBody"></div>
@@ -84,67 +144,35 @@
                     <h1 class="h4 mb-3">Ad Pricing Settings</h1>
                     <div class="row g-4">
                         <div class="col-12 col-lg-8">
-                            <div class="card shadow-sm">
-                                <div class="card-body">
-                                    <form id="adPricingForm" class="vstack gap-3">
-                                        <div>
-                                            <label class="form-label fw-bold">Pricing Mode</label>
-                                            <div class="d-flex gap-3">
-                                                <div class="form-check"><input class="form-check-input" type="radio" name="pricingMode" id="pricingModeFree" value="free"><label class="form-check-label" for="pricingModeFree">Free</label></div>
-                                                <div class="form-check"><input class="form-check-input" type="radio" name="pricingMode" id="pricingModePaid" value="paid"><label class="form-check-label" for="pricingModePaid">Paid</label></div>
-                                            </div>
+                            <div class="card shadow-sm"><div class="card-body">
+                                <form id="adPricingForm" class="vstack gap-3">
+                                    <div><label class="form-label fw-bold">Pricing Mode</label>
+                                        <div class="d-flex gap-3">
+                                            <div class="form-check"><input class="form-check-input" type="radio" name="pricingMode" id="pricingModeFree" value="free"><label class="form-check-label" for="pricingModeFree">Free</label></div>
+                                            <div class="form-check"><input class="form-check-input" type="radio" name="pricingMode" id="pricingModePaid" value="paid"><label class="form-check-label" for="pricingModePaid">Paid</label></div>
                                         </div>
-                                        <div id="paidSettings" style="display:none;">
-                                            <div class="mb-3">
-                                                <label class="form-label">Ad Price (Rials)</label>
-                                                <input type="number" id="adPriceAmount" class="form-control" placeholder="50000" />
-                                            </div>
-                                            <div class="mb-3">
-                                                <label class="form-label">Payment Method</label>
-                                                <select id="adPaymentMethod" class="form-select">
-                                                    <option value="online">Online (BitPay)</option>
-                                                    <option value="wallet">Wallet Balance</option>
-                                                    <option value="both">Both</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                        <hr/>
-                                        <h6>Commission Settings</h6>
-                                        <div class="row g-3">
-                                            <div class="col-md-6">
-                                                <label class="form-label">Commission Timing</label>
-                                                <select id="commissionTiming" class="form-select">
-                                                    <option value="before_post">Before Post</option>
-                                                    <option value="after_match">After Match</option>
-                                                    <option value="both">Both</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-md-3">
-                                                <label class="form-label">Commission %</label>
-                                                <input type="number" id="commissionPercent" class="form-control" step="0.1" placeholder="2.5" />
-                                            </div>
-                                            <div class="col-md-3">
-                                                <label class="form-label">Fixed Fee (Rials)</label>
-                                                <input type="number" id="commissionFixed" class="form-control" placeholder="0" />
-                                            </div>
-                                        </div>
-                                        <button type="submit" class="btn btn-primary mt-2">Save Ad Pricing</button>
-                                    </form>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-12 col-lg-4">
-                            <div class="card shadow-sm">
-                                <div class="card-body">
-                                    <h6>Exchange Fee</h6>
-                                    <div class="mb-2">
-                                        <label class="form-label">Fee Percent (%)</label>
-                                        <input type="number" id="exchangeFeePercent" class="form-control" step="0.1" placeholder="0" />
                                     </div>
-                                    <button class="btn btn-outline-primary btn-sm" onclick="saveExchangeFee()">Save Fee</button>
-                                </div>
-                            </div>
+                                    <div id="paidSettings" style="display:none;">
+                                        <div class="mb-3"><label class="form-label">Ad Price (Rials)</label><input type="number" id="adPriceAmount" class="form-control" placeholder="50000" /></div>
+                                        <div class="mb-3"><label class="form-label">Payment Method</label>
+                                            <select id="adPaymentMethod" class="form-select"><option value="online">Online (BitPay)</option><option value="wallet">Wallet Balance</option><option value="both">Both</option></select>
+                                        </div>
+                                    </div>
+                                    <hr/><h6>Commission Settings</h6>
+                                    <div class="row g-3">
+                                        <div class="col-md-6"><label class="form-label">Commission Timing</label><select id="commissionTiming" class="form-select"><option value="before_post">Before Post</option><option value="after_match">After Match</option><option value="both">Both</option></select></div>
+                                        <div class="col-md-3"><label class="form-label">Commission %</label><input type="number" id="commissionPercent" class="form-control" step="0.1" placeholder="2.5" /></div>
+                                        <div class="col-md-3"><label class="form-label">Fixed Fee (Rials)</label><input type="number" id="commissionFixed" class="form-control" placeholder="0" /></div>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary mt-2">Save Ad Pricing</button>
+                                </form>
+                            </div></div>
                         </div>
+                        <div class="col-12 col-lg-4"><div class="card shadow-sm"><div class="card-body">
+                            <h6>Exchange Fee</h6>
+                            <div class="mb-2"><label class="form-label">Fee Percent (%)</label><input type="number" id="exchangeFeePercent" class="form-control" step="0.1" placeholder="0" /></div>
+                            <button class="btn btn-outline-primary btn-sm" onclick="saveExchangeFee()">Save Fee</button>
+                        </div></div></div>
                     </div>
                 </section>
 
@@ -157,24 +185,19 @@
                             <button class="btn btn-sm btn-primary" onclick="showAddGroupForm()">+ Add Group</button>
                         </div>
                     </div>
-                    <!-- Add Group Form (hidden) -->
-                    <div id="addGroupForm" class="card shadow-sm mb-3" style="display:none;">
-                        <div class="card-body">
-                            <h6>Add New Group</h6>
-                            <form onsubmit="submitNewGroup(event)" class="row g-2 align-items-end">
-                                <div class="col-md-3"><label class="form-label">Name</label><input type="text" id="newGrpName" class="form-control" required /></div>
-                                <div class="col-md-3"><label class="form-label">Telegram Link</label><input type="text" id="newGrpLink" class="form-control" required placeholder="https://t.me/..." /></div>
-                                <div class="col-md-2"><label class="form-label">Currency</label><input type="text" id="newGrpCurrency" class="form-control" placeholder="USD" /></div>
-                                <div class="col-md-2"><label class="form-label">Country</label><input type="text" id="newGrpCountry" class="form-control" placeholder="nl" /></div>
-                                <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Create</button></div>
-                            </form>
-                        </div>
-                    </div>
+                    <div id="addGroupForm" class="card shadow-sm mb-3" style="display:none;"><div class="card-body">
+                        <h6>Add New Group</h6>
+                        <form onsubmit="submitNewGroup(event)" class="row g-2 align-items-end">
+                            <div class="col-md-3"><label class="form-label">Name</label><input type="text" id="newGrpName" class="form-control" required /></div>
+                            <div class="col-md-3"><label class="form-label">Telegram Link</label><input type="text" id="newGrpLink" class="form-control" required placeholder="https://t.me/..." /></div>
+                            <div class="col-md-2"><label class="form-label">Currency</label><input type="text" id="newGrpCurrency" class="form-control" placeholder="USD" /></div>
+                            <div class="col-md-2"><label class="form-label">Country</label><input type="text" id="newGrpCountry" class="form-control" placeholder="nl" /></div>
+                            <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Create</button></div>
+                        </form>
+                    </div></div>
                     <div class="table-responsive" style="max-height:600px; overflow-y:auto;">
                         <table class="table table-sm table-hover">
-                            <thead class="table-dark sticky-top">
-                                <tr><th>ID</th><th>Name</th><th>Link</th><th>Currency</th><th>Country</th><th>Members</th><th>Status</th><th>Submitted</th><th>Actions</th></tr>
-                            </thead>
+                            <thead class="table-dark sticky-top"><tr><th>ID</th><th>Name</th><th>Link</th><th>Currency</th><th>Country</th><th>Members</th><th>Status</th><th>Submitted</th><th>Actions</th></tr></thead>
                             <tbody id="excGrpTable"><tr><td colspan="9" class="text-center text-muted">Loading...</td></tr></tbody>
                         </table>
                     </div>
@@ -190,9 +213,7 @@
                     </div>
                     <div class="table-responsive" style="max-height:600px; overflow-y:auto;">
                         <table class="table table-sm table-hover">
-                            <thead class="table-dark sticky-top">
-                                <tr><th>ID</th><th>Bidder</th><th>Amount</th><th>Rate</th><th>Total</th><th>Message</th><th>Status</th><th>Date</th><th>Actions</th></tr>
-                            </thead>
+                            <thead class="table-dark sticky-top"><tr><th>ID</th><th>Bidder</th><th>Amount</th><th>Rate</th><th>Total</th><th>Message</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
                             <tbody id="bidsTable"><tr><td colspan="9" class="text-center text-muted">Enter a request ID above</td></tr></tbody>
                         </table>
                     </div>
@@ -210,15 +231,13 @@
                     <div id="ratesUsage" class="text-muted small mb-2"></div>
                     <div class="table-responsive">
                         <table class="table table-sm table-hover">
-                            <thead class="table-dark sticky-top">
-                                <tr><th>Currency</th><th>Name (FA)</th><th>Name (EN)</th><th>Rate (T)</th><th>Change</th><th>Source</th><th>Updated</th><th>Actions</th></tr>
-                            </thead>
+                            <thead class="table-dark sticky-top"><tr><th>Currency</th><th>Name (FA)</th><th>Name (EN)</th><th>Rate (T)</th><th>Change</th><th>Source</th><th>Updated</th><th>Actions</th></tr></thead>
                             <tbody id="ratesTable"><tr><td colspan="8" class="text-center text-muted">Loading...</td></tr></tbody>
                         </table>
                     </div>
                 </section>
 
-                <!-- ===== PAGE: Bot Operations (existing) ===== -->
+                <!-- ===== PAGE: Bot Operations ===== -->
                 <section class="dashboard-section page-section" id="page-bot-ops">
                     <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-4">
                         <div>
@@ -229,68 +248,125 @@
                     </div>
                     <div class="row g-4">
                         <div class="col-12 col-xl-7">
-                            <div class="card shadow-sm">
-                                <div class="card-body">
-                                    <h2 class="h5 mb-3">Credentials</h2>
-                                    <form id="credentialsForm" class="vstack gap-3 mb-3">
-                                        <div>
-                                            <label for="botToken" class="form-label">Bot Token</label>
-                                            <div class="input-group">
-                                                <input type="password" id="botToken" class="form-control" autocomplete="off" placeholder="123456789:ABCdef..." />
-                                                <button type="button" class="btn btn-outline-secondary" id="btnToggleTokenVisibility" title="Show / hide token">Show</button>
-                                            </div>
+                            <div class="card shadow-sm"><div class="card-body">
+                                <h2 class="h5 mb-3">Credentials</h2>
+                                <form id="credentialsForm" class="vstack gap-3 mb-3">
+                                    <div><label for="botToken" class="form-label">Bot Token</label>
+                                        <div class="input-group">
+                                            <input type="password" id="botToken" class="form-control" autocomplete="off" placeholder="123456789:ABCdef..." />
+                                            <button type="button" class="btn btn-outline-secondary" id="btnToggleTokenVisibility" title="Show / hide token">Show</button>
                                         </div>
-                                        <div>
-                                            <label class="form-label">Update mode</label>
-                                            <div class="d-flex flex-wrap gap-3 mb-1">
-                                                <div class="form-check form-check-inline"><input class="form-check-input" type="radio" name="updateMode" id="updateModeWebhook" value="Webhook" /><label class="form-check-label" for="updateModeWebhook">Webhook</label></div>
-                                                <div class="form-check form-check-inline"><input class="form-check-input" type="radio" name="updateMode" id="updateModeGetUpdates" value="GetUpdates" /><label class="form-check-label" for="updateModeGetUpdates">Get Updates</label></div>
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label class="form-label">Webhook URL</label>
-                                            <input type="url" id="webhookUrl" class="form-control" placeholder="https://webhook.abroadqs.com/webhook" />
-                                        </div>
-                                        <button type="submit" class="btn btn-primary">Save configuration</button>
-                                    </form>
-                                    <div class="d-flex flex-wrap gap-2">
-                                        <button type="button" class="btn btn-outline-secondary" id="btnTestToken">Test token</button>
-                                        <button type="button" class="btn btn-outline-primary" id="btnSetWebhook">Set webhook</button>
                                     </div>
+                                    <div><label class="form-label">Update mode</label>
+                                        <div class="d-flex flex-wrap gap-3 mb-1">
+                                            <div class="form-check form-check-inline"><input class="form-check-input" type="radio" name="updateMode" id="updateModeWebhook" value="Webhook" /><label class="form-check-label" for="updateModeWebhook">Webhook</label></div>
+                                            <div class="form-check form-check-inline"><input class="form-check-input" type="radio" name="updateMode" id="updateModeGetUpdates" value="GetUpdates" /><label class="form-check-label" for="updateModeGetUpdates">Get Updates</label></div>
+                                        </div>
+                                    </div>
+                                    <div><label class="form-label">Webhook URL</label>
+                                        <input type="url" id="webhookUrl" class="form-control" placeholder="https://webhook.abroadqs.com/webhook" />
+                                    </div>
+                                    <button type="submit" class="btn btn-primary">Save configuration</button>
+                                </form>
+                                <div class="d-flex flex-wrap gap-2">
+                                    <button type="button" class="btn btn-outline-secondary" id="btnTestToken">Test token</button>
+                                    <button type="button" class="btn btn-outline-primary" id="btnSetWebhook">Set webhook</button>
                                 </div>
-                            </div>
+                            </div></div>
                         </div>
                         <div class="col-12 col-xl-5">
-                            <div class="card shadow-sm h-100">
-                                <div class="card-body">
-                                    <h2 class="h5 mb-3">Connection Status</h2>
-                                    <div id="statusCard" class="small">
-                                        <div class="d-flex justify-content-between py-2 border-bottom"><span class="text-muted">Token</span><span id="statusToken" class="badge bg-secondary">—</span></div>
-                                        <div class="d-flex justify-content-between py-2 border-bottom"><span class="text-muted">Update mode</span><span id="statusUpdateMode" class="badge bg-secondary">—</span></div>
-                                        <div class="d-flex justify-content-between py-2 border-bottom"><span class="text-muted">Webhook</span><span id="statusWebhook" class="badge bg-secondary">—</span></div>
-                                        <div class="d-flex justify-content-between py-2 border-bottom"><span class="text-muted">Bot</span><span id="statusBot" class="badge bg-secondary">—</span></div>
-                                        <div class="mt-2 text-muted" id="statusBotTime" style="font-size:0.75rem;"></div>
+                            <div class="card shadow-sm mb-3"><div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div><h2 class="h5 mb-1">Bot Control</h2><small class="text-muted">Start or stop bot responses</small></div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span id="botStatusLabel" class="badge bg-secondary">—</span>
+                                        <button type="button" class="btn btn-success" id="btnBotToggle"><span id="btnBotToggleText">Start</span></button>
                                     </div>
                                 </div>
-                            </div>
+                            </div></div>
+                            <div class="card shadow-sm"><div class="card-body">
+                                <h2 class="h5 mb-3">Connection Status</h2>
+                                <div id="statusCard" class="small">
+                                    <div class="d-flex justify-content-between py-2 border-bottom"><span class="text-muted">Token</span><span id="statusToken" class="badge bg-secondary">—</span></div>
+                                    <div class="d-flex justify-content-between py-2 border-bottom"><span class="text-muted">Update mode</span><span id="statusUpdateMode" class="badge bg-secondary">—</span></div>
+                                    <div class="d-flex justify-content-between py-2 border-bottom"><span class="text-muted">Webhook</span><span id="statusWebhook" class="badge bg-secondary">—</span></div>
+                                    <div class="d-flex justify-content-between py-2 border-bottom"><span class="text-muted">Bot</span><span id="statusBot" class="badge bg-secondary">—</span></div>
+                                    <div class="d-flex justify-content-between py-2 border-bottom"><span class="text-muted">Redis</span><span id="statusRedis" class="badge bg-secondary">—</span></div>
+                                    <div class="d-flex justify-content-between py-2 border-bottom"><span class="text-muted">RabbitMQ</span><span id="statusRabbitMq" class="badge bg-secondary">—</span></div>
+                                    <div class="d-flex justify-content-between py-2 border-bottom"><span class="text-muted">SQL Server</span><span id="statusSql" class="badge bg-secondary">—</span></div>
+                                    <div class="mt-2 text-muted" id="statusBotTime" style="font-size:0.75rem;"></div>
+                                </div>
+                            </div></div>
                         </div>
                     </div>
-                    <div class="row g-4 mt-2">
-                        <div class="col-12">
-                            <div class="card shadow-sm">
-                                <div class="card-header d-flex justify-content-between align-items-center">
-                                    <h2 class="h5 mb-0">Recent Webhook Messages</h2>
-                                    <button type="button" class="btn btn-sm btn-outline-primary" id="btnRefreshLogs">Refresh</button>
-                                </div>
-                                <div class="card-body">
-                                    <div class="table-responsive" style="max-height:500px;overflow-y:auto;">
-                                        <table class="table table-sm table-hover">
-                                            <thead class="table-dark sticky-top"><tr><th style="width:150px;">Time</th><th style="width:100px;">Status</th><th>Payload</th><th style="width:200px;">Error</th></tr></thead>
-                                            <tbody id="webhookMessagesTable"><tr><td colspan="4" class="text-center text-muted">Loading...</td></tr></tbody>
-                                        </table>
-                                    </div>
-                                </div>
+                    <div class="row g-4 mt-2"><div class="col-12">
+                        <div class="card shadow-sm">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h2 class="h5 mb-0">Recent Webhook Messages</h2>
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="btnRefreshLogs">Refresh</button>
                             </div>
+                            <div class="card-body"><div class="table-responsive" style="max-height:500px;overflow-y:auto;">
+                                <table class="table table-sm table-hover">
+                                    <thead class="table-dark sticky-top"><tr><th style="width:130px;">Time</th><th style="width:80px;">Source</th><th style="width:80px;">Status</th><th>Handler</th><th style="width:180px;">Services</th><th style="width:70px;">Reply</th><th style="width:150px;">Error</th></tr></thead>
+                                    <tbody id="webhookMessagesTable"><tr><td colspan="7" class="text-center text-muted">Loading...</td></tr></tbody>
+                                </table>
+                            </div></div>
+                        </div>
+                    </div></div>
+                </section>
+
+                <!-- ===== PAGE: Bot Stages ===== -->
+                <section class="dashboard-section page-section" id="page-stages" style="display:none;">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <div><h1 class="h4 mb-1">Bot Stages</h1><p class="text-muted mb-0">Manage bot menus, screens, and their buttons dynamically.</p></div>
+                        <button type="button" class="btn btn-sm btn-primary" id="btnAddStage">+ Add Stage</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered" id="stagesTable">
+                            <thead><tr><th>Key</th><th>Text (FA)</th><th>Text (EN)</th><th>Enabled</th><th>Permission</th><th>Parent</th><th>Order</th><th>Actions</th></tr></thead>
+                            <tbody id="stagesBody"></tbody>
+                        </table>
+                    </div>
+                    <hr/>
+                    <div id="stageButtonsPanel" style="display:none;">
+                        <h5 id="stageButtonsTitle">Buttons for: —</h5>
+                        <button type="button" class="btn btn-sm btn-outline-primary mb-2" id="btnAddButton">+ Add Button</button>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered">
+                                <thead><tr><th>FA</th><th>EN</th><th>Type</th><th>Callback</th><th>Target</th><th>URL</th><th>Row</th><th>Col</th><th>Enabled</th><th>Perm</th><th>Actions</th></tr></thead>
+                                <tbody id="buttonsBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ===== PAGE: Permissions ===== -->
+                <section class="dashboard-section page-section" id="page-permissions" style="display:none;">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <div><h1 class="h4 mb-1">Permissions</h1><p class="text-muted mb-0">Define permissions and assign them to users.</p></div>
+                        <button type="button" class="btn btn-sm btn-primary" id="btnAddPermission">+ Add Permission</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered">
+                            <thead><tr><th>Key</th><th>Name (FA)</th><th>Name (EN)</th><th>Description</th><th>Actions</th></tr></thead>
+                            <tbody id="permissionsBody"></tbody>
+                        </table>
+                    </div>
+                    <hr/><h5>User Permissions</h5>
+                    <div class="input-group mb-3" style="max-width:400px;">
+                        <input type="number" class="form-control" id="userPermUserId" placeholder="Telegram User ID"/>
+                        <button class="btn btn-outline-primary" id="btnLoadUserPerms">Load</button>
+                    </div>
+                    <div id="userPermsPanel" style="display:none;">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered">
+                                <thead><tr><th>Permission</th><th>Granted At</th><th>Actions</th></tr></thead>
+                                <tbody id="userPermsBody"></tbody>
+                            </table>
+                        </div>
+                        <div class="input-group mt-2" style="max-width:400px;">
+                            <input type="text" class="form-control" id="grantPermKey" placeholder="Permission key to grant"/>
+                            <button class="btn btn-success" id="btnGrantPerm">Grant</button>
                         </div>
                     </div>
                 </section>
@@ -298,21 +374,25 @@
                 <!-- ===== PAGE: Channel Settings ===== -->
                 <section class="dashboard-section page-section" id="page-channel-settings" style="display:none;">
                     <h1 class="h4 mb-3">Channel Settings</h1>
-                    <div class="card shadow-sm" style="max-width:600px;">
-                        <div class="card-body">
-                            <div class="mb-3">
-                                <label class="form-label fw-bold">Exchange Channel ID</label>
-                                <input type="text" id="channelIdInput" class="form-control" placeholder="@channel or -100xxxxxxxxxx" />
-                                <small class="form-text text-muted">Channel where approved exchange requests are posted.</small>
-                            </div>
-                            <button class="btn btn-primary" onclick="saveChannelId()">Save Channel</button>
+                    <div class="card shadow-sm" style="max-width:600px;"><div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Exchange Channel ID</label>
+                            <input type="text" id="channelIdInput" class="form-control" placeholder="@channel or -100xxxxxxxxxx" />
+                            <small class="form-text text-muted">Channel where approved exchange requests are posted.</small>
                         </div>
-                    </div>
+                        <button class="btn btn-primary" onclick="saveChannelId()">Save Channel</button>
+                    </div></div>
                 </section>
 
             </main>
         </div>
     </div>
+
+    <!-- Modal for User Messages -->
+    <div class="modal fade" id="messagesModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-xl"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title" id="messagesModalLabel">User Messages</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body"><div id="messagesModalContent"><div class="text-center text-muted">Loading...</div></div></div>
+    </div></div></div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -330,7 +410,6 @@
             var pg=document.getElementById('page-'+link.dataset.page);
             if(pg)pg.style.display='';
             closeSidebar();
-            // Load data for the page
             var p=link.dataset.page;
             if(p==='exchange-requests')loadExchangeRequests();
             else if(p==='ad-pricing')loadAdPricing();
@@ -338,6 +417,10 @@
             else if(p==='exchange-rates')loadExchangeRates();
             else if(p==='channel-settings')loadChannelSettings();
             else if(p==='overview')loadOverview();
+            else if(p==='users')loadUsers();
+            else if(p==='kyc')loadKyc();
+            else if(p==='stages')loadStages();
+            else if(p==='permissions')loadPermissions();
         });
     });
 
@@ -350,404 +433,198 @@
 
     // ===== Overview =====
     async function loadOverview(){
-        try{
-            const r=await fetch(base+'/api/exchange/requests');
-            const reqs=await r.json().catch(()=>[]);
-            if(Array.isArray(reqs)){
-                document.getElementById('ov-pending').textContent=reqs.filter(r=>r.status==='pending_approval').length;
-            }
-        }catch(_){document.getElementById('ov-pending').textContent='?';}
-        try{
-            const r=await fetch(base+'/api/exchange-groups');
-            const grps=await r.json().catch(()=>[]);
-            if(Array.isArray(grps))document.getElementById('ov-groups').textContent=grps.filter(g=>g.status==='pending').length;
-        }catch(_){}
-        try{
-            const r=await fetch(base+'/api/dashboard/status');
-            const st=await r.json().catch(()=>({}));
-            document.getElementById('ov-bot').textContent=st.tokenSet?'Active':'Not Set';
-        }catch(_){}
+        try{const r=await fetch(base+'/api/exchange/requests');const reqs=await r.json().catch(()=>[]);if(Array.isArray(reqs))document.getElementById('ov-pending').textContent=reqs.filter(r=>r.status==='pending_approval').length;}catch(_){document.getElementById('ov-pending').textContent='?';}
+        try{const r=await fetch(base+'/api/exchange-groups');const grps=await r.json().catch(()=>[]);if(Array.isArray(grps))document.getElementById('ov-groups').textContent=grps.filter(g=>g.status==='pending').length;}catch(_){}
+        try{const r=await fetch(base+'/api/users');const users=await r.json().catch(()=>[]);if(Array.isArray(users))document.getElementById('ov-users').textContent=users.length;}catch(_){}
+        try{const r=await fetch(base+'/api/kyc/pending');const kyc=await r.json().catch(()=>[]);if(Array.isArray(kyc))document.getElementById('ov-kyc').textContent=kyc.length;}catch(_){}
+        try{const r=await fetch(base+'/api/dashboard/status');const st=await r.json().catch(()=>({}));document.getElementById('ov-bot').textContent=st.tokenSet?'Active':'Not Set';}catch(_){}
     }
+
+    // ===== Users =====
+    function loadUsers(){
+        fetch(base+'/api/users').then(r=>r.json()).then(data=>{
+            var tb=document.getElementById('usersTableBody');
+            if(Array.isArray(data)&&data.length>0){
+                tb.innerHTML=data.map(u=>{
+                    var fs=u.firstSeenAt?new Date(u.firstSeenAt).toLocaleString('en-GB',{dateStyle:'short',timeStyle:'short'}):'—';
+                    var ls=u.lastSeenAt?new Date(u.lastSeenAt).toLocaleString('en-GB',{dateStyle:'short',timeStyle:'short'}):'—';
+                    return '<tr><td><code>'+esc(String(u.telegramUserId))+'</code></td><td>'+(u.username?'@'+esc(u.username):'—')+'</td><td>'+esc(u.firstName||'—')+'</td><td>'+esc(u.lastName||'—')+'</td><td><small>'+esc(fs)+'</small></td><td><small>'+esc(ls)+'</small></td><td><button class="btn btn-sm btn-outline-primary" onclick="viewUserMessages('+u.telegramUserId+')">Messages</button></td></tr>';
+                }).join('');
+            }else tb.innerHTML='<tr><td colspan="7" class="text-center text-muted">No users yet.</td></tr>';
+        }).catch(()=>{document.getElementById('usersTableBody').innerHTML='<tr><td colspan="7" class="text-center text-danger">Error loading users</td></tr>';});
+    }
+    document.getElementById('btnRefreshUsers').addEventListener('click',loadUsers);
+
+    window.viewUserMessages=function(userId){
+        var modal=new bootstrap.Modal(document.getElementById('messagesModal'));
+        document.getElementById('messagesModalLabel').textContent='Messages for User '+userId;
+        document.getElementById('messagesModalContent').innerHTML='<div class="text-center text-muted">Loading...</div>';
+        modal.show();
+        fetch(base+'/api/messages/conversation/'+userId+'?limit=5').then(r=>r.json()).then(messages=>{
+            var content=document.getElementById('messagesModalContent');
+            if(Array.isArray(messages)&&messages.length>0){
+                var html='<div class="table-responsive"><table class="table table-sm table-hover"><thead class="table-dark"><tr><th>Time</th><th>From</th><th>Type</th><th>Text</th><th>Status</th></tr></thead><tbody>';
+                messages.reverse().forEach(m=>{
+                    var ts=m.sentAt?new Date(m.sentAt).toLocaleString('en-GB',{dateStyle:'short',timeStyle:'short'}):'—';
+                    var from=m.isFromBot?'<span class="badge bg-primary">Bot</span>':'<span class="badge bg-success">User</span>';
+                    var badges=[];
+                    if(m.editedAt)badges.push('<span class="badge bg-warning text-dark">Edited</span>');
+                    if(m.deletedAt)badges.push('<span class="badge bg-danger">Deleted</span>');
+                    if(m.hasInlineKeyboard)badges.push('<span class="badge bg-info">KB</span>');
+                    var tp=m.text?(m.text.length>50?esc(m.text.substring(0,50))+'...':esc(m.text)):'—';
+                    html+='<tr><td><small>'+esc(ts)+'</small></td><td>'+from+'</td><td><small>'+esc(m.messageType||'—')+'</small></td><td>'+tp+'</td><td>'+(badges.length?badges.join(' '):'—')+'</td></tr>';
+                });
+                html+='</tbody></table></div>';content.innerHTML=html;
+            }else content.innerHTML='<div class="text-center text-muted">No messages found.</div>';
+        }).catch(()=>{document.getElementById('messagesModalContent').innerHTML='<div class="text-center text-danger">Error loading messages</div>';});
+    };
+
+    // ===== KYC =====
+    async function loadKyc(){
+        var filter=document.getElementById('kycFilter').value;
+        var url=filter==='all'?base+'/api/kyc/all':base+'/api/kyc/pending';
+        try{
+            const r=await fetch(url);const data=await r.json();
+            const tb=document.getElementById('kycTableBody');
+            if(Array.isArray(data)&&data.length>0){
+                tb.innerHTML=data.map(u=>{
+                    var name=esc((u.firstName||'')+' '+(u.lastName||'')).trim()||'—';
+                    var sb=u.kycStatus==='pending_review'?'<span class="badge bg-warning text-dark">Pending</span>':u.kycStatus==='approved'?'<span class="badge bg-success">Approved</span>':u.kycStatus==='rejected'?'<span class="badge bg-danger">Rejected</span>':'<span class="badge bg-secondary">'+esc(u.kycStatus||'none')+'</span>';
+                    return '<tr><td><code>'+u.telegramUserId+'</code></td><td>'+name+'</td><td>'+esc(u.phoneNumber||'—')+'</td><td>'+esc(u.email||'—')+(u.emailVerified?' <span class="badge bg-success">V</span>':'')+'</td><td>'+esc(u.country||'—')+'</td><td>'+sb+'</td><td><button class="btn btn-sm btn-outline-info me-1" onclick="viewKycDetail('+u.telegramUserId+')">View</button>'+(u.kycStatus==='pending_review'?'<button class="btn btn-sm btn-success me-1" onclick="approveKyc('+u.telegramUserId+')">Approve</button><button class="btn btn-sm btn-danger" onclick="rejectKycDialog('+u.telegramUserId+')">Reject</button>':'')+'</td></tr>';
+                }).join('');
+            }else tb.innerHTML='<tr><td colspan="7" class="text-center text-muted">No submissions found.</td></tr>';
+        }catch(e){document.getElementById('kycTableBody').innerHTML='<tr><td colspan="7" class="text-center text-danger">Error loading KYC data</td></tr>';}
+    }
+    document.getElementById('btnRefreshKyc').addEventListener('click',loadKyc);
+    document.getElementById('kycFilter').addEventListener('change',loadKyc);
+
+    window.viewKycDetail=async function(userId){
+        var modal=new bootstrap.Modal(document.getElementById('kycDetailModal'));
+        document.getElementById('kycDetailTitle').textContent='KYC Details - User '+userId;
+        document.getElementById('kycDetailBody').innerHTML='<div class="text-center text-muted">Loading...</div>';
+        document.getElementById('kycDetailFooter').innerHTML='';modal.show();
+        try{
+            const r=await fetch(base+'/api/kyc/'+userId);const u=await r.json();if(!r.ok)throw new Error(u.detail||'Error');
+            var sb=u.kycStatus==='approved'?'<span class="badge bg-success">Approved</span>':u.kycStatus==='pending_review'?'<span class="badge bg-warning text-dark">Pending</span>':u.kycStatus==='rejected'?'<span class="badge bg-danger">Rejected</span>':'<span class="badge bg-secondary">'+esc(u.kycStatus||'none')+'</span>';
+            var html='<div class="row"><div class="col-md-6"><table class="table table-sm"><tr><th>Telegram ID</th><td><code>'+u.telegramUserId+'</code></td></tr><tr><th>Username</th><td>'+(u.username?'@'+esc(u.username):'—')+'</td></tr><tr><th>Name</th><td>'+esc((u.firstName||'')+' '+(u.lastName||''))+'</td></tr><tr><th>Phone</th><td>'+esc(u.phoneNumber||'—')+'</td></tr><tr><th>Email</th><td>'+esc(u.email||'—')+(u.emailVerified?' <span class="badge bg-success">Verified</span>':'')+'</td></tr><tr><th>Country</th><td>'+esc(u.country||'—')+'</td></tr><tr><th>Status</th><td>'+sb+'</td></tr></table>'+(u.kycRejectionData?'<div class="alert alert-danger"><strong>Rejection:</strong><br>'+esc(u.kycRejectionData)+'</div>':'')+'</div><div class="col-md-6 text-center"><h6>Verification Photo</h6><div id="kycPhotoContainer"><div class="text-muted">Loading photo...</div></div></div></div>';
+            document.getElementById('kycDetailBody').innerHTML=html;
+            if(u.verificationPhotoFileId){try{const pr=await fetch(base+'/api/kyc/'+userId+'/photo');const pd=await pr.json();if(pr.ok&&pd.photoUrl)document.getElementById('kycPhotoContainer').innerHTML='<img src="'+pd.photoUrl+'" class="img-fluid rounded" style="max-height:400px;" alt="Photo" />';else document.getElementById('kycPhotoContainer').innerHTML='<div class="text-muted">Could not load photo</div>';}catch(e){document.getElementById('kycPhotoContainer').innerHTML='<div class="text-muted">Photo error</div>';}}else document.getElementById('kycPhotoContainer').innerHTML='<div class="text-muted">No photo uploaded</div>';
+            if(u.kycStatus==='pending_review')document.getElementById('kycDetailFooter').innerHTML='<button class="btn btn-success" onclick="approveKyc('+userId+')">Approve</button> <button class="btn btn-danger" onclick="rejectKycDialog('+userId+')">Reject</button>';
+        }catch(e){document.getElementById('kycDetailBody').innerHTML='<div class="text-center text-danger">'+esc(e.message)+'</div>';}
+    };
+
+    window.approveKyc=async function(userId){
+        const c=await Swal.fire({title:'Approve KYC?',text:'Approve identity for user '+userId+'?',icon:'question',showCancelButton:true,confirmButtonText:'Approve',confirmButtonColor:'#28a745'});
+        if(!c.isConfirmed)return;
+        try{const r=await fetch(base+'/api/kyc/'+userId+'/approve',{method:'POST'});const d=await r.json();if(!r.ok)throw new Error(d.detail||'Error');Swal.fire({icon:'success',title:'Approved',timer:2000});loadKyc();try{bootstrap.Modal.getInstance(document.getElementById('kycDetailModal'))?.hide();}catch(_){}}catch(e){Swal.fire({icon:'error',title:'Error',text:e.message});}
+    };
+
+    window.rejectKycDialog=async function(userId){
+        var fields=[{field:'name',label:'Name'},{field:'phone',label:'Phone'},{field:'email',label:'Email'},{field:'country',label:'Country'},{field:'photo',label:'Photo'}];
+        var fh=fields.map(f=>'<div class="form-check mb-2"><input class="form-check-input" type="checkbox" id="reject_'+f.field+'" value="'+f.field+'"><label class="form-check-label" for="reject_'+f.field+'">'+f.label+'</label><input type="text" class="form-control form-control-sm mt-1" id="reason_'+f.field+'" placeholder="Reason..." style="display:none;"></div>').join('');
+        var{value:result}=await Swal.fire({title:'Reject KYC - User '+userId,html:'<p class="text-start">Select fields to reject:</p><div class="text-start">'+fh+'</div>',showCancelButton:true,confirmButtonText:'Reject',confirmButtonColor:'#dc3545',didOpen:function(){fields.forEach(f=>{document.getElementById('reject_'+f.field).addEventListener('change',function(){document.getElementById('reason_'+f.field).style.display=this.checked?'block':'none';});});},preConfirm:function(){var reasons={};var has=false;fields.forEach(f=>{if(document.getElementById('reject_'+f.field).checked){reasons[f.field]=document.getElementById('reason_'+f.field).value.trim()||'Rejected';has=true;}});if(!has){Swal.showValidationMessage('Select at least one field');return false;}return reasons;}});
+        if(!result)return;
+        try{const r=await fetch(base+'/api/kyc/'+userId+'/reject',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reasons:result})});const d=await r.json();if(!r.ok)throw new Error(d.detail||'Error');Swal.fire({icon:'info',title:'Rejected',timer:2000});loadKyc();try{bootstrap.Modal.getInstance(document.getElementById('kycDetailModal'))?.hide();}catch(_){}}catch(e){Swal.fire({icon:'error',title:'Error',text:e.message});}
+    };
 
     // ===== Exchange Requests =====
     async function loadExchangeRequests(){
         var status=document.getElementById('excReqStatusFilter').value;
-        try{
-            const r=await fetch(base+'/api/exchange/requests'+(status?'?status='+status:''));
-            var data=await r.json().catch(()=>[]);
-            if(!Array.isArray(data))data=[];
-            var tb=document.getElementById('excReqTable');
-            if(data.length===0){tb.innerHTML='<tr><td colspan="10" class="text-center text-muted">No requests found</td></tr>';return;}
-            tb.innerHTML=data.map(req=>{
-                var sClass=req.status==='pending_approval'?'warning':req.status==='approved'?'success':req.status==='rejected'?'danger':req.status==='matched'?'info':'secondary';
-                return `<tr>
-                    <td>#${req.requestNumber||req.id}</td>
-                    <td>${esc(req.userDisplayName||'')}</td>
-                    <td>${esc(req.transactionType)}</td>
-                    <td>${esc(req.currency)}</td>
-                    <td>${Number(req.amount||0).toLocaleString()}</td>
-                    <td>${Number(req.proposedRate||0).toLocaleString()}</td>
-                    <td>${esc(req.deliveryMethod)}</td>
-                    <td><span class="badge bg-${sClass}">${esc(req.status)}</span></td>
-                    <td><small>${req.createdAt?new Date(req.createdAt).toLocaleDateString():''}</small></td>
-                    <td>
-                        <button class="btn btn-sm btn-outline-info" onclick="viewRequestDetail(${req.id})">View</button>
-                        ${req.status==='pending_approval'?`<button class="btn btn-sm btn-success" onclick="approveRequest(${req.id})">Approve</button><button class="btn btn-sm btn-danger" onclick="rejectRequest(${req.id})">Reject</button>`:''}
-                    </td>
-                </tr>`;
-            }).join('');
-        }catch(err){document.getElementById('excReqTable').innerHTML='<tr><td colspan="10" class="text-danger">'+esc(err.message)+'</td></tr>';}
+        try{const r=await fetch(base+'/api/exchange/requests'+(status?'?status='+status:''));var data=await r.json().catch(()=>[]);if(!Array.isArray(data))data=[];var tb=document.getElementById('excReqTable');if(data.length===0){tb.innerHTML='<tr><td colspan="10" class="text-center text-muted">No requests found</td></tr>';return;}tb.innerHTML=data.map(req=>{var sC=req.status==='pending_approval'?'warning':req.status==='approved'?'success':req.status==='rejected'?'danger':req.status==='matched'?'info':'secondary';return`<tr><td>#${req.requestNumber||req.id}</td><td>${esc(req.userDisplayName||'')}</td><td>${esc(req.transactionType)}</td><td>${esc(req.currency)}</td><td>${Number(req.amount||0).toLocaleString()}</td><td>${Number(req.proposedRate||0).toLocaleString()}</td><td>${esc(req.deliveryMethod)}</td><td><span class="badge bg-${sC}">${esc(req.status)}</span></td><td><small>${req.createdAt?new Date(req.createdAt).toLocaleDateString():''}</small></td><td><button class="btn btn-sm btn-outline-info" onclick="viewRequestDetail(${req.id})">View</button>${req.status==='pending_approval'?`<button class="btn btn-sm btn-success" onclick="approveRequest(${req.id})">Approve</button><button class="btn btn-sm btn-danger" onclick="rejectRequest(${req.id})">Reject</button>`:''}</td></tr>`;}).join('');}catch(err){document.getElementById('excReqTable').innerHTML='<tr><td colspan="10" class="text-danger">'+esc(err.message)+'</td></tr>';}
     }
     document.getElementById('excReqStatusFilter').addEventListener('change',loadExchangeRequests);
 
-    async function viewRequestDetail(id){
-        try{
-            const r=await fetch(base+'/api/exchange/requests/'+id);
-            const req=await r.json();
-            var body=document.getElementById('reqDetailBody');
-            body.innerHTML=`
-                <div class="row g-2">
-                    <div class="col-6"><strong>Request #</strong> ${req.requestNumber||req.id}</div>
-                    <div class="col-6"><strong>Status:</strong> <span class="badge bg-${req.status==='pending_approval'?'warning':req.status==='approved'?'success':'secondary'}">${req.status}</span></div>
-                    <div class="col-6"><strong>User:</strong> ${esc(req.userDisplayName||'')}</div>
-                    <div class="col-6"><strong>Telegram ID:</strong> ${req.telegramUserId}</div>
-                    <div class="col-6"><strong>Type:</strong> ${esc(req.transactionType)}</div>
-                    <div class="col-6"><strong>Currency:</strong> ${esc(req.currency)} ${req.destinationCurrency?'→ '+esc(req.destinationCurrency):''}</div>
-                    <div class="col-6"><strong>Amount:</strong> ${Number(req.amount||0).toLocaleString()}</div>
-                    <div class="col-6"><strong>Rate:</strong> ${Number(req.proposedRate||0).toLocaleString()}</div>
-                    <div class="col-6"><strong>Delivery:</strong> ${esc(req.deliveryMethod)} ${req.accountType?'('+esc(req.accountType)+')':''}</div>
-                    <div class="col-6"><strong>Country:</strong> ${esc(req.country||'-')}</div>
-                    ${req.city?'<div class="col-6"><strong>City:</strong> '+esc(req.city)+'</div>':''}
-                    ${req.meetingPreference?'<div class="col-6"><strong>Meeting:</strong> '+esc(req.meetingPreference)+'</div>':''}
-                    ${req.paypalEmail?'<div class="col-6"><strong>PayPal:</strong> '+esc(req.paypalEmail)+'</div>':''}
-                    ${req.iban?'<div class="col-6"><strong>IBAN:</strong> '+esc(req.iban)+'</div>':''}
-                    ${req.bankName?'<div class="col-6"><strong>Bank:</strong> '+esc(req.bankName)+'</div>':''}
-                    <div class="col-6"><strong>Fee:</strong> ${req.feePercent||0}% (${Number(req.feeAmount||0).toLocaleString()} T)</div>
-                    <div class="col-6"><strong>Total:</strong> ${Number(req.totalAmount||0).toLocaleString()} T</div>
-                    ${req.description?'<div class="col-12"><strong>Description:</strong> '+esc(req.description)+'</div>':''}
-                    ${req.adminNote?'<div class="col-12"><strong>Admin Note:</strong> '+esc(req.adminNote)+'</div>':''}
-                    <div class="col-6"><strong>Created:</strong> ${req.createdAt?new Date(req.createdAt).toLocaleString():'-'}</div>
-                    ${req.channelMessageId?'<div class="col-6"><strong>Channel Msg ID:</strong> '+req.channelMessageId+'</div>':''}
-                </div>`;
-            var footer=document.getElementById('reqDetailFooter');
-            footer.innerHTML=req.status==='pending_approval'?
-                `<button class="btn btn-success" onclick="approveRequest(${req.id});bootstrap.Modal.getInstance(document.getElementById('reqDetailModal')).hide();">Approve</button>
-                 <button class="btn btn-danger" onclick="rejectRequest(${req.id});bootstrap.Modal.getInstance(document.getElementById('reqDetailModal')).hide();">Reject</button>
-                 <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>`:
-                `<button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>`;
-            new bootstrap.Modal(document.getElementById('reqDetailModal')).show();
-        }catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
-    }
+    async function viewRequestDetail(id){try{const r=await fetch(base+'/api/exchange/requests/'+id);const req=await r.json();document.getElementById('reqDetailBody').innerHTML=`<div class="row g-2"><div class="col-6"><strong>Request #</strong> ${req.requestNumber||req.id}</div><div class="col-6"><strong>Status:</strong> <span class="badge bg-${req.status==='pending_approval'?'warning':req.status==='approved'?'success':'secondary'}">${req.status}</span></div><div class="col-6"><strong>User:</strong> ${esc(req.userDisplayName||'')}</div><div class="col-6"><strong>Telegram ID:</strong> ${req.telegramUserId}</div><div class="col-6"><strong>Type:</strong> ${esc(req.transactionType)}</div><div class="col-6"><strong>Currency:</strong> ${esc(req.currency)} ${req.destinationCurrency?'→ '+esc(req.destinationCurrency):''}</div><div class="col-6"><strong>Amount:</strong> ${Number(req.amount||0).toLocaleString()}</div><div class="col-6"><strong>Rate:</strong> ${Number(req.proposedRate||0).toLocaleString()}</div><div class="col-6"><strong>Delivery:</strong> ${esc(req.deliveryMethod)} ${req.accountType?'('+esc(req.accountType)+')':''}</div><div class="col-6"><strong>Country:</strong> ${esc(req.country||'-')}</div>${req.city?'<div class="col-6"><strong>City:</strong> '+esc(req.city)+'</div>':''}${req.paypalEmail?'<div class="col-6"><strong>PayPal:</strong> '+esc(req.paypalEmail)+'</div>':''}${req.iban?'<div class="col-6"><strong>IBAN:</strong> '+esc(req.iban)+'</div>':''}${req.bankName?'<div class="col-6"><strong>Bank:</strong> '+esc(req.bankName)+'</div>':''}<div class="col-6"><strong>Fee:</strong> ${req.feePercent||0}% (${Number(req.feeAmount||0).toLocaleString()} T)</div><div class="col-6"><strong>Total:</strong> ${Number(req.totalAmount||0).toLocaleString()} T</div>${req.description?'<div class="col-12"><strong>Description:</strong> '+esc(req.description)+'</div>':''}${req.adminNote?'<div class="col-12"><strong>Admin Note:</strong> '+esc(req.adminNote)+'</div>':''}<div class="col-6"><strong>Created:</strong> ${req.createdAt?new Date(req.createdAt).toLocaleString():'-'}</div>${req.channelMessageId?'<div class="col-6"><strong>Channel Msg ID:</strong> '+req.channelMessageId+'</div>':''}</div>`;document.getElementById('reqDetailFooter').innerHTML=req.status==='pending_approval'?`<button class="btn btn-success" onclick="approveRequest(${req.id});bootstrap.Modal.getInstance(document.getElementById('reqDetailModal')).hide();">Approve</button><button class="btn btn-danger" onclick="rejectRequest(${req.id});bootstrap.Modal.getInstance(document.getElementById('reqDetailModal')).hide();">Reject</button><button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>`:`<button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>`;new bootstrap.Modal(document.getElementById('reqDetailModal')).show();}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}}
 
-    async function approveRequest(id){
-        try{
-            const r=await fetch(base+'/api/exchange/requests/'+id+'/approve',{method:'POST'});
-            const d=await r.json().catch(()=>({}));
-            if(r.ok){Swal.fire({icon:'success',title:'Approved',text:'Request approved'+(d.channelMsgId?' and posted to channel':''),timer:2000,showConfirmButton:false});loadExchangeRequests();}
-            else Swal.fire({icon:'error',title:'Error',text:d.detail||d.error||'Failed'});
-        }catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
-    }
+    async function approveRequest(id){try{const r=await fetch(base+'/api/exchange/requests/'+id+'/approve',{method:'POST'});const d=await r.json().catch(()=>({}));if(r.ok){Swal.fire({icon:'success',title:'Approved',text:'Request approved'+(d.channelMsgId?' and posted to channel':''),timer:2000,showConfirmButton:false});loadExchangeRequests();}else Swal.fire({icon:'error',title:'Error',text:d.detail||d.error||'Failed'});}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}}
 
-    async function rejectRequest(id){
-        const{value:note}=await Swal.fire({title:'Reject Request',input:'textarea',inputPlaceholder:'Rejection reason (optional)',showCancelButton:true,confirmButtonText:'Reject',confirmButtonColor:'#dc3545'});
-        if(note===undefined)return;
-        try{
-            const r=await fetch(base+'/api/exchange/requests/'+id+'/reject',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note:note||''})});
-            if(r.ok){Swal.fire({icon:'success',title:'Rejected',timer:1500,showConfirmButton:false});loadExchangeRequests();}
-        }catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
-    }
+    async function rejectRequest(id){const{value:note}=await Swal.fire({title:'Reject Request',input:'textarea',inputPlaceholder:'Rejection reason (optional)',showCancelButton:true,confirmButtonText:'Reject',confirmButtonColor:'#dc3545'});if(note===undefined)return;try{const r=await fetch(base+'/api/exchange/requests/'+id+'/reject',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note:note||''})});if(r.ok){Swal.fire({icon:'success',title:'Rejected',timer:1500,showConfirmButton:false});loadExchangeRequests();}}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}}
 
     // ===== Ad Pricing =====
-    async function loadAdPricing(){
-        try{
-            const r=await fetch(base+'/api/settings/ad-pricing');
-            const d=await r.json();
-            document.getElementById(d.mode==='paid'?'pricingModePaid':'pricingModeFree').checked=true;
-            document.getElementById('paidSettings').style.display=d.mode==='paid'?'':'none';
-            document.getElementById('adPriceAmount').value=d.price||'';
-            document.getElementById('adPaymentMethod').value=d.paymentMethod||'wallet';
-            document.getElementById('commissionTiming').value=d.commissionTiming||'after_match';
-            document.getElementById('commissionPercent').value=d.commissionPercent||'';
-            document.getElementById('commissionFixed').value=d.commissionFixed||'';
-        }catch(_){}
-        try{
-            const r=await fetch(base+'/api/settings/exchange-fee');
-            const d=await r.json();
-            document.getElementById('exchangeFeePercent').value=d.feePercent||'0';
-        }catch(_){}
-    }
-
-    document.querySelectorAll('input[name="pricingMode"]').forEach(r=>r.addEventListener('change',()=>{
-        document.getElementById('paidSettings').style.display=document.getElementById('pricingModePaid').checked?'':'none';
-    }));
-
-    document.getElementById('adPricingForm').addEventListener('submit',async e=>{
-        e.preventDefault();
-        var body={
-            mode:document.getElementById('pricingModePaid').checked?'paid':'free',
-            price:document.getElementById('adPriceAmount').value||'0',
-            paymentMethod:document.getElementById('adPaymentMethod').value,
-            commissionTiming:document.getElementById('commissionTiming').value,
-            commissionPercent:document.getElementById('commissionPercent').value||'0',
-            commissionFixed:document.getElementById('commissionFixed').value||'0'
-        };
-        try{
-            const r=await fetch(base+'/api/settings/ad-pricing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-            if(r.ok)Swal.fire({icon:'success',title:'Saved',timer:1500,showConfirmButton:false});
-            else{const d=await r.json().catch(()=>({}));Swal.fire({icon:'error',title:'Error',text:d.detail||'Failed'});}
-        }catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
-    });
-
-    async function saveExchangeFee(){
-        try{
-            const r=await fetch(base+'/api/settings/exchange-fee',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feePercent:document.getElementById('exchangeFeePercent').value||'0'})});
-            if(r.ok)Swal.fire({icon:'success',title:'Fee saved',timer:1500,showConfirmButton:false});
-        }catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
-    }
+    async function loadAdPricing(){try{const r=await fetch(base+'/api/settings/ad-pricing');const d=await r.json();document.getElementById(d.mode==='paid'?'pricingModePaid':'pricingModeFree').checked=true;document.getElementById('paidSettings').style.display=d.mode==='paid'?'':'none';document.getElementById('adPriceAmount').value=d.price||'';document.getElementById('adPaymentMethod').value=d.paymentMethod||'wallet';document.getElementById('commissionTiming').value=d.commissionTiming||'after_match';document.getElementById('commissionPercent').value=d.commissionPercent||'';document.getElementById('commissionFixed').value=d.commissionFixed||'';}catch(_){}try{const r=await fetch(base+'/api/settings/exchange-fee');const d=await r.json();document.getElementById('exchangeFeePercent').value=d.feePercent||'0';}catch(_){}}
+    document.querySelectorAll('input[name="pricingMode"]').forEach(r=>r.addEventListener('change',()=>{document.getElementById('paidSettings').style.display=document.getElementById('pricingModePaid').checked?'':'none';}));
+    document.getElementById('adPricingForm').addEventListener('submit',async e=>{e.preventDefault();var body={mode:document.getElementById('pricingModePaid').checked?'paid':'free',price:document.getElementById('adPriceAmount').value||'0',paymentMethod:document.getElementById('adPaymentMethod').value,commissionTiming:document.getElementById('commissionTiming').value,commissionPercent:document.getElementById('commissionPercent').value||'0',commissionFixed:document.getElementById('commissionFixed').value||'0'};try{const r=await fetch(base+'/api/settings/ad-pricing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(r.ok)Swal.fire({icon:'success',title:'Saved',timer:1500,showConfirmButton:false});else{const d=await r.json().catch(()=>({}));Swal.fire({icon:'error',title:'Error',text:d.detail||'Failed'});}}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}});
+    async function saveExchangeFee(){try{const r=await fetch(base+'/api/settings/exchange-fee',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feePercent:document.getElementById('exchangeFeePercent').value||'0'})});if(r.ok)Swal.fire({icon:'success',title:'Fee saved',timer:1500,showConfirmButton:false});}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}}
 
     // ===== Exchange Groups =====
-    async function loadExchangeGroups(){
-        try{
-            const r=await fetch(base+'/api/exchange-groups');
-            var data=await r.json().catch(()=>[]);
-            if(!Array.isArray(data))data=[];
-            var tb=document.getElementById('excGrpTable');
-            if(data.length===0){tb.innerHTML='<tr><td colspan="9" class="text-center text-muted">No groups</td></tr>';return;}
-            tb.innerHTML=data.map(g=>{
-                var sClass=g.status==='approved'?'success':g.status==='pending'?'warning':'danger';
-                return `<tr>
-                    <td>${g.id}</td>
-                    <td>${esc(g.name)}</td>
-                    <td><a href="${esc(g.telegramGroupLink)}" target="_blank" class="small">${esc(g.telegramGroupLink)}</a></td>
-                    <td>${esc(g.currencyCode||'-')}</td>
-                    <td>${esc(g.countryCode||'-')}</td>
-                    <td>${g.memberCount||0}</td>
-                    <td><span class="badge bg-${sClass}">${esc(g.status)}</span></td>
-                    <td><small>${g.createdAt?new Date(g.createdAt).toLocaleDateString():''}</small></td>
-                    <td>
-                        ${g.status==='pending'?`<button class="btn btn-sm btn-success" onclick="approveGroup(${g.id})">Approve</button><button class="btn btn-sm btn-warning" onclick="rejectGroup(${g.id})">Reject</button>`:''}
-                        <button class="btn btn-sm btn-outline-danger" onclick="deleteGroup(${g.id})">Del</button>
-                    </td>
-                </tr>`;
-            }).join('');
-        }catch(err){document.getElementById('excGrpTable').innerHTML='<tr><td colspan="9" class="text-danger">'+esc(err.message)+'</td></tr>';}
-    }
-
+    async function loadExchangeGroups(){try{const r=await fetch(base+'/api/exchange-groups');var data=await r.json().catch(()=>[]);if(!Array.isArray(data))data=[];var tb=document.getElementById('excGrpTable');if(data.length===0){tb.innerHTML='<tr><td colspan="9" class="text-center text-muted">No groups</td></tr>';return;}tb.innerHTML=data.map(g=>{var sC=g.status==='approved'?'success':g.status==='pending'?'warning':'danger';return`<tr><td>${g.id}</td><td>${esc(g.name)}</td><td><a href="${esc(g.telegramGroupLink)}" target="_blank" class="small">${esc(g.telegramGroupLink)}</a></td><td>${esc(g.currencyCode||'-')}</td><td>${esc(g.countryCode||'-')}</td><td>${g.memberCount||0}</td><td><span class="badge bg-${sC}">${esc(g.status)}</span></td><td><small>${g.createdAt?new Date(g.createdAt).toLocaleDateString():''}</small></td><td>${g.status==='pending'?`<button class="btn btn-sm btn-success" onclick="approveGroup(${g.id})">Approve</button><button class="btn btn-sm btn-warning" onclick="rejectGroup(${g.id})">Reject</button>`:''}<button class="btn btn-sm btn-outline-danger" onclick="deleteGroup(${g.id})">Del</button></td></tr>`;}).join('');}catch(err){document.getElementById('excGrpTable').innerHTML='<tr><td colspan="9" class="text-danger">'+esc(err.message)+'</td></tr>';}}
     function showAddGroupForm(){document.getElementById('addGroupForm').style.display=document.getElementById('addGroupForm').style.display==='none'?'':'none';}
-
-    async function submitNewGroup(e){
-        e.preventDefault();
-        var body={name:document.getElementById('newGrpName').value,telegramGroupLink:document.getElementById('newGrpLink').value,currencyCode:document.getElementById('newGrpCurrency').value||null,countryCode:document.getElementById('newGrpCountry').value||null};
-        try{
-            const r=await fetch(base+'/api/exchange-groups',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-            if(r.ok){Swal.fire({icon:'success',title:'Group created',timer:1500,showConfirmButton:false});document.getElementById('addGroupForm').style.display='none';loadExchangeGroups();}
-        }catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
-    }
-
-    async function approveGroup(id){
-        try{await fetch(base+'/api/exchange-groups/'+id+'/approve',{method:'POST'});loadExchangeGroups();}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
-    }
-    async function rejectGroup(id){
-        try{await fetch(base+'/api/exchange-groups/'+id+'/reject',{method:'POST'});loadExchangeGroups();}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
-    }
-    async function deleteGroup(id){
-        const c=await Swal.fire({title:'Delete group?',icon:'warning',showCancelButton:true,confirmButtonText:'Delete',confirmButtonColor:'#dc3545'});
-        if(!c.isConfirmed)return;
-        try{await fetch(base+'/api/exchange-groups/'+id,{method:'DELETE'});loadExchangeGroups();}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
-    }
+    async function submitNewGroup(e){e.preventDefault();var body={name:document.getElementById('newGrpName').value,telegramGroupLink:document.getElementById('newGrpLink').value,currencyCode:document.getElementById('newGrpCurrency').value||null,countryCode:document.getElementById('newGrpCountry').value||null};try{const r=await fetch(base+'/api/exchange-groups',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(r.ok){Swal.fire({icon:'success',title:'Group created',timer:1500,showConfirmButton:false});document.getElementById('addGroupForm').style.display='none';loadExchangeGroups();}}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}}
+    async function approveGroup(id){try{await fetch(base+'/api/exchange-groups/'+id+'/approve',{method:'POST'});loadExchangeGroups();}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}}
+    async function rejectGroup(id){try{await fetch(base+'/api/exchange-groups/'+id+'/reject',{method:'POST'});loadExchangeGroups();}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}}
+    async function deleteGroup(id){const c=await Swal.fire({title:'Delete group?',icon:'warning',showCancelButton:true,confirmButtonText:'Delete',confirmButtonColor:'#dc3545'});if(!c.isConfirmed)return;try{await fetch(base+'/api/exchange-groups/'+id,{method:'DELETE'});loadExchangeGroups();}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}}
 
     // ===== Bids =====
-    async function loadBidsForRequest(){
-        var reqId=document.getElementById('bidRequestIdInput').value;
-        if(!reqId)return;
-        try{
-            const r=await fetch(base+'/api/bids/'+reqId);
-            var data=await r.json().catch(()=>[]);
-            if(!Array.isArray(data))data=[];
-            var tb=document.getElementById('bidsTable');
-            if(data.length===0){tb.innerHTML='<tr><td colspan="9" class="text-center text-muted">No bids for this request</td></tr>';return;}
-            tb.innerHTML=data.map(b=>{
-                var sClass=b.status==='accepted'?'success':b.status==='rejected'?'danger':b.status==='pending'?'warning':'secondary';
-                return `<tr>
-                    <td>${b.id}</td>
-                    <td>${esc(b.bidderDisplayName||'')}</td>
-                    <td>${Number(b.bidAmount||0).toLocaleString()}</td>
-                    <td>${Number(b.bidRate||0).toLocaleString()}</td>
-                    <td>${Number((b.bidAmount||0)*(b.bidRate||0)).toLocaleString()}</td>
-                    <td>${esc(b.message||'-')}</td>
-                    <td><span class="badge bg-${sClass}">${esc(b.status)}</span></td>
-                    <td><small>${b.createdAt?new Date(b.createdAt).toLocaleDateString():''}</small></td>
-                    <td>
-                        ${b.status==='pending'?`<button class="btn btn-sm btn-success" onclick="acceptBid(${b.id})">Accept</button><button class="btn btn-sm btn-danger" onclick="rejectBid(${b.id})">Reject</button>`:''}
-                    </td>
-                </tr>`;
-            }).join('');
-        }catch(err){document.getElementById('bidsTable').innerHTML='<tr><td colspan="9" class="text-danger">'+esc(err.message)+'</td></tr>';}
-    }
-
-    async function acceptBid(id){
-        try{await fetch(base+'/api/bids/'+id+'/accept',{method:'POST'});loadBidsForRequest();}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
-    }
-    async function rejectBid(id){
-        try{await fetch(base+'/api/bids/'+id+'/reject',{method:'POST'});loadBidsForRequest();}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
-    }
+    async function loadBidsForRequest(){var reqId=document.getElementById('bidRequestIdInput').value;if(!reqId)return;try{const r=await fetch(base+'/api/bids/'+reqId);var data=await r.json().catch(()=>[]);if(!Array.isArray(data))data=[];var tb=document.getElementById('bidsTable');if(data.length===0){tb.innerHTML='<tr><td colspan="9" class="text-center text-muted">No bids for this request</td></tr>';return;}tb.innerHTML=data.map(b=>{var sC=b.status==='accepted'?'success':b.status==='rejected'?'danger':b.status==='pending'?'warning':'secondary';return`<tr><td>${b.id}</td><td>${esc(b.bidderDisplayName||'')}</td><td>${Number(b.bidAmount||0).toLocaleString()}</td><td>${Number(b.bidRate||0).toLocaleString()}</td><td>${Number((b.bidAmount||0)*(b.bidRate||0)).toLocaleString()}</td><td>${esc(b.message||'-')}</td><td><span class="badge bg-${sC}">${esc(b.status)}</span></td><td><small>${b.createdAt?new Date(b.createdAt).toLocaleDateString():''}</small></td><td>${b.status==='pending'?`<button class="btn btn-sm btn-success" onclick="acceptBid(${b.id})">Accept</button><button class="btn btn-sm btn-danger" onclick="rejectBid(${b.id})">Reject</button>`:''}</td></tr>`;}).join('');}catch(err){document.getElementById('bidsTable').innerHTML='<tr><td colspan="9" class="text-danger">'+esc(err.message)+'</td></tr>';}}
+    async function acceptBid(id){try{await fetch(base+'/api/bids/'+id+'/accept',{method:'POST'});loadBidsForRequest();}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}}
+    async function rejectBid(id){try{await fetch(base+'/api/bids/'+id+'/reject',{method:'POST'});loadBidsForRequest();}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}}
 
     // ===== Exchange Rates =====
-    async function loadExchangeRates(){
-        try{
-            const r=await fetch(base+'/api/exchange/rates');
-            var data=await r.json().catch(()=>[]);
-            if(!Array.isArray(data))data=[];
-            var tb=document.getElementById('ratesTable');
-            if(data.length===0){tb.innerHTML='<tr><td colspan="8" class="text-center text-muted">No rates</td></tr>';return;}
-            tb.innerHTML=data.map(rate=>`<tr>
-                <td><strong>${esc(rate.currencyCode)}</strong></td>
-                <td>${esc(rate.currencyNameFa||'')}</td>
-                <td>${esc(rate.currencyNameEn||'')}</td>
-                <td><strong>${Number(rate.rate||0).toLocaleString()}</strong></td>
-                <td>${rate.change>0?'<span class="text-success">+'+rate.change+'</span>':rate.change<0?'<span class="text-danger">'+rate.change+'</span>':'0'}</td>
-                <td>${esc(rate.source||'')}</td>
-                <td><small>${rate.updatedAt?new Date(rate.updatedAt).toLocaleString():''}</small></td>
-                <td><button class="btn btn-sm btn-outline-primary" onclick="editRate(${rate.id})">Edit</button></td>
-            </tr>`).join('');
-        }catch(err){document.getElementById('ratesTable').innerHTML='<tr><td colspan="8" class="text-danger">'+esc(err.message)+'</td></tr>';}
-        try{
-            const r=await fetch(base+'/api/exchange/rates/usage');
-            const d=await r.json().catch(()=>({}));
-            document.getElementById('ratesUsage').textContent=d.dailyUsed!==undefined?`API Usage: ${d.dailyUsed}/${d.dailyLimit} today`:'';
-        }catch(_){}
-    }
-
-    async function fetchLatestRates(){
-        try{
-            const r=await fetch(base+'/api/exchange/rates/fetch',{method:'POST'});
-            const d=await r.json().catch(()=>({}));
-            if(r.ok)Swal.fire({icon:'success',title:'Rates updated',text:`${d.updated||0} rates fetched`,timer:2000,showConfirmButton:false});
-            else Swal.fire({icon:'error',title:'Error',text:d.detail||d.error||'Failed'});
-            loadExchangeRates();
-        }catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
-    }
-
-    async function editRate(id){
-        const{value:newRate}=await Swal.fire({title:'Edit Rate',input:'number',inputPlaceholder:'New rate (Toman)',showCancelButton:true});
-        if(!newRate)return;
-        try{
-            const r=await fetch(base+'/api/exchange/rates/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({rate:parseFloat(newRate)})});
-            if(r.ok){Swal.fire({icon:'success',title:'Rate updated',timer:1500,showConfirmButton:false});loadExchangeRates();}
-        }catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
-    }
+    async function loadExchangeRates(){try{const r=await fetch(base+'/api/exchange/rates');var data=await r.json().catch(()=>[]);if(!Array.isArray(data))data=[];var tb=document.getElementById('ratesTable');if(data.length===0){tb.innerHTML='<tr><td colspan="8" class="text-center text-muted">No rates</td></tr>';return;}tb.innerHTML=data.map(rate=>`<tr><td><strong>${esc(rate.currencyCode)}</strong></td><td>${esc(rate.currencyNameFa||'')}</td><td>${esc(rate.currencyNameEn||'')}</td><td><strong>${Number(rate.rate||0).toLocaleString()}</strong></td><td>${rate.change>0?'<span class="text-success">+'+rate.change+'</span>':rate.change<0?'<span class="text-danger">'+rate.change+'</span>':'0'}</td><td>${esc(rate.source||'')}</td><td><small>${rate.updatedAt?new Date(rate.updatedAt).toLocaleString():''}</small></td><td><button class="btn btn-sm btn-outline-primary" onclick="editRate(${rate.id})">Edit</button></td></tr>`).join('');}catch(err){document.getElementById('ratesTable').innerHTML='<tr><td colspan="8" class="text-danger">'+esc(err.message)+'</td></tr>';}try{const r=await fetch(base+'/api/exchange/rates/usage');const d=await r.json().catch(()=>({}));document.getElementById('ratesUsage').textContent=d.dailyUsed!==undefined?`API Usage: ${d.dailyUsed}/${d.dailyLimit} today`:'';}catch(_){}}
+    async function fetchLatestRates(){try{const r=await fetch(base+'/api/exchange/rates/fetch',{method:'POST'});const d=await r.json().catch(()=>({}));if(r.ok)Swal.fire({icon:'success',title:'Rates updated',text:`${d.updated||0} rates fetched`,timer:2000,showConfirmButton:false});else Swal.fire({icon:'error',title:'Error',text:d.detail||d.error||'Failed'});loadExchangeRates();}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}}
+    async function editRate(id){const{value:newRate}=await Swal.fire({title:'Edit Rate',input:'number',inputPlaceholder:'New rate (Toman)',showCancelButton:true});if(!newRate)return;try{const r=await fetch(base+'/api/exchange/rates/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({rate:parseFloat(newRate)})});if(r.ok){Swal.fire({icon:'success',title:'Rate updated',timer:1500,showConfirmButton:false});loadExchangeRates();}}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}}
 
     // ===== Channel Settings =====
-    async function loadChannelSettings(){
-        try{
-            const r=await fetch(base+'/api/settings/exchange-channel');
-            const d=await r.json();
-            document.getElementById('channelIdInput').value=d.channelId||'';
-        }catch(_){}
-    }
+    async function loadChannelSettings(){try{const r=await fetch(base+'/api/settings/exchange-channel');const d=await r.json();document.getElementById('channelIdInput').value=d.channelId||'';}catch(_){}}
+    async function saveChannelId(){var cid=document.getElementById('channelIdInput').value.trim();try{const r=await fetch(base+'/api/settings/exchange-channel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({channelId:cid})});if(r.ok)Swal.fire({icon:'success',title:'Channel saved',timer:1500,showConfirmButton:false});}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}}
 
-    async function saveChannelId(){
-        var cid=document.getElementById('channelIdInput').value.trim();
-        try{
-            const r=await fetch(base+'/api/settings/exchange-channel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({channelId:cid})});
-            if(r.ok)Swal.fire({icon:'success',title:'Channel saved',timer:1500,showConfirmButton:false});
-        }catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
-    }
-
-    // ===== Bot Operations (existing) =====
-    (function(){
-        var input=document.getElementById('botToken');
-        var btn=document.getElementById('btnToggleTokenVisibility');
-        btn.addEventListener('click',async function(){
-            if(input.type==='password'){
-                if((input.value||'').indexOf('***')!==-1){
-                    try{var r=await fetch(base+'/api/settings/token?reveal=true');var d=await r.json().catch(()=>({}));if(r.ok&&d.token)input.value=d.token;}catch(_){}
-                }
-                input.type='text';btn.textContent='Hide';
-            }else{input.type='password';btn.textContent='Show';}
-        });
-    })();
-
-    async function loadTokenIntoInput(){
-        try{
-            const r=await fetch(base+'/api/settings/token');
-            const d=await r.json().catch(()=>({}));
-            var input=document.getElementById('botToken');
-            if(r.ok&&d.set&&d.masked){input.value=d.masked;input.placeholder='Token is set';}
-            else{input.value='';input.placeholder='123456789:ABCdef...';}
-        }catch(_){}
-    }
-
-    async function loadUpdateMode(){
-        try{const r=await fetch(base+'/api/settings/update-mode');const d=await r.json().catch(()=>({}));
-        if(r.ok&&d.mode){document.getElementById('updateModeWebhook').checked=d.mode!=='GetUpdates';document.getElementById('updateModeGetUpdates').checked=d.mode==='GetUpdates';}}catch(_){}
-    }
-
-    async function loadWebhookInfo(){
-        try{const r=await fetch(base+'/api/webhook/info');const d=await r.json().catch(()=>({}));if(r.ok&&d.url)document.getElementById('webhookUrl').value=d.url;}catch(_){}
-    }
-
+    // ===== Bot Operations =====
+    (function(){var input=document.getElementById('botToken');var btn=document.getElementById('btnToggleTokenVisibility');btn.addEventListener('click',async function(){if(input.type==='password'){if((input.value||'').indexOf('***')!==-1){try{var r=await fetch(base+'/api/settings/token?reveal=true');var d=await r.json().catch(()=>({}));if(r.ok&&d.token)input.value=d.token;}catch(_){}}input.type='text';btn.textContent='Hide';}else{input.type='password';btn.textContent='Show';}});})();
+    async function loadTokenIntoInput(){try{const r=await fetch(base+'/api/settings/token');const d=await r.json().catch(()=>({}));var input=document.getElementById('botToken');if(r.ok&&d.set&&d.masked){input.value=d.masked;input.placeholder='Token is set';}else{input.value='';input.placeholder='123456789:ABCdef...';}}catch(_){}}
+    async function loadUpdateMode(){try{const r=await fetch(base+'/api/settings/update-mode');const d=await r.json().catch(()=>({}));if(r.ok&&d.mode){document.getElementById('updateModeWebhook').checked=d.mode!=='GetUpdates';document.getElementById('updateModeGetUpdates').checked=d.mode==='GetUpdates';}}catch(_){}}
+    async function loadWebhookInfo(){try{const r=await fetch(base+'/api/webhook/info');const d=await r.json().catch(()=>({}));if(r.ok&&d.url)document.getElementById('webhookUrl').value=d.url;}catch(_){}}
     async function loadConnectionStatus(){
-        try{
-            const r=await fetch(base+'/api/dashboard/status');const st=await r.json().catch(()=>({}));
-            if(!r.ok)return;
-            var te=document.getElementById('statusToken');te.textContent=st.tokenSet?'Set':'Not set';te.className='badge '+(st.tokenSet?'bg-success':'bg-secondary');
-            var me=document.getElementById('statusUpdateMode');if(me){me.textContent=st.updateMode||'Webhook';me.className='badge bg-info';}
-            var we=document.getElementById('statusWebhook');we.textContent=st.webhookSyncedAt?'Synced':'Not set';we.className='badge '+(st.webhookSyncedAt?'bg-success':'bg-secondary');
-            var be=document.getElementById('statusBot');
-            if(st.lastEventAt){var a=st.lastEventStatus==='Received';be.textContent=a?'Connected':'Last error';be.className='badge '+(a?'bg-success':'bg-danger');document.getElementById('statusBotTime').textContent='Last: '+new Date(st.lastEventAt).toLocaleString();}
-            else{be.textContent='No activity';be.className='badge bg-secondary';}
+        try{const r=await fetch(base+'/api/dashboard/status');const st=await r.json().catch(()=>({}));if(!r.ok)return;
+        var te=document.getElementById('statusToken');te.textContent=st.tokenSet?'Set':'Not set';te.className='badge '+(st.tokenSet?'bg-success':'bg-secondary');
+        var me=document.getElementById('statusUpdateMode');if(me){me.textContent=st.updateMode||'Webhook';me.className='badge bg-info';}
+        var we=document.getElementById('statusWebhook');we.textContent=st.webhookSyncedAt?'Synced':'Not set';we.className='badge '+(st.webhookSyncedAt?'bg-success':'bg-secondary');
+        var re=document.getElementById('statusRedis');if(re){re.textContent=st.redisConnected?'Connected':'Not configured';re.className='badge '+(st.redisConnected?'bg-success':'bg-secondary');}
+        var mq=document.getElementById('statusRabbitMq');if(mq){mq.textContent=st.rabbitMqConfigured?'Configured':'Not configured';mq.className='badge '+(st.rabbitMqConfigured?'bg-success':'bg-secondary');}
+        var sq=document.getElementById('statusSql');if(sq){sq.textContent=st.sqlConnected?'Connected':'Not configured';sq.className='badge '+(st.sqlConnected?'bg-success':'bg-secondary');}
+        var be=document.getElementById('statusBot');if(st.lastEventAt){var a=st.lastEventStatus==='Received';be.textContent=a?'Connected':'Last error';be.className='badge '+(a?'bg-success':'bg-danger');document.getElementById('statusBotTime').textContent='Last: '+new Date(st.lastEventAt).toLocaleString();}else{be.textContent='No activity';be.className='badge bg-secondary';}
         }catch(_){}
     }
 
-    document.getElementById('credentialsForm').addEventListener('submit',async function(e){
-        e.preventDefault();
-        const token=(document.getElementById('botToken').value||'').trim();
-        if(!token){Swal.fire({icon:'warning',title:'Bot token required',timer:2000,showConfirmButton:false});return;}
-        const mode=document.getElementById('updateModeGetUpdates').checked?'GetUpdates':'Webhook';
-        try{
-            var r=await fetch(base+'/api/settings/token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});
-            if(!r.ok){var d=await r.json().catch(()=>({}));throw new Error(d.detail||'Error');}
-            await fetch(base+'/api/settings/update-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})});
-            Swal.fire({icon:'success',title:'Saved',text:'Restart to apply changes.',timer:5000,showConfirmButton:true});
-            loadTokenIntoInput();loadUpdateMode();loadWebhookInfo();loadConnectionStatus();
-        }catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
-    });
+    document.getElementById('credentialsForm').addEventListener('submit',async function(e){e.preventDefault();const token=(document.getElementById('botToken').value||'').trim();const mode=document.getElementById('updateModeGetUpdates').checked?'GetUpdates':'Webhook';var tokenIsNew=token&&token.indexOf('***')===-1;try{if(tokenIsNew){var r=await fetch(base+'/api/settings/token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});if(!r.ok){var d=await r.json().catch(()=>({}));throw new Error(d.detail||'Error');}}await fetch(base+'/api/settings/update-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})});Swal.fire({icon:'success',title:'Saved',text:'Restart to apply changes.',timer:5000,showConfirmButton:true});loadTokenIntoInput();loadUpdateMode();loadWebhookInfo();loadConnectionStatus();}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}});
 
-    document.getElementById('btnTestToken').addEventListener('click',async function(){
-        try{
-            const r=await fetch(base+'/api/bot/me');const d=await r.json().catch(()=>({}));
-            if(r.ok)Swal.fire({icon:'success',title:'Bot: @'+(d.username||'unknown'),html:'<b>'+esc(d.firstName||'')+'</b> (ID: '+d.id+')'});
-            else Swal.fire({icon:'error',title:'Invalid token',text:d.detail||''});
-        }catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
-    });
+    document.getElementById('btnTestToken').addEventListener('click',async function(){try{const r=await fetch(base+'/api/bot/me');const d=await r.json().catch(()=>({}));if(r.ok)Swal.fire({icon:'success',title:'Bot: @'+(d.username||'unknown'),html:'<b>'+esc(d.firstName||'')+'</b> (ID: '+d.id+')'});else Swal.fire({icon:'error',title:'Invalid token',text:d.detail||''});}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}});
 
-    document.getElementById('btnSetWebhook').addEventListener('click',async function(){
-        const url=(document.getElementById('webhookUrl').value||'').trim();
-        if(!url||!url.startsWith('https://')){Swal.fire({icon:'warning',title:'Valid HTTPS URL required',timer:2000,showConfirmButton:false});return;}
-        try{
-            const r=await fetch(base+'/api/webhook/set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
-            if(r.ok)Swal.fire({icon:'success',title:'Webhook set',timer:2000,showConfirmButton:false});
-            loadConnectionStatus();
-        }catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
-    });
+    document.getElementById('btnSetWebhook').addEventListener('click',async function(){const url=(document.getElementById('webhookUrl').value||'').trim();if(!url||!url.startsWith('https://')){Swal.fire({icon:'warning',title:'Valid HTTPS URL required',timer:2000,showConfirmButton:false});return;}try{const r=await fetch(base+'/api/webhook/set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});if(r.ok)Swal.fire({icon:'success',title:'Webhook set',timer:2000,showConfirmButton:false});loadConnectionStatus();}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}});
 
-    function refreshWebhookMessages(){
-        fetch(base+'/api/webhook/logs').then(r=>r.json()).then(list=>{
-            var tb=document.getElementById('webhookMessagesTable');
-            if(Array.isArray(list)&&list.length>0){
-                tb.innerHTML=list.map(m=>{
-                    var sc=m.status==='Received'?'success':m.status==='Error'?'danger':'info';
-                    return '<tr><td><small>'+esc(m.time?new Date(m.time).toLocaleString():'')+'</small></td><td><span class="badge bg-'+sc+'">'+esc(m.status)+'</span></td><td><code style="font-size:0.8rem;">'+esc(m.payloadPreview||'')+'</code></td><td>'+(m.error?'<small class="text-danger">'+esc(m.error)+'</small>':'-')+'</td></tr>';
-                }).join('');
-            }else tb.innerHTML='<tr><td colspan="4" class="text-center text-muted">No messages</td></tr>';
-        }).catch(()=>{});
-    }
+    // Bot Control Toggle
+    async function loadBotStatus(){try{const r=await fetch(base+'/api/bot/status');const d=await r.json().catch(()=>({}));updateBotStatusUI(d.enabled);}catch(_){updateBotStatusUI(null);}}
+    function updateBotStatusUI(enabled){var label=document.getElementById('botStatusLabel');var btn=document.getElementById('btnBotToggle');var txt=document.getElementById('btnBotToggleText');if(enabled===true){label.textContent='Running';label.className='badge bg-success';btn.className='btn btn-danger';txt.textContent='Stop';}else if(enabled===false){label.textContent='Stopped';label.className='badge bg-secondary';btn.className='btn btn-success';txt.textContent='Start';}else{label.textContent='—';label.className='badge bg-secondary';}}
+    document.getElementById('btnBotToggle').addEventListener('click',async function(){try{const r=await fetch(base+'/api/bot/toggle',{method:'POST'});const d=await r.json().catch(()=>({}));if(r.ok){updateBotStatusUI(d.enabled);Swal.fire({icon:d.enabled?'success':'info',title:d.enabled?'Bot Started':'Bot Stopped',timer:2000,showConfirmButton:false});}}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}});
+
+    function refreshWebhookMessages(){fetch(base+'/api/webhook/logs').then(r=>r.json()).then(list=>{var tb=document.getElementById('webhookMessagesTable');if(Array.isArray(list)&&list.length>0){tb.innerHTML=list.map(m=>{var sc=m.status==='Received'?'success':m.status==='Error'?'danger':'info';var src=m.source==='Webhook'?'primary':'secondary';var svcs=[];if(m.redisProcessed)svcs.push('<span class="badge bg-danger me-1" title="Redis">R</span>');if(m.rabbitMqPublished)svcs.push('<span class="badge bg-warning text-dark me-1" title="RabbitMQ">MQ</span>');if(m.sqlProcessed)svcs.push('<span class="badge bg-info me-1" title="SQL">SQL</span>');var handler=m.handlerName?'<code class="small">'+esc(m.handlerName.replace('Handler',''))+'</code>':'<span class="text-muted">-</span>';var reply=m.responseSent?'<span class="badge bg-success">Yes</span>':'<span class="badge bg-secondary">No</span>';return'<tr><td><small>'+esc(m.time?new Date(m.time).toLocaleString('en-GB',{dateStyle:'short',timeStyle:'short'}):'')+'</small></td><td><span class="badge bg-'+src+'">'+esc(m.source||'?')+'</span></td><td><span class="badge bg-'+sc+'">'+esc(m.status)+'</span></td><td>'+handler+'</td><td>'+(svcs.length?svcs.join(''):'<span class="text-muted">-</span>')+'</td><td>'+reply+'</td><td>'+(m.error?'<small class="text-danger">'+esc(m.error.length>20?m.error.substring(0,20)+'...':m.error)+'</small>':'-')+'</td></tr>';}).join('');}else tb.innerHTML='<tr><td colspan="7" class="text-center text-muted">No messages</td></tr>';}).catch(()=>{});}
     document.getElementById('btnRefreshLogs').addEventListener('click',refreshWebhookMessages);
 
+    // ===== Bot Stages =====
+    let currentStageId=null,currentStageKey=null;
+    async function loadStages(){try{const r=await fetch(base+'/api/stages');const stages=await r.json();document.getElementById('stagesBody').innerHTML=stages.map(s=>`<tr><td><code>${s.stageKey}</code></td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${esc(s.textFa||'')}</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${esc(s.textEn||'')}</td><td>${s.isEnabled?'<span class="badge bg-success">Yes</span>':'<span class="badge bg-secondary">No</span>'}</td><td>${esc(s.requiredPermission||'—')}</td><td>${esc(s.parentStageKey||'—')}</td><td>${s.sortOrder}</td><td><button class="btn btn-sm btn-outline-primary" onclick="editStage(${s.id},'${s.stageKey}',\`${esc(s.textFa||'')}\`,\`${esc(s.textEn||'')}\`,${s.isEnabled},'${s.requiredPermission||''}','${s.parentStageKey||''}',${s.sortOrder})">Edit</button> <button class="btn btn-sm btn-outline-info" onclick="showButtons(${s.id},'${s.stageKey}')">Buttons</button> <button class="btn btn-sm btn-outline-danger" onclick="deleteStage(${s.id})">Del</button></td></tr>`).join('');}catch(e){console.error(e);}}
+    document.getElementById('btnAddStage').addEventListener('click',async()=>{const{value:fv}=await Swal.fire({title:'Add Stage',html:'<input id="sKey" class="swal2-input" placeholder="Stage Key"><textarea id="sFa" class="swal2-textarea" placeholder="Text FA"></textarea><textarea id="sEn" class="swal2-textarea" placeholder="Text EN"></textarea><input id="sPerm" class="swal2-input" placeholder="Permission"><input id="sParent" class="swal2-input" placeholder="Parent Key"><input id="sOrder" class="swal2-input" type="number" value="0">',focusConfirm:false,preConfirm:()=>({stageKey:document.getElementById('sKey').value,textFa:document.getElementById('sFa').value,textEn:document.getElementById('sEn').value,isEnabled:true,requiredPermission:document.getElementById('sPerm').value||null,parentStageKey:document.getElementById('sParent').value||null,sortOrder:parseInt(document.getElementById('sOrder').value)||0})});if(!fv||!fv.stageKey)return;try{await fetch(base+'/api/stages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(fv)});loadStages();}catch(e){Swal.fire('Error',e.message,'error');}});
+    async function editStage(id,key,fa,en,enabled,perm,parent,order){const{value:fv}=await Swal.fire({title:'Edit: '+key,html:`<textarea id="sFa" class="swal2-textarea">${fa}</textarea><textarea id="sEn" class="swal2-textarea">${en}</textarea><label class="swal2-checkbox-label"><input id="sEnabled" type="checkbox" ${enabled?'checked':''}/> Enabled</label><input id="sPerm" class="swal2-input" value="${perm}"><input id="sParent" class="swal2-input" value="${parent}"><input id="sOrder" class="swal2-input" type="number" value="${order}">`,focusConfirm:false,preConfirm:()=>({textFa:document.getElementById('sFa').value,textEn:document.getElementById('sEn').value,isEnabled:document.getElementById('sEnabled').checked,requiredPermission:document.getElementById('sPerm').value||'',parentStageKey:document.getElementById('sParent').value||'',sortOrder:parseInt(document.getElementById('sOrder').value)||0})});if(!fv)return;try{await fetch(base+'/api/stages/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(fv)});loadStages();}catch(e){Swal.fire('Error',e.message,'error');}}
+    async function deleteStage(id){const r=await Swal.fire({title:'Delete stage?',icon:'warning',showCancelButton:true,confirmButtonText:'Delete'});if(!r.isConfirmed)return;await fetch(base+'/api/stages/'+id,{method:'DELETE'});loadStages();}
+    async function showButtons(stageId,stageKey){currentStageId=stageId;currentStageKey=stageKey;document.getElementById('stageButtonsPanel').style.display='block';document.getElementById('stageButtonsTitle').textContent='Buttons for: '+stageKey;await loadButtons();}
+    async function loadButtons(){if(!currentStageKey)return;try{const r=await fetch(base+'/api/stages/'+currentStageKey+'/buttons');const buttons=await r.json();document.getElementById('buttonsBody').innerHTML=buttons.map(b=>`<tr><td>${esc(b.textFa||'')}</td><td>${esc(b.textEn||'')}</td><td>${b.buttonType}</td><td><code>${esc(b.callbackData||'')}</code></td><td>${esc(b.targetStageKey||'')}</td><td>${esc(b.url||'')}</td><td>${b.row}</td><td>${b.column}</td><td>${b.isEnabled?'Y':'N'}</td><td>${esc(b.requiredPermission||'')}</td><td><button class="btn btn-sm btn-outline-primary" onclick="editButton(${b.id})">Edit</button> <button class="btn btn-sm btn-outline-danger" onclick="deleteButton(${b.id})">Del</button></td></tr>`).join('');}catch(e){console.error(e);}}
+    document.getElementById('btnAddButton').addEventListener('click',async()=>{if(!currentStageId)return;const{value:fv}=await Swal.fire({title:'Add Button',html:'<input id="bFa" class="swal2-input" placeholder="Text FA"><input id="bEn" class="swal2-input" placeholder="Text EN"><select id="bType" class="swal2-select"><option value="callback">callback</option><option value="url">url</option></select><input id="bCb" class="swal2-input" placeholder="Callback Data"><input id="bTarget" class="swal2-input" placeholder="Target Stage Key"><input id="bUrl" class="swal2-input" placeholder="URL"><input id="bRow" class="swal2-input" type="number" value="0"><input id="bCol" class="swal2-input" type="number" value="0"><input id="bPerm" class="swal2-input" placeholder="Permission">',focusConfirm:false,preConfirm:()=>({textFa:document.getElementById('bFa').value,textEn:document.getElementById('bEn').value,buttonType:document.getElementById('bType').value,callbackData:document.getElementById('bCb').value||null,targetStageKey:document.getElementById('bTarget').value||null,url:document.getElementById('bUrl').value||null,row:parseInt(document.getElementById('bRow').value)||0,column:parseInt(document.getElementById('bCol').value)||0,isEnabled:true,requiredPermission:document.getElementById('bPerm').value||null})});if(!fv)return;await fetch(base+'/api/stages/'+currentStageId+'/buttons',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(fv)});loadButtons();});
+    async function editButton(btnId){const{value:fv}=await Swal.fire({title:'Edit Button #'+btnId,html:'<input id="bFa" class="swal2-input" placeholder="Text FA"><input id="bEn" class="swal2-input" placeholder="Text EN"><input id="bCb" class="swal2-input" placeholder="Callback Data"><input id="bTarget" class="swal2-input" placeholder="Target Stage Key"><input id="bRow" class="swal2-input" type="number" placeholder="Row"><input id="bCol" class="swal2-input" type="number" placeholder="Col"><label class="swal2-checkbox-label"><input id="bEnabled" type="checkbox" checked/> Enabled</label>',focusConfirm:false,preConfirm:()=>({textFa:document.getElementById('bFa').value||null,textEn:document.getElementById('bEn').value||null,callbackData:document.getElementById('bCb').value||null,targetStageKey:document.getElementById('bTarget').value||null,row:parseInt(document.getElementById('bRow').value)||null,column:parseInt(document.getElementById('bCol').value)||null,isEnabled:document.getElementById('bEnabled').checked})});if(!fv)return;await fetch(base+'/api/buttons/'+btnId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(fv)});loadButtons();}
+    async function deleteButton(btnId){const r=await Swal.fire({title:'Delete button?',icon:'warning',showCancelButton:true});if(!r.isConfirmed)return;await fetch(base+'/api/buttons/'+btnId,{method:'DELETE'});loadButtons();}
+
+    // ===== Permissions =====
+    async function loadPermissions(){try{const r=await fetch(base+'/api/permissions');const perms=await r.json();document.getElementById('permissionsBody').innerHTML=perms.map(p=>`<tr><td><code>${p.permissionKey}</code></td><td>${esc(p.nameFa||'')}</td><td>${esc(p.nameEn||'')}</td><td>${esc(p.description||'')}</td><td><button class="btn btn-sm btn-outline-danger" onclick="deletePerm('${p.permissionKey}')">Del</button></td></tr>`).join('');}catch(e){console.error(e);}}
+    document.getElementById('btnAddPermission').addEventListener('click',async()=>{const{value:fv}=await Swal.fire({title:'Add Permission',html:'<input id="pKey" class="swal2-input" placeholder="Key"><input id="pFa" class="swal2-input" placeholder="Name FA"><input id="pEn" class="swal2-input" placeholder="Name EN"><input id="pDesc" class="swal2-input" placeholder="Description">',focusConfirm:false,preConfirm:()=>({permissionKey:document.getElementById('pKey').value,nameFa:document.getElementById('pFa').value||null,nameEn:document.getElementById('pEn').value||null,description:document.getElementById('pDesc').value||null})});if(!fv||!fv.permissionKey)return;await fetch(base+'/api/permissions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(fv)});loadPermissions();});
+    async function deletePerm(key){const r=await Swal.fire({title:'Delete '+key+'?',icon:'warning',showCancelButton:true});if(!r.isConfirmed)return;await fetch(base+'/api/permissions/'+key,{method:'DELETE'});loadPermissions();}
+
+    let currentPermUserId=null;
+    document.getElementById('btnLoadUserPerms').addEventListener('click',async()=>{currentPermUserId=parseInt(document.getElementById('userPermUserId').value);if(!currentPermUserId)return;document.getElementById('userPermsPanel').style.display='block';await loadUserPerms();});
+    async function loadUserPerms(){if(!currentPermUserId)return;try{const r=await fetch(base+'/api/users/'+currentPermUserId+'/permissions');const perms=await r.json();document.getElementById('userPermsBody').innerHTML=perms.map(p=>`<tr><td><code>${p.permissionKey}</code></td><td>${new Date(p.grantedAt).toLocaleString()}</td><td><button class="btn btn-sm btn-outline-danger" onclick="revokeUserPerm('${p.permissionKey}')">Revoke</button></td></tr>`).join('');}catch(e){console.error(e);}}
+    document.getElementById('btnGrantPerm').addEventListener('click',async()=>{if(!currentPermUserId)return;const key=document.getElementById('grantPermKey').value.trim();if(!key)return;await fetch(base+'/api/users/'+currentPermUserId+'/permissions/'+key,{method:'POST'});document.getElementById('grantPermKey').value='';loadUserPerms();});
+    async function revokeUserPerm(key){if(!currentPermUserId)return;await fetch(base+'/api/users/'+currentPermUserId+'/permissions/'+key,{method:'DELETE'});loadUserPerms();}
+
     // ===== Init =====
-    loadTokenIntoInput();loadUpdateMode();loadWebhookInfo();loadConnectionStatus();refreshWebhookMessages();
-    setInterval(refreshWebhookMessages,10000);setInterval(loadConnectionStatus,15000);
+    loadTokenIntoInput();loadUpdateMode();loadWebhookInfo();loadConnectionStatus();loadBotStatus();refreshWebhookMessages();
+    setInterval(refreshWebhookMessages,10000);setInterval(loadConnectionStatus,15000);setInterval(loadBotStatus,5000);
     </script>
 </body>
 </html>
