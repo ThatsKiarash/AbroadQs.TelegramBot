@@ -1127,6 +1127,74 @@ public sealed class DynamicStageHandler : IUpdateHandler
                     return true;
                 }
 
+                // ── Phase 2: Finance (from reply-kb) ─────────────────
+                if (string.Equals(targetStage, "finance", StringComparison.OrdinalIgnoreCase) && _financeHandler != null)
+                {
+                    if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
+                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
+                    await _financeHandler.ShowFinanceMenu(chatId, userId, null, null, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+                // ── Phase 4: My Messages (from reply-kb) ────────────
+                if (string.Equals(targetStage, "my_messages", StringComparison.OrdinalIgnoreCase) && _myMessagesHandler != null)
+                {
+                    if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
+                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
+                    await _myMessagesHandler.ShowMenu(chatId, userId, null, null, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+                // ── Phase 4: My Suggestions / Proposals (from reply-kb)
+                if (string.Equals(targetStage, "my_suggestions", StringComparison.OrdinalIgnoreCase) && _myProposalsHandler != null)
+                {
+                    if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
+                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
+                    await _myProposalsHandler.ShowMenu(chatId, userId, null, null, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+                // ── Phase 4: Tickets (from reply-kb) ────────────────
+                if (string.Equals(targetStage, "tickets", StringComparison.OrdinalIgnoreCase) && _ticketHandler != null)
+                {
+                    if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
+                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
+                    await _ticketHandler.ShowTicketsMenu(chatId, userId, null, null, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+                // ── Phase 5: Student projects (from reply-kb) ───────
+                if ((string.Equals(targetStage, "student_project", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(targetStage, "student_projects", StringComparison.OrdinalIgnoreCase)) && _projectHandler != null)
+                {
+                    if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
+                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
+                    await _projectHandler.ShowMenu(chatId, userId, null, null, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+                // ── Phase 6: International questions (from reply-kb)
+                if ((string.Equals(targetStage, "international_question", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(targetStage, "intl_questions", StringComparison.OrdinalIgnoreCase)) && _questionHandler != null)
+                {
+                    if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
+                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
+                    await _questionHandler.ShowMenu(chatId, userId, null, null, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+                // ── Phase 7: Sponsorship (from reply-kb) ────────────
+                if ((string.Equals(targetStage, "financial_sponsor", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(targetStage, "sponsorship", StringComparison.OrdinalIgnoreCase)) && _sponsorHandler != null)
+                {
+                    if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
+                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
+                    await _sponsorHandler.ShowMenu(chatId, userId, null, null, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+                // ── Phase 8: Currency purchase (from reply-kb) ──────
+                if (string.Equals(targetStage, "currency_purchase", StringComparison.OrdinalIgnoreCase) && _currencyHandler != null)
+                {
+                    if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
+                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
+                    await _currencyHandler.ShowMenu(chatId, userId, null, null, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+
                 if (cleanMode)
                     await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
                 // Remove reply keyboard silently before showing inline stage
