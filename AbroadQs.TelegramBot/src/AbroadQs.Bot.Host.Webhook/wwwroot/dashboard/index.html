@@ -12,15 +12,14 @@
         <aside class="dashboard-sidebar" id="dashboardSidebar">
             <div class="sidebar-brand">ABROADQS OPS</div>
             <nav class="nav flex-column sidebar-nav">
-                <a href="#" class="nav-link" data-tab="bot-operations">Overview</a>
-                <a href="#" class="nav-link active" data-tab="users">Users</a>
-                <a href="#" class="nav-link" data-tab="kyc">Identity Verification</a>
-                <a href="#" class="nav-link" data-tab="stages">Bot Stages</a>
-                <a href="#" class="nav-link" data-tab="permissions">Permissions</a>
-                <a href="#" class="nav-link" data-tab="exchange-rates">Exchange Rates</a>
-                <a href="#" class="nav-link" data-tab="exchange-requests">Exchange Requests</a>
-                <a href="#" class="nav-link" data-tab="exchange-settings">Exchange Settings</a>
-                <a href="#" class="nav-link" data-tab="exchange-groups">Exchange Groups</a>
+                <a href="#" class="nav-link" data-page="overview">Overview</a>
+                <a href="#" class="nav-link" data-page="exchange-requests">Exchange Requests</a>
+                <a href="#" class="nav-link" data-page="ad-pricing">Ad Pricing</a>
+                <a href="#" class="nav-link" data-page="exchange-groups">Exchange Groups</a>
+                <a href="#" class="nav-link" data-page="bids">Bids</a>
+                <a href="#" class="nav-link" data-page="exchange-rates">Exchange Rates</a>
+                <a href="#" class="nav-link active" data-page="bot-ops">Bot Operations</a>
+                <a href="#" class="nav-link" data-page="channel-settings">Channel Settings</a>
             </nav>
         </aside>
         <div class="sidebar-backdrop" id="sidebarBackdrop" aria-hidden="true"></div>
@@ -33,40 +32,194 @@
                 </div>
             </header>
             <main class="dashboard-main">
-                <section class="dashboard-section" id="section-users" style="display: block;">
-                    <div class="d-flex justify-content-between align-items-center mb-4">
-                        <div>
-                            <h1 class="h4 mb-1">Bot Users</h1>
-                            <p class="text-muted mb-0">Users who have interacted with the Telegram bot.</p>
-                        </div>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="btnRefreshUsers">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-clockwise" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg> Refresh
-                        </button>
+
+                <!-- ===== PAGE: Overview ===== -->
+                <section class="dashboard-section page-section" id="page-overview" style="display:none;">
+                    <h1 class="h4 mb-3">Dashboard Overview</h1>
+                    <div class="row g-3">
+                        <div class="col-6 col-md-3"><div class="card shadow-sm text-center p-3"><div class="text-muted small">Pending Requests</div><div class="h4 mb-0" id="ov-pending">-</div></div></div>
+                        <div class="col-6 col-md-3"><div class="card shadow-sm text-center p-3"><div class="text-muted small">Active Bids</div><div class="h4 mb-0" id="ov-bids">-</div></div></div>
+                        <div class="col-6 col-md-3"><div class="card shadow-sm text-center p-3"><div class="text-muted small">Pending Groups</div><div class="h4 mb-0" id="ov-groups">-</div></div></div>
+                        <div class="col-6 col-md-3"><div class="card shadow-sm text-center p-3"><div class="text-muted small">Bot Status</div><div class="h4 mb-0" id="ov-bot">-</div></div></div>
                     </div>
-                    <div class="card shadow-sm">
-                        <div class="card-body p-0">
-                            <div class="table-responsive">
-                                <table class="table table-sm table-hover mb-0">
-                                    <thead class="table-dark">
-                                        <tr>
-                                            <th>Telegram ID</th>
-                                            <th>Username</th>
-                                            <th>First Name</th>
-                                            <th>Last Name</th>
-                                            <th>First Seen</th>
-                                            <th>Last Seen</th>
-                                            <th>Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="usersTableBody">
-                                        <tr><td colspan="7" class="text-center text-muted">Loading...</td></tr>
-                                    </tbody>
-                                </table>
+                </section>
+
+                <!-- ===== PAGE: Exchange Requests ===== -->
+                <section class="dashboard-section page-section" id="page-exchange-requests" style="display:none;">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h1 class="h4 mb-0">Exchange Requests</h1>
+                        <div class="d-flex gap-2">
+                            <select id="excReqStatusFilter" class="form-select form-select-sm" style="width:auto;">
+                                <option value="">All Statuses</option>
+                                <option value="pending_approval" selected>Pending</option>
+                                <option value="approved">Approved</option>
+                                <option value="rejected">Rejected</option>
+                                <option value="matched">Matched</option>
+                                <option value="in_progress">In Progress</option>
+                                <option value="completed">Completed</option>
+                                <option value="disputed">Disputed</option>
+                                <option value="cancelled">Cancelled</option>
+                            </select>
+                            <button class="btn btn-sm btn-outline-primary" onclick="loadExchangeRequests()">Refresh</button>
+                        </div>
+                    </div>
+                    <div class="table-responsive" style="max-height:600px; overflow-y:auto;">
+                        <table class="table table-sm table-hover">
+                            <thead class="table-dark sticky-top">
+                                <tr><th>#</th><th>User</th><th>Type</th><th>Currency</th><th>Amount</th><th>Rate</th><th>Delivery</th><th>Status</th><th>Date</th><th>Actions</th></tr>
+                            </thead>
+                            <tbody id="excReqTable"><tr><td colspan="10" class="text-center text-muted">Loading...</td></tr></tbody>
+                        </table>
+                    </div>
+                    <!-- Request Detail Modal -->
+                    <div class="modal fade" id="reqDetailModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content">
+                        <div class="modal-header"><h5 class="modal-title">Request Details</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                        <div class="modal-body" id="reqDetailBody"></div>
+                        <div class="modal-footer" id="reqDetailFooter"></div>
+                    </div></div></div>
+                </section>
+
+                <!-- ===== PAGE: Ad Pricing ===== -->
+                <section class="dashboard-section page-section" id="page-ad-pricing" style="display:none;">
+                    <h1 class="h4 mb-3">Ad Pricing Settings</h1>
+                    <div class="row g-4">
+                        <div class="col-12 col-lg-8">
+                            <div class="card shadow-sm">
+                                <div class="card-body">
+                                    <form id="adPricingForm" class="vstack gap-3">
+                                        <div>
+                                            <label class="form-label fw-bold">Pricing Mode</label>
+                                            <div class="d-flex gap-3">
+                                                <div class="form-check"><input class="form-check-input" type="radio" name="pricingMode" id="pricingModeFree" value="free"><label class="form-check-label" for="pricingModeFree">Free</label></div>
+                                                <div class="form-check"><input class="form-check-input" type="radio" name="pricingMode" id="pricingModePaid" value="paid"><label class="form-check-label" for="pricingModePaid">Paid</label></div>
+                                            </div>
+                                        </div>
+                                        <div id="paidSettings" style="display:none;">
+                                            <div class="mb-3">
+                                                <label class="form-label">Ad Price (Rials)</label>
+                                                <input type="number" id="adPriceAmount" class="form-control" placeholder="50000" />
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label">Payment Method</label>
+                                                <select id="adPaymentMethod" class="form-select">
+                                                    <option value="online">Online (BitPay)</option>
+                                                    <option value="wallet">Wallet Balance</option>
+                                                    <option value="both">Both</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <hr/>
+                                        <h6>Commission Settings</h6>
+                                        <div class="row g-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Commission Timing</label>
+                                                <select id="commissionTiming" class="form-select">
+                                                    <option value="before_post">Before Post</option>
+                                                    <option value="after_match">After Match</option>
+                                                    <option value="both">Both</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label">Commission %</label>
+                                                <input type="number" id="commissionPercent" class="form-control" step="0.1" placeholder="2.5" />
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label">Fixed Fee (Rials)</label>
+                                                <input type="number" id="commissionFixed" class="form-control" placeholder="0" />
+                                            </div>
+                                        </div>
+                                        <button type="submit" class="btn btn-primary mt-2">Save Ad Pricing</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-lg-4">
+                            <div class="card shadow-sm">
+                                <div class="card-body">
+                                    <h6>Exchange Fee</h6>
+                                    <div class="mb-2">
+                                        <label class="form-label">Fee Percent (%)</label>
+                                        <input type="number" id="exchangeFeePercent" class="form-control" step="0.1" placeholder="0" />
+                                    </div>
+                                    <button class="btn btn-outline-primary btn-sm" onclick="saveExchangeFee()">Save Fee</button>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </section>
-                <section class="dashboard-section" id="section-bot-operations" style="display: none;">
+
+                <!-- ===== PAGE: Exchange Groups ===== -->
+                <section class="dashboard-section page-section" id="page-exchange-groups" style="display:none;">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h1 class="h4 mb-0">Exchange Groups</h1>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-sm btn-outline-primary" onclick="loadExchangeGroups()">Refresh</button>
+                            <button class="btn btn-sm btn-primary" onclick="showAddGroupForm()">+ Add Group</button>
+                        </div>
+                    </div>
+                    <!-- Add Group Form (hidden) -->
+                    <div id="addGroupForm" class="card shadow-sm mb-3" style="display:none;">
+                        <div class="card-body">
+                            <h6>Add New Group</h6>
+                            <form onsubmit="submitNewGroup(event)" class="row g-2 align-items-end">
+                                <div class="col-md-3"><label class="form-label">Name</label><input type="text" id="newGrpName" class="form-control" required /></div>
+                                <div class="col-md-3"><label class="form-label">Telegram Link</label><input type="text" id="newGrpLink" class="form-control" required placeholder="https://t.me/..." /></div>
+                                <div class="col-md-2"><label class="form-label">Currency</label><input type="text" id="newGrpCurrency" class="form-control" placeholder="USD" /></div>
+                                <div class="col-md-2"><label class="form-label">Country</label><input type="text" id="newGrpCountry" class="form-control" placeholder="nl" /></div>
+                                <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Create</button></div>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="table-responsive" style="max-height:600px; overflow-y:auto;">
+                        <table class="table table-sm table-hover">
+                            <thead class="table-dark sticky-top">
+                                <tr><th>ID</th><th>Name</th><th>Link</th><th>Currency</th><th>Country</th><th>Members</th><th>Status</th><th>Submitted</th><th>Actions</th></tr>
+                            </thead>
+                            <tbody id="excGrpTable"><tr><td colspan="9" class="text-center text-muted">Loading...</td></tr></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- ===== PAGE: Bids ===== -->
+                <section class="dashboard-section page-section" id="page-bids" style="display:none;">
+                    <h1 class="h4 mb-3">Bids Management</h1>
+                    <p class="text-muted">Enter an exchange request ID to view its bids.</p>
+                    <div class="input-group mb-3" style="max-width:400px;">
+                        <input type="number" id="bidRequestIdInput" class="form-control" placeholder="Request ID" />
+                        <button class="btn btn-primary" onclick="loadBidsForRequest()">Load Bids</button>
+                    </div>
+                    <div class="table-responsive" style="max-height:600px; overflow-y:auto;">
+                        <table class="table table-sm table-hover">
+                            <thead class="table-dark sticky-top">
+                                <tr><th>ID</th><th>Bidder</th><th>Amount</th><th>Rate</th><th>Total</th><th>Message</th><th>Status</th><th>Date</th><th>Actions</th></tr>
+                            </thead>
+                            <tbody id="bidsTable"><tr><td colspan="9" class="text-center text-muted">Enter a request ID above</td></tr></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- ===== PAGE: Exchange Rates ===== -->
+                <section class="dashboard-section page-section" id="page-exchange-rates" style="display:none;">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h1 class="h4 mb-0">Exchange Rates</h1>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-sm btn-outline-primary" onclick="loadExchangeRates()">Refresh</button>
+                            <button class="btn btn-sm btn-primary" onclick="fetchLatestRates()">Fetch from Navasan</button>
+                        </div>
+                    </div>
+                    <div id="ratesUsage" class="text-muted small mb-2"></div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead class="table-dark sticky-top">
+                                <tr><th>Currency</th><th>Name (FA)</th><th>Name (EN)</th><th>Rate (T)</th><th>Change</th><th>Source</th><th>Updated</th><th>Actions</th></tr>
+                            </thead>
+                            <tbody id="ratesTable"><tr><td colspan="8" class="text-center text-muted">Loading...</td></tr></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- ===== PAGE: Bot Operations (existing) ===== -->
+                <section class="dashboard-section page-section" id="page-bot-ops">
                     <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-4">
                         <div>
                             <h1 class="h4 mb-1">Telegram Bot Management</h1>
@@ -74,7 +227,6 @@
                         </div>
                         <div class="text-muted small" id="webhookSyncedLabel"></div>
                     </div>
-
                     <div class="row g-4">
                         <div class="col-12 col-xl-7">
                             <div class="card shadow-sm">
@@ -84,65 +236,22 @@
                                         <div>
                                             <label for="botToken" class="form-label">Bot Token</label>
                                             <div class="input-group">
-                                                <input type="password" id="botToken" class="form-control" autocomplete="off" placeholder="123456789:ABCdef..." aria-label="Bot token" />
-                                                <button type="button" class="btn btn-outline-secondary" id="btnToggleTokenVisibility" title="Show / hide token" aria-label="Toggle token visibility">
-                                                    <svg id="iconTokenEye" xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/></svg>
-                                                    <svg id="iconTokenEyeSlash" xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16" style="display:none;"><path d="M13.359 11.238C15.06 9.72 16 8 16 8s-3-5.5-8-5.5a7.028 7.028 0 0 0-2.79.588l.77.771A5.944 5.944 0 0 1 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.134 13.134 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755-.165.165-.337.328-.517.486l.708.709z"/><path d="M11.297 9.176a3.5 3.5 0 0 0-4.474-4.474l.823.823a2.5 2.5 0 0 1 2.829 2.829l.82.82zM4.88 4.82a7.028 7.028 0 0 0-2.79.588l.77.771A5.944 5.944 0 0 1 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.134 13.134 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755-.165.165-.337.328-.517.486l.708.709a7.028 7.028 0 0 0 2.79-.588l-.77-.771a5.944 5.944 0 0 1-2.829 2.829l-.77-.77z"/><path d="M3.35 5.47c-.18.16-.353.322-.518.487A13.134 13.134 0 0 0 1.172 8l.195.288c.335.48.83 1.12 1.465 1.755C4.121 11.332 5.881 12.5 8 12.5c.716 0 1.39-.133 2.02-.36l.77.772A7.029 7.029 0 0 1 8 13.5C3 13.5 0 8 0 8s.939-1.721 2.641-3.238l.708.709zm10.296 8.884-12-12 .708-.708 12 12-.708.708z"/></svg>
-                                                </button>
+                                                <input type="password" id="botToken" class="form-control" autocomplete="off" placeholder="123456789:ABCdef..." />
+                                                <button type="button" class="btn btn-outline-secondary" id="btnToggleTokenVisibility" title="Show / hide token">Show</button>
                                             </div>
                                         </div>
                                         <div>
                                             <label class="form-label">Update mode</label>
                                             <div class="d-flex flex-wrap gap-3 mb-1">
-                                                <div class="form-check form-check-inline">
-                                                    <input class="form-check-input" type="radio" name="updateMode" id="updateModeWebhook" value="Webhook" />
-                                                    <label class="form-check-label" for="updateModeWebhook">Webhook</label>
-                                                </div>
-                                                <div class="form-check form-check-inline">
-                                                    <input class="form-check-input" type="radio" name="updateMode" id="updateModeGetUpdates" value="GetUpdates" />
-                                                    <label class="form-check-label" for="updateModeGetUpdates">Get Updates (long polling)</label>
-                                                </div>
+                                                <div class="form-check form-check-inline"><input class="form-check-input" type="radio" name="updateMode" id="updateModeWebhook" value="Webhook" /><label class="form-check-label" for="updateModeWebhook">Webhook</label></div>
+                                                <div class="form-check form-check-inline"><input class="form-check-input" type="radio" name="updateMode" id="updateModeGetUpdates" value="GetUpdates" /><label class="form-check-label" for="updateModeGetUpdates">Get Updates</label></div>
                                             </div>
-                                            <small class="form-text text-muted">Webhook: Telegram sends updates to your URL (must be public HTTPS). Get Updates: bot polls for updates (no public URL needed). For local testing, use Get Updates so the bot receives and replies to messages. Restart required after change.</small>
                                         </div>
                                         <div>
-                                            <label class="form-label">Webhook endpoint</label>
-                                            <div class="d-flex flex-wrap gap-3 mb-2">
-                                                <div class="form-check form-check-inline">
-                                                    <input class="form-check-input" type="radio" name="webhookSource" id="webhookSourceServer" value="server" checked />
-                                                    <label class="form-check-label" for="webhookSourceServer">Server (published)</label>
-                                                </div>
-                                                <div class="form-check form-check-inline">
-                                                    <input class="form-check-input" type="radio" name="webhookSource" id="webhookSourceTunnel" value="tunnel" />
-                                                    <label class="form-check-label" for="webhookSourceTunnel">Tunnel (like ngrok)</label>
-                                                </div>
-                                                <div class="form-check form-check-inline">
-                                                    <input class="form-check-input" type="radio" name="webhookSource" id="webhookSourceNgrok" value="ngrok" />
-                                                    <label class="form-check-label" for="webhookSourceNgrok">Ngrok</label>
-                                                </div>
-                                            </div>
-                                            <input type="url" id="webhookUrl" class="form-control" autocomplete="off" placeholder="https://webhook.abroadqs.com/webhook" aria-label="Webhook URL" />
-                                            <small class="form-text text-muted" id="webhookUrlHint">Webhook URL (HTTPS). For published: use your server URL.</small>
-                                        </div>
-                                        <div>
-                                            <label for="baseUrl" class="form-label">Base URL (for Mini App)</label>
-                                            <input type="url" id="baseUrl" class="form-control" autocomplete="off" placeholder="https://example.com" />
-                                            <small class="form-text text-muted">Used when Webhook URL is empty. (Base URL for Mini App)</small>
+                                            <label class="form-label">Webhook URL</label>
+                                            <input type="url" id="webhookUrl" class="form-control" placeholder="https://webhook.abroadqs.com/webhook" />
                                         </div>
                                         <button type="submit" class="btn btn-primary">Save configuration</button>
-                                    </form>
-                                    <hr class="my-3" />
-                                    <h2 class="h5 mb-3">Support Settings</h2>
-                                    <form id="supportTelegramForm" class="vstack gap-3 mb-3">
-                                        <div>
-                                            <label for="supportTelegramUsername" class="form-label">Support Telegram Username</label>
-                                            <div class="input-group">
-                                                <span class="input-group-text">@</span>
-                                                <input type="text" id="supportTelegramUsername" class="form-control" autocomplete="off" placeholder="support_username" aria-label="Support Telegram Username" />
-                                            </div>
-                                            <small class="form-text text-muted">Telegram username for phone verification support (non-Iranian users). Users will be directed to send verification info to this account.</small>
-                                        </div>
-                                        <button type="submit" class="btn btn-primary">Save support settings</button>
                                     </form>
                                     <div class="d-flex flex-wrap gap-2">
                                         <button type="button" class="btn btn-outline-secondary" id="btnTestToken">Test token</button>
@@ -152,87 +261,32 @@
                             </div>
                         </div>
                         <div class="col-12 col-xl-5">
-                            <div class="card shadow-sm mb-3">
-                                <div class="card-body">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div>
-                                            <h2 class="h5 mb-1">Bot Control</h2>
-                                            <small class="text-muted">Start or stop bot responses</small>
-                                        </div>
-                                        <div class="d-flex align-items-center gap-2">
-                                            <span id="botStatusLabel" class="badge bg-secondary">—</span>
-                                            <button type="button" class="btn btn-success" id="btnBotToggle">
-                                                <span id="btnBotToggleText">Start</span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="card shadow-sm">
+                            <div class="card shadow-sm h-100">
                                 <div class="card-body">
                                     <h2 class="h5 mb-3">Connection Status</h2>
                                     <div id="statusCard" class="small">
-                                        <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary border-opacity-25">
-                                            <span class="text-muted">Token</span>
-                                            <span id="statusToken" class="badge bg-secondary">—</span>
-                                        </div>
-                                        <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary border-opacity-25">
-                                            <span class="text-muted">Update mode</span>
-                                            <span id="statusUpdateMode" class="badge bg-secondary">—</span>
-                                        </div>
-                                        <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary border-opacity-25">
-                                            <span class="text-muted">Webhook</span>
-                                            <span id="statusWebhook" class="badge bg-secondary">—</span>
-                                        </div>
-                                        <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary border-opacity-25">
-                                            <span class="text-muted">Bot</span>
-                                            <span id="statusBot" class="badge bg-secondary">—</span>
-                                        </div>
-                                        <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary border-opacity-25">
-                                            <span class="text-muted">Redis</span>
-                                            <span id="statusRedis" class="badge bg-secondary">—</span>
-                                        </div>
-                                        <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary border-opacity-25">
-                                            <span class="text-muted">RabbitMQ</span>
-                                            <span id="statusRabbitMq" class="badge bg-secondary">—</span>
-                                        </div>
-                                        <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary border-opacity-25">
-                                            <span class="text-muted">SQL Server</span>
-                                            <span id="statusSql" class="badge bg-secondary">—</span>
-                                        </div>
+                                        <div class="d-flex justify-content-between py-2 border-bottom"><span class="text-muted">Token</span><span id="statusToken" class="badge bg-secondary">—</span></div>
+                                        <div class="d-flex justify-content-between py-2 border-bottom"><span class="text-muted">Update mode</span><span id="statusUpdateMode" class="badge bg-secondary">—</span></div>
+                                        <div class="d-flex justify-content-between py-2 border-bottom"><span class="text-muted">Webhook</span><span id="statusWebhook" class="badge bg-secondary">—</span></div>
+                                        <div class="d-flex justify-content-between py-2 border-bottom"><span class="text-muted">Bot</span><span id="statusBot" class="badge bg-secondary">—</span></div>
                                         <div class="mt-2 text-muted" id="statusBotTime" style="font-size:0.75rem;"></div>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-
                     <div class="row g-4 mt-2">
                         <div class="col-12">
                             <div class="card shadow-sm">
                                 <div class="card-header d-flex justify-content-between align-items-center">
-                                    <h2 class="h5 mb-0">Recent Updates (Last 5)</h2>
-                                    <button type="button" class="btn btn-sm btn-outline-primary" id="btnRefreshLogs">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-clockwise" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg> Refresh
-                                    </button>
+                                    <h2 class="h5 mb-0">Recent Webhook Messages</h2>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" id="btnRefreshLogs">Refresh</button>
                                 </div>
-                                <div class="card-body p-0">
-                                    <div class="table-responsive">
-                                        <table class="table table-sm table-hover mb-0">
-                                            <thead class="table-dark">
-                                                <tr>
-                                                    <th style="width: 130px;">Time</th>
-                                                    <th style="width: 80px;">Source</th>
-                                                    <th style="width: 80px;">Status</th>
-                                                    <th>Handler</th>
-                                                    <th style="width: 180px;">Services</th>
-                                                    <th style="width: 70px;">Reply</th>
-                                                    <th style="width: 150px;">Error</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody id="webhookMessagesTable">
-                                                <tr><td colspan="7" class="text-center text-muted">Loading...</td></tr>
-                                            </tbody>
+                                <div class="card-body">
+                                    <div class="table-responsive" style="max-height:500px;overflow-y:auto;">
+                                        <table class="table table-sm table-hover">
+                                            <thead class="table-dark sticky-top"><tr><th style="width:150px;">Time</th><th style="width:100px;">Status</th><th>Payload</th><th style="width:200px;">Error</th></tr></thead>
+                                            <tbody id="webhookMessagesTable"><tr><td colspan="4" class="text-center text-muted">Loading...</td></tr></tbody>
                                         </table>
                                     </div>
                                 </div>
@@ -241,350 +295,17 @@
                     </div>
                 </section>
 
-                <!-- Bot Stages Section -->
-                <section class="dashboard-section" id="section-stages" style="display: none;">
-                    <div class="d-flex justify-content-between align-items-center mb-4">
-                        <div>
-                            <h1 class="h4 mb-1">Bot Stages</h1>
-                            <p class="text-muted mb-0">Manage bot menus, screens, and their buttons dynamically.</p>
-                        </div>
-                        <button type="button" class="btn btn-sm btn-primary" id="btnAddStage">+ Add Stage</button>
-                    </div>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-bordered" id="stagesTable">
-                            <thead><tr><th>Key</th><th>Text (FA)</th><th>Text (EN)</th><th>Enabled</th><th>Permission</th><th>Parent</th><th>Order</th><th>Actions</th></tr></thead>
-                            <tbody id="stagesBody"></tbody>
-                        </table>
-                    </div>
-                    <hr/>
-                    <div id="stageButtonsPanel" style="display:none;">
-                        <h5 id="stageButtonsTitle">Buttons for: —</h5>
-                        <button type="button" class="btn btn-sm btn-outline-primary mb-2" id="btnAddButton">+ Add Button</button>
-                        <div class="table-responsive">
-                            <table class="table table-sm table-bordered">
-                                <thead><tr><th>FA</th><th>EN</th><th>Type</th><th>Callback</th><th>Target</th><th>URL</th><th>Row</th><th>Col</th><th>Enabled</th><th>Perm</th><th>Actions</th></tr></thead>
-                                <tbody id="buttonsBody"></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- KYC Review Section -->
-                <section class="dashboard-section" id="section-kyc" style="display: none;">
-                    <div class="d-flex justify-content-between align-items-center mb-4">
-                        <div>
-                            <h1 class="h4 mb-1">Identity Verification (KYC)</h1>
-                            <p class="text-muted mb-0">Review and manage user identity verification submissions.</p>
-                        </div>
-                        <div class="d-flex gap-2">
-                            <select class="form-select form-select-sm" id="kycFilter" style="width:auto;">
-                                <option value="pending">Pending Review</option>
-                                <option value="all">All Submissions</option>
-                            </select>
-                            <button type="button" class="btn btn-sm btn-outline-primary" id="btnRefreshKyc">Refresh</button>
-                        </div>
-                    </div>
-                    <div class="card shadow-sm">
-                        <div class="card-body p-0">
-                            <div class="table-responsive">
-                                <table class="table table-sm table-hover mb-0">
-                                    <thead class="table-dark">
-                                        <tr>
-                                            <th>User ID</th>
-                                            <th>Name</th>
-                                            <th>Phone</th>
-                                            <th>Email</th>
-                                            <th>Country</th>
-                                            <th>Status</th>
-                                            <th>Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="kycTableBody">
-                                        <tr><td colspan="7" class="text-center text-muted">Loading...</td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- KYC Detail Modal -->
-                <div class="modal fade" id="kycDetailModal" tabindex="-1" aria-hidden="true">
-                    <div class="modal-dialog modal-lg">
-                        <div class="modal-content">
-                            <div class="modal-header">
-                                <h5 class="modal-title" id="kycDetailTitle">KYC Details</h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                            </div>
-                            <div class="modal-body" id="kycDetailBody">
-                                <div class="text-center text-muted">Loading...</div>
-                            </div>
-                            <div class="modal-footer" id="kycDetailFooter"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Permissions Section -->
-                <section class="dashboard-section" id="section-permissions" style="display: none;">
-                    <div class="d-flex justify-content-between align-items-center mb-4">
-                        <div>
-                            <h1 class="h4 mb-1">Permissions</h1>
-                            <p class="text-muted mb-0">Define permissions and assign them to users.</p>
-                        </div>
-                        <button type="button" class="btn btn-sm btn-primary" id="btnAddPermission">+ Add Permission</button>
-                    </div>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-bordered">
-                            <thead><tr><th>Key</th><th>Name (FA)</th><th>Name (EN)</th><th>Description</th><th>Actions</th></tr></thead>
-                            <tbody id="permissionsBody"></tbody>
-                        </table>
-                    </div>
-                    <hr/>
-                    <h5>User Permissions</h5>
-                    <div class="input-group mb-3" style="max-width:400px;">
-                        <input type="number" class="form-control" id="userPermUserId" placeholder="Telegram User ID"/>
-                        <button class="btn btn-outline-primary" id="btnLoadUserPerms">Load</button>
-                    </div>
-                    <div id="userPermsPanel" style="display:none;">
-                        <div class="table-responsive">
-                            <table class="table table-sm table-bordered">
-                                <thead><tr><th>Permission</th><th>Granted At</th><th>Actions</th></tr></thead>
-                                <tbody id="userPermsBody"></tbody>
-                            </table>
-                        </div>
-                        <div class="input-group mt-2" style="max-width:400px;">
-                            <input type="text" class="form-control" id="grantPermKey" placeholder="Permission key to grant"/>
-                            <button class="btn btn-success" id="btnGrantPerm">Grant</button>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Exchange Rates Section -->
-                <section class="dashboard-section" id="section-exchange-rates" style="display: none;">
-                    <div class="d-flex justify-content-between align-items-center mb-4">
-                        <div>
-                            <h1 class="h4 mb-1">Exchange Rates</h1>
-                            <p class="text-muted mb-0">View and manage currency exchange rates.</p>
-                        </div>
-                        <div class="d-flex gap-2 align-items-center">
-                            <span class="badge bg-info" id="apiUsageBadge" title="Navasan API usage">API: —/120</span>
-                            <button type="button" class="btn btn-sm btn-outline-success" id="btnFetchRates" title="Fetch latest rates from Navasan API">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-cloud-download" viewBox="0 0 16 16"><path d="M4.406 1.342A5.53 5.53 0 0 1 8 0c2.69 0 4.923 2 5.166 4.579C14.758 4.804 16 6.137 16 7.773 16 9.569 14.502 11 12.687 11H10a.5.5 0 0 1 0-1h2.688C13.979 10 15 8.988 15 7.773c0-1.216-1.02-2.228-2.313-2.228h-.5v-.5C12.188 2.825 10.328 1 8 1a4.53 4.53 0 0 1-2.941 1.1c-.757.652-1.153 1.438-1.153 2.055v.448l-.445.049C2.064 4.805 1 5.952 1 7.318 1 8.785 2.23 10 3.781 10H6a.5.5 0 0 1 0 1H3.781C1.708 11 0 9.366 0 7.318c0-1.763 1.266-3.223 2.942-3.593.143-.863.698-1.723 1.464-2.383z"/><path d="M7.646 15.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 14.293V5.5a.5.5 0 0 0-1 0v8.793l-2.146-2.147a.5.5 0 0 0-.708.708l3 3z"/></svg> Fetch from API
-                            </button>
-                            <button type="button" class="btn btn-sm btn-outline-primary" id="btnAddRate">+ Add Rate</button>
-                            <button type="button" class="btn btn-sm btn-outline-primary" id="btnRefreshRates">Refresh</button>
-                        </div>
-                    </div>
-                    <div class="card shadow-sm">
-                        <div class="card-body p-0">
-                            <div class="table-responsive">
-                                <table class="table table-sm table-hover mb-0">
-                                    <thead class="table-dark">
-                                        <tr>
-                                            <th>Code</th>
-                                            <th>Name (FA)</th>
-                                            <th>Name (EN)</th>
-                                            <th>Rate (Toman)</th>
-                                            <th>Change</th>
-                                            <th>Source</th>
-                                            <th>Last Updated</th>
-                                            <th>Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="ratesTableBody">
-                                        <tr><td colspan="8" class="text-center text-muted">Loading...</td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Exchange Requests Section -->
-                <section class="dashboard-section" id="section-exchange-requests" style="display: none;">
-                    <div class="d-flex justify-content-between align-items-center mb-4">
-                        <div>
-                            <h1 class="h4 mb-1">Exchange Requests</h1>
-                            <p class="text-muted mb-0">Review and approve/reject user exchange requests.</p>
-                        </div>
-                        <div class="d-flex gap-2">
-                            <select class="form-select form-select-sm" id="excReqFilter" style="width:auto;">
-                                <option value="pending_approval">Pending Approval</option>
-                                <option value="approved">Approved</option>
-                                <option value="rejected">Rejected</option>
-                                <option value="">All</option>
-                            </select>
-                            <button type="button" class="btn btn-sm btn-outline-primary" id="btnRefreshExcReq">Refresh</button>
-                        </div>
-                    </div>
-                    <div class="card shadow-sm">
-                        <div class="card-body p-0">
-                            <div class="table-responsive">
-                                <table class="table table-sm table-hover mb-0">
-                                    <thead class="table-dark">
-                                        <tr>
-                                            <th>#</th>
-                                            <th>User</th>
-                                            <th>Type</th>
-                                            <th>Currency</th>
-                                            <th>Amount</th>
-                                            <th>Rate</th>
-                                            <th>Total</th>
-                                            <th>Delivery</th>
-                                            <th>Status</th>
-                                            <th>Date</th>
-                                            <th>Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="excReqTableBody">
-                                        <tr><td colspan="11" class="text-center text-muted">Loading...</td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Exchange Request Detail Modal -->
-                <div class="modal fade" id="excReqDetailModal" tabindex="-1" aria-hidden="true">
-                    <div class="modal-dialog modal-lg">
-                        <div class="modal-content">
-                            <div class="modal-header">
-                                <h5 class="modal-title" id="excReqDetailTitle">Exchange Request Details</h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                            </div>
-                            <div class="modal-body" id="excReqDetailBody">
-                                <div class="text-center text-muted">Loading...</div>
-                            </div>
-                            <div class="modal-footer" id="excReqDetailFooter"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Exchange Settings Section -->
-                <section class="dashboard-section" id="section-exchange-settings" style="display: none;">
-                    <div class="mb-4">
-                        <h1 class="h4 mb-1">Exchange Settings</h1>
-                        <p class="text-muted mb-0">Configure exchange channel and fee settings.</p>
-                    </div>
-                    <div class="row g-4">
-                        <div class="col-12 col-md-6">
-                            <div class="card shadow-sm">
-                                <div class="card-body">
-                                    <h2 class="h5 mb-3">Ads Channel</h2>
-                                    <form id="exchangeChannelForm" class="vstack gap-3">
-                                        <div>
-                                            <label for="exchangeChannelId" class="form-label">Channel ID or Username</label>
-                                            <input type="text" id="exchangeChannelId" class="form-control" placeholder="@channel_username or -100123456789" />
-                                            <small class="form-text text-muted">Enter the Telegram channel username (e.g. @my_exchange) or numeric chat ID where approved ads will be posted. The bot must be an admin in this channel.</small>
-                                        </div>
-                                        <button type="submit" class="btn btn-primary">Save Channel</button>
-                                    </form>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-12 col-md-6">
-                            <div class="card shadow-sm">
-                                <div class="card-body">
-                                    <h2 class="h5 mb-3">Fee Configuration</h2>
-                                    <form id="exchangeFeeForm" class="vstack gap-3">
-                                        <div>
-                                            <label for="exchangeFeePercent" class="form-label">Fee Percent (%)</label>
-                                            <input type="number" step="0.01" min="0" max="100" id="exchangeFeePercent" class="form-control" placeholder="0.5" />
-                                            <small class="form-text text-muted">Commission percentage applied to each exchange transaction. Set to 0 for no fee.</small>
-                                        </div>
-                                        <button type="submit" class="btn btn-primary">Save Fee</button>
-                                    </form>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-12 col-md-6">
-                            <div class="card shadow-sm">
-                                <div class="card-body">
-                                    <h2 class="h5 mb-3">Ad Pricing</h2>
-                                    <form id="adPricingForm" class="vstack gap-3">
-                                        <div>
-                                            <label for="adPricingMode" class="form-label">Pricing Mode</label>
-                                            <select id="adPricingMode" class="form-select">
-                                                <option value="free">Free (no charge)</option>
-                                                <option value="paid_online">Paid - Online Payment</option>
-                                                <option value="paid_balance">Paid - Deduct from Balance</option>
-                                            </select>
-                                            <small class="form-text text-muted">Choose whether exchange ads are free or require payment.</small>
-                                        </div>
-                                        <div>
-                                            <label for="adPrice" class="form-label">Ad Price (Toman)</label>
-                                            <input type="number" step="1000" min="0" id="adPrice" class="form-control" placeholder="50000" />
-                                            <small class="form-text text-muted">Price per ad in Toman. Only applies if pricing mode is not free.</small>
-                                        </div>
-                                        <button type="submit" class="btn btn-primary">Save Ad Pricing</button>
-                                    </form>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Exchange Groups Section -->
-                <section class="dashboard-section" id="section-exchange-groups" style="display: none;">
-                    <div class="d-flex justify-content-between align-items-center mb-4">
-                        <div>
-                            <h1 class="h4 mb-1">Exchange Groups</h1>
-                            <p class="text-muted mb-0">Manage Telegram groups for currency exchange communities.</p>
-                        </div>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="btnRefreshGroups">Refresh</button>
-                    </div>
-                    <div class="card shadow-sm mb-4">
-                        <div class="card-body p-0">
-                            <div class="table-responsive">
-                                <table class="table table-sm table-hover mb-0">
-                                    <thead class="table-dark">
-                                        <tr>
-                                            <th>ID</th>
-                                            <th>Name</th>
-                                            <th>Currency</th>
-                                            <th>Country</th>
-                                            <th>Link</th>
-                                            <th>Status</th>
-                                            <th>Members</th>
-                                            <th>Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="groupsTableBody">
-                                        <tr><td colspan="8" class="text-center text-muted">Loading...</td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="card shadow-sm">
+                <!-- ===== PAGE: Channel Settings ===== -->
+                <section class="dashboard-section page-section" id="page-channel-settings" style="display:none;">
+                    <h1 class="h4 mb-3">Channel Settings</h1>
+                    <div class="card shadow-sm" style="max-width:600px;">
                         <div class="card-body">
-                            <h2 class="h5 mb-3">Add New Group</h2>
-                            <form id="addGroupForm" class="row g-3">
-                                <div class="col-md-4">
-                                    <label for="groupName" class="form-label">Group Name</label>
-                                    <input type="text" id="groupName" class="form-control" required />
-                                </div>
-                                <div class="col-md-4">
-                                    <label for="groupLink" class="form-label">Telegram Link</label>
-                                    <input type="text" id="groupLink" class="form-control" placeholder="https://t.me/..." required />
-                                </div>
-                                <div class="col-md-2">
-                                    <label for="groupCurrency" class="form-label">Currency</label>
-                                    <input type="text" id="groupCurrency" class="form-control" placeholder="USD" />
-                                </div>
-                                <div class="col-md-2">
-                                    <label for="groupCountry" class="form-label">Country</label>
-                                    <input type="text" id="groupCountry" class="form-control" placeholder="nl" />
-                                </div>
-                                <div class="col-md-8">
-                                    <label for="groupDesc" class="form-label">Description</label>
-                                    <input type="text" id="groupDesc" class="form-control" />
-                                </div>
-                                <div class="col-md-4 d-flex align-items-end">
-                                    <button type="submit" class="btn btn-primary w-100">Add Group</button>
-                                </div>
-                            </form>
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Exchange Channel ID</label>
+                                <input type="text" id="channelIdInput" class="form-control" placeholder="@channel or -100xxxxxxxxxx" />
+                                <small class="form-text text-muted">Channel where approved exchange requests are posted.</small>
+                            </div>
+                            <button class="btn btn-primary" onclick="saveChannelId()">Save Channel</button>
                         </div>
                     </div>
                 </section>
@@ -593,1565 +314,440 @@
         </div>
     </div>
 
-    <!-- Modal for User Messages -->
-    <div class="modal fade" id="messagesModal" tabindex="-1" aria-labelledby="messagesModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-xl">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="messagesModalLabel">User Messages</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div id="messagesModalContent">
-                        <div class="text-center text-muted">Loading...</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
-        const base = window.location.origin;
+    const base = window.location.origin;
+    function esc(t){const d=document.createElement('div');d.textContent=t??'';return d.innerHTML;}
 
-        var sidebar = document.getElementById('dashboardSidebar');
-        var backdrop = document.getElementById('sidebarBackdrop');
-
-        function closeSidebar() {
-            sidebar.classList.remove('sidebar-open');
-            backdrop.classList.remove('show');
-            backdrop.setAttribute('aria-hidden', 'true');
-        }
-
-        function openSidebar() {
-            sidebar.classList.add('sidebar-open');
-            backdrop.classList.add('show');
-            backdrop.setAttribute('aria-hidden', 'false');
-        }
-
-        function toggleSidebar() {
-            if (sidebar.classList.contains('sidebar-open')) {
-                closeSidebar();
-            } else {
-                openSidebar();
-            }
-        }
-
-        document.getElementById('sidebarToggle').addEventListener('click', function() {
-            toggleSidebar();
-        });
-
-        // Toggle token visibility (password <-> text); when showing, load full token if currently masked
-        (function() {
-            var input = document.getElementById('botToken');
-            var btn = document.getElementById('btnToggleTokenVisibility');
-            var iconEye = document.getElementById('iconTokenEye');
-            var iconEyeSlash = document.getElementById('iconTokenEyeSlash');
-            btn.addEventListener('click', async function() {
-                if (input.type === 'password') {
-                    // If value is masked (e.g. 9276***VBfc), fetch full token from server
-                    if ((input.value || '').indexOf('***') !== -1) {
-                        try {
-                            var r = await fetch(base + '/api/settings/token?reveal=true');
-                            var data = await r.json().catch(function() { return {}; });
-                            if (r.ok && data.token) {
-                                input.value = data.token;
-                            }
-                        } catch (_) {}
-                    }
-                    input.type = 'text';
-                    iconEye.style.display = 'none';
-                    iconEyeSlash.style.display = '';
-                    btn.setAttribute('title', 'Hide token');
-                } else {
-                    input.type = 'password';
-                    iconEye.style.display = '';
-                    iconEyeSlash.style.display = 'none';
-                    btn.setAttribute('title', 'Show token');
-                }
-            });
-        })();
-
-        backdrop.addEventListener('click', function() {
+    // ===== Sidebar navigation =====
+    document.querySelectorAll('.sidebar-nav .nav-link[data-page]').forEach(link=>{
+        link.addEventListener('click',e=>{
+            e.preventDefault();
+            document.querySelectorAll('.sidebar-nav .nav-link').forEach(l=>l.classList.remove('active'));
+            link.classList.add('active');
+            document.querySelectorAll('.page-section').forEach(s=>s.style.display='none');
+            var pg=document.getElementById('page-'+link.dataset.page);
+            if(pg)pg.style.display='';
             closeSidebar();
+            // Load data for the page
+            var p=link.dataset.page;
+            if(p==='exchange-requests')loadExchangeRequests();
+            else if(p==='ad-pricing')loadAdPricing();
+            else if(p==='exchange-groups')loadExchangeGroups();
+            else if(p==='exchange-rates')loadExchangeRates();
+            else if(p==='channel-settings')loadChannelSettings();
+            else if(p==='overview')loadOverview();
         });
+    });
 
-        // Tab switching (Users / Bot Operations)
-        document.querySelectorAll('.sidebar-nav [data-tab]').forEach(function(link) {
-            link.addEventListener('click', function(e) {
-                e.preventDefault();
-                var tab = this.getAttribute('data-tab');
-                document.querySelectorAll('.sidebar-nav .nav-link').forEach(function(l) { l.classList.remove('active'); });
-                this.classList.add('active');
-                document.querySelectorAll('.dashboard-section[id^="section-"]').forEach(function(s) {
-                    s.style.display = s.id === 'section-' + tab ? 'block' : 'none';
-                });
-                if (tab === 'users') loadUsers();
-                if (tab === 'stages') loadStages();
-                if (tab === 'permissions') loadPermissions();
-                if (tab === 'kyc') loadKyc();
-                if (tab === 'exchange-rates') { loadExchangeRates(); loadApiUsage(); }
-                if (tab === 'exchange-requests') loadExchangeRequests();
-                if (tab === 'exchange-settings') loadExchangeSettings();
-                if (tab === 'exchange-groups') loadExchangeGroups();
-                if (tab === 'exchange-groups') loadExchangeGroups();
-            });
-        });
+    // ===== Sidebar toggle =====
+    var sidebar=document.getElementById('dashboardSidebar'),backdrop=document.getElementById('sidebarBackdrop');
+    function closeSidebar(){sidebar.classList.remove('sidebar-open');backdrop.classList.remove('show');backdrop.setAttribute('aria-hidden','true');}
+    function openSidebar(){sidebar.classList.add('sidebar-open');backdrop.classList.add('show');backdrop.setAttribute('aria-hidden','false');}
+    document.getElementById('sidebarToggle').addEventListener('click',()=>{sidebar.classList.contains('sidebar-open')?closeSidebar():openSidebar();});
+    backdrop.addEventListener('click',closeSidebar);
 
-        // Load users list
-        function loadUsers() {
-            fetch(base + '/api/users')
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    var tbody = document.getElementById('usersTableBody');
-                    if (Array.isArray(data)) {
-                        if (data.length === 0) {
-                            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No users yet. Users will appear after they interact with the bot.</td></tr>';
-                        } else {
-                            tbody.innerHTML = data.map(function(u) {
-                                var firstSeen = u.firstSeenAt ? new Date(u.firstSeenAt).toLocaleString('en-GB', {dateStyle:'short', timeStyle:'short'}) : '—';
-                                var lastSeen = u.lastSeenAt ? new Date(u.lastSeenAt).toLocaleString('en-GB', {dateStyle:'short', timeStyle:'short'}) : '—';
-                                return '<tr><td><code>' + escapeHtml(String(u.telegramUserId)) + '</code></td><td>' + (u.username ? '@' + escapeHtml(u.username) : '—') + '</td><td>' + escapeHtml(u.firstName || '—') + '</td><td>' + escapeHtml(u.lastName || '—') + '</td><td><small>' + escapeHtml(firstSeen) + '</small></td><td><small>' + escapeHtml(lastSeen) + '</small></td><td><button class="btn btn-sm btn-outline-primary" onclick="viewUserMessages(' + u.telegramUserId + ')">Messages</button></td></tr>';
-                            }).join('');
-                        }
-                    } else {
-                        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Error loading users</td></tr>';
-                    }
-                })
-                .catch(function() {
-                    document.getElementById('usersTableBody').innerHTML = '<tr><td colspan="7" class="text-center text-danger">Error loading users</td></tr>';
-                });
-        }
-
-        document.getElementById('btnRefreshUsers').addEventListener('click', loadUsers);
-
-        // View user messages
-        window.viewUserMessages = function(userId) {
-            var modal = new bootstrap.Modal(document.getElementById('messagesModal'));
-            document.getElementById('messagesModalLabel').textContent = 'Messages for User ' + userId;
-            document.getElementById('messagesModalContent').innerHTML = '<div class="text-center text-muted">Loading...</div>';
-            modal.show();
-            
-            fetch(base + '/api/messages/conversation/' + userId + '?limit=5')
-                .then(function(r) { return r.json(); })
-                .then(function(messages) {
-                    var content = document.getElementById('messagesModalContent');
-                    if (Array.isArray(messages) && messages.length > 0) {
-                        var html = '<div class="table-responsive"><table class="table table-sm table-hover"><thead class="table-dark"><tr><th>Time</th><th>From</th><th>Type</th><th>Text</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
-                        messages.reverse().forEach(function(m) {
-                            var timeStr = m.sentAt ? new Date(m.sentAt).toLocaleString('en-GB', {dateStyle:'short', timeStyle:'short'}) : '—';
-                            var fromBadge = m.isFromBot ? '<span class="badge bg-primary">Bot</span>' : '<span class="badge bg-success">User</span>';
-                            var statusBadges = [];
-                            if (m.editedAt) statusBadges.push('<span class="badge bg-warning text-dark">Edited</span>');
-                            if (m.deletedAt) statusBadges.push('<span class="badge bg-danger">Deleted</span>');
-                            if (m.hasInlineKeyboard) statusBadges.push('<span class="badge bg-info">Keyboard</span>');
-                            if (m.shouldEdit) statusBadges.push('<span class="badge bg-secondary">Should Edit</span>');
-                            if (m.shouldDelete) statusBadges.push('<span class="badge bg-danger">Should Delete</span>');
-                            if (m.shouldKeepForEdit) statusBadges.push('<span class="badge bg-warning">Keep for Edit</span>');
-                            var statusHtml = statusBadges.length > 0 ? statusBadges.join(' ') : '—';
-                            var textPreview = m.text ? (m.text.length > 50 ? escapeHtml(m.text.substring(0, 50)) + '...' : escapeHtml(m.text)) : '—';
-                            html += '<tr><td><small>' + escapeHtml(timeStr) + '</small></td><td>' + fromBadge + '</td><td><small>' + escapeHtml(m.messageType || '—') + '</small></td><td>' + textPreview + '</td><td>' + statusHtml + '</td><td><button class="btn btn-sm btn-outline-info" onclick="viewMessageState(' + userId + ',' + m.id + ')">State</button></td></tr>';
-                        });
-                        html += '</tbody></table></div>';
-                        content.innerHTML = html;
-                    } else {
-                        content.innerHTML = '<div class="text-center text-muted">No messages found for this user.</div>';
-                    }
-                })
-                .catch(function() {
-                    document.getElementById('messagesModalContent').innerHTML = '<div class="text-center text-danger">Error loading messages</div>';
-                });
-        };
-
-        // View message state
-        window.viewMessageState = function(userId, messageId) {
-            fetch(base + '/api/messages/user/' + userId + '/state')
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    var lines = [];
-                    if (data.lastMessage) {
-                        lines.push('<strong>Last Bot Message:</strong>');
-                        lines.push('ID: ' + data.lastMessage.id);
-                        lines.push('Telegram ID: ' + data.lastMessage.telegramMessageId);
-                        lines.push('Text: ' + (data.lastMessage.text || '—'));
-                        lines.push('Sent: ' + new Date(data.lastMessage.sentAt).toLocaleString());
-                        if (data.lastMessage.editedAt) lines.push('Edited: ' + new Date(data.lastMessage.editedAt).toLocaleString());
-                        if (data.lastMessage.deletedAt) lines.push('Deleted: ' + new Date(data.lastMessage.deletedAt).toLocaleString());
-                    }
-                    if (data.state) {
-                        lines.push('<br><strong>State:</strong>');
-                        lines.push('Should Edit: ' + (data.state.shouldEdit ? 'Yes' : 'No'));
-                        lines.push('Should Reply: ' + (data.state.shouldReply ? 'Yes' : 'No'));
-                        lines.push('Should Keep Static: ' + (data.state.shouldKeepStatic ? 'Yes' : 'No'));
-                        lines.push('Delete Next Messages: ' + (data.state.deleteNextMessages ? 'Yes' : 'No'));
-                        lines.push('Last Action: ' + (data.state.lastAction || '—'));
-                        if (data.state.lastActionAt) lines.push('Last Action At: ' + new Date(data.state.lastActionAt).toLocaleString());
-                    }
-                    Swal.fire({
-                        icon: 'info',
-                        title: 'Message State',
-                        html: '<div class="text-start" style="line-height:1.8;">' + lines.join('<br>') + '</div>',
-                        confirmButtonText: 'OK'
-                    });
-                })
-                .catch(function() {
-                    Swal.fire({ icon: 'error', title: 'Error', text: 'Failed to load message state' });
-                });
-        };
-
-        document.addEventListener('click', function(event) {
-            if (!sidebar.classList.contains('sidebar-open')) return;
-            if (sidebar.contains(event.target)) return;
-            if (event.target.closest('#sidebarToggle')) return;
-            closeSidebar();
-        });
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text ?? '';
-            return div.innerHTML;
-        }
-
-        // Load webhook info (URL + last sync for label)
-        async function loadWebhookInfo() {
-            try {
-                const r = await fetch(base + '/api/webhook/info');
-                const data = await r.json().catch(() => ({}));
-                if (r.ok && data.url) {
-                    document.getElementById('webhookUrl').value = data.url;
-                }
-            } catch (_) {}
-            try {
-                const s = await fetch(base + '/api/dashboard/status');
-                const st = await s.json().catch(() => ({}));
-                if (s.ok && st.webhookSyncedAt) {
-                    const d = new Date(st.webhookSyncedAt);
-                    document.getElementById('webhookSyncedLabel').textContent = 'Webhook synced: ' + d.toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' });
-                }
-            } catch (_) {}
-        }
-
-        // Load token into input (so it stays after refresh)
-        async function loadTokenIntoInput() {
-            try {
-                const r = await fetch(base + '/api/settings/token');
-                const data = await r.json().catch(function() { return {}; });
-                var input = document.getElementById('botToken');
-                if (r.ok && data.set && data.masked) {
-                    input.value = data.masked;
-                    input.placeholder = 'Token is set (replace to change)';
-                } else {
-                    input.value = '';
-                    input.placeholder = '123456789:ABCdef...';
-                }
-            } catch (_) {
-                document.getElementById('botToken').value = '';
+    // ===== Overview =====
+    async function loadOverview(){
+        try{
+            const r=await fetch(base+'/api/exchange/requests');
+            const reqs=await r.json().catch(()=>[]);
+            if(Array.isArray(reqs)){
+                document.getElementById('ov-pending').textContent=reqs.filter(r=>r.status==='pending_approval').length;
             }
-        }
+        }catch(_){document.getElementById('ov-pending').textContent='?';}
+        try{
+            const r=await fetch(base+'/api/exchange-groups');
+            const grps=await r.json().catch(()=>[]);
+            if(Array.isArray(grps))document.getElementById('ov-groups').textContent=grps.filter(g=>g.status==='pending').length;
+        }catch(_){}
+        try{
+            const r=await fetch(base+'/api/dashboard/status');
+            const st=await r.json().catch(()=>({}));
+            document.getElementById('ov-bot').textContent=st.tokenSet?'Active':'Not Set';
+        }catch(_){}
+    }
 
-        // Load update mode (Webhook / GetUpdates)
-        async function loadUpdateMode() {
-            try {
-                const r = await fetch(base + '/api/settings/update-mode');
-                const data = await r.json().catch(function() { return {}; });
-                if (r.ok && data.mode) {
-                    var mode = (data.mode || 'Webhook').trim();
-                    document.getElementById('updateModeWebhook').checked = (mode !== 'GetUpdates');
-                    document.getElementById('updateModeGetUpdates').checked = (mode === 'GetUpdates');
-                }
-            } catch (_) {}
-        }
-
-        // Load connection status (Token / Webhook / Bot / Services)
-        async function loadConnectionStatus() {
-            var tokenEl = document.getElementById('statusToken');
-            var webhookEl = document.getElementById('statusWebhook');
-            var botEl = document.getElementById('statusBot');
-            var botTimeEl = document.getElementById('statusBotTime');
-            var redisEl = document.getElementById('statusRedis');
-            var rabbitMqEl = document.getElementById('statusRabbitMq');
-            var sqlEl = document.getElementById('statusSql');
-            try {
-                const r = await fetch(base + '/api/dashboard/status');
-                const st = await r.json().catch(() => ({}));
-                if (!r.ok) {
-                    tokenEl.textContent = '—';
-                    var modeEl = document.getElementById('statusUpdateMode');
-                    if (modeEl) modeEl.textContent = '—';
-                    webhookEl.textContent = '—';
-                    botEl.textContent = '—';
-                    redisEl.textContent = '—';
-                    rabbitMqEl.textContent = '—';
-                    sqlEl.textContent = '—';
-                    botTimeEl.textContent = '';
-                    return;
-                }
-                tokenEl.textContent = st.tokenSet ? 'Set' : 'Not set';
-                tokenEl.className = 'badge ' + (st.tokenSet ? 'bg-success' : 'bg-secondary');
-                var modeEl = document.getElementById('statusUpdateMode');
-                if (modeEl) {
-                    modeEl.textContent = st.updateMode || 'Webhook';
-                    modeEl.className = 'badge bg-info';
-                }
-                webhookEl.textContent = st.webhookSyncedAt ? 'Synced' : 'Not set';
-                webhookEl.className = 'badge ' + (st.webhookSyncedAt ? 'bg-success' : 'bg-secondary');
-                
-                // Redis status
-                redisEl.textContent = st.redisConnected ? 'Connected' : 'Not configured';
-                redisEl.className = 'badge ' + (st.redisConnected ? 'bg-success' : 'bg-secondary');
-                
-                // RabbitMQ status
-                rabbitMqEl.textContent = st.rabbitMqConfigured ? 'Configured' : 'Not configured';
-                rabbitMqEl.className = 'badge ' + (st.rabbitMqConfigured ? 'bg-success' : 'bg-secondary');
-                
-                // SQL Server status
-                sqlEl.textContent = st.sqlConnected ? 'Connected' : 'Not configured';
-                sqlEl.className = 'badge ' + (st.sqlConnected ? 'bg-success' : 'bg-secondary');
-                
-                if (st.lastEventAt) {
-                    var active = st.lastEventStatus === 'Received';
-                    botEl.textContent = active ? 'Connected' : 'Last error';
-                    botEl.className = 'badge ' + (active ? 'bg-success' : 'bg-danger');
-                    botTimeEl.textContent = 'Last activity: ' + new Date(st.lastEventAt).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' });
-                    if (st.lastEventError && !active) botTimeEl.textContent += ' — ' + (st.lastEventError.length > 60 ? st.lastEventError.substring(0, 60) + '…' : st.lastEventError);
-                } else {
-                    botEl.textContent = 'No activity yet';
-                    botEl.className = 'badge bg-secondary';
-                    botTimeEl.textContent = 'Send a message to the bot to see activity.';
-                }
-            } catch (_) {
-                tokenEl.textContent = '—';
-                var modeEl = document.getElementById('statusUpdateMode');
-                if (modeEl) modeEl.textContent = '—';
-                webhookEl.textContent = '—';
-                botEl.textContent = '—';
-                redisEl.textContent = '—';
-                rabbitMqEl.textContent = '—';
-                sqlEl.textContent = '—';
-                botTimeEl.textContent = '';
-            }
-        }
-
-        // Save configuration (token + update mode)
-        document.getElementById('credentialsForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            var token = (document.getElementById('botToken').value || '').trim();
-            const mode = document.getElementById('updateModeGetUpdates').checked ? 'GetUpdates' : 'Webhook';
-            
-            // اگر توکن ماسک‌شده است (شامل ***)، آن را نفرست - فقط حالت را ذخیره کن
-            var tokenIsNew = token && token.indexOf('***') === -1;
-            
-            try {
-                // فقط اگر توکن جدید وارد شده، آن را ذخیره کن
-                if (tokenIsNew) {
-                    const r = await fetch(base + '/api/settings/token', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ token })
-                    });
-                    const data = await r.json().catch(() => ({}));
-                    if (!r.ok) throw new Error(data.detail || data.message || 'Error');
-                }
-                
-                // همیشه حالت به‌روزرسانی را ذخیره کن
-                const modeRes = await fetch(base + '/api/settings/update-mode', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ mode })
-                });
-                const modeData = await modeRes.json().catch(() => ({}));
-                if (!modeRes.ok) throw new Error(modeData.detail || 'Failed to save mode');
-                
-                Swal.fire({ icon: 'success', title: 'Saved.', text: 'Restart the application for changes to take effect.', timer: 5000, showConfirmButton: true });
-        
-        // ===== Ad Pricing =====
-        async function loadAdPricing() {
-            try {
-                const r = await fetch(base + '/api/settings/ad-pricing');
-                const data = await r.json().catch(() => ({}));
-                if (r.ok) {
-                    document.getElementById('adPricingMode').value = data.mode || 'free';
-                    document.getElementById('adPrice').value = data.price || '0';
-                }
-            } catch(_) {}
-        }
-
-        document.getElementById('adPricingForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            var mode = document.getElementById('adPricingMode').value;
-            var price = document.getElementById('adPrice').value || '0';
-            try {
-                const r = await fetch(base + '/api/settings/ad-pricing', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ mode: mode, price: price })
-                });
-                const data = await r.json().catch(() => ({}));
-                if (!r.ok) throw new Error(data.detail || 'Error');
-                Swal.fire({ icon: 'success', title: 'Saved', text: 'Ad pricing updated.', timer: 2500, showConfirmButton: false });
-            } catch(e) {
-                Swal.fire({ icon: 'error', title: 'Error', text: e.message });
-            }
-        });
-
-        // ===== Exchange Groups =====
-        async function loadExchangeGroups() {
-            try {
-                const r = await fetch(base + '/api/exchange-groups');
-                const data = await r.json().catch(() => []);
-                var tbody = document.getElementById('groupsTableBody');
-                if (!r.ok || !data.length) { tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No groups found.</td></tr>'; return; }
-                tbody.innerHTML = data.map(function(g) {
-                    var statusBadge = g.status === 'approved' ? '<span class="badge bg-success">Approved</span>'
-                        : g.status === 'rejected' ? '<span class="badge bg-danger">Rejected</span>'
-                        : '<span class="badge bg-warning text-dark">Pending</span>';
-                    return '<tr><td>' + g.id + '</td><td>' + (g.name||'') + '</td><td>' + (g.currencyCode||'-') + '</td><td>' + (g.countryCode||'-') + '</td>'
-                        + '<td><a href="' + (g.telegramGroupLink||'#') + '" target="_blank">Link</a></td>'
-                        + '<td>' + statusBadge + '</td><td>' + (g.memberCount||0) + '</td>'
-                        + '<td>'
-                        + (g.status !== 'approved' ? '<button class="btn btn-sm btn-success me-1" onclick="approveGroup(' + g.id + ')">Approve</button>' : '')
-                        + (g.status !== 'rejected' ? '<button class="btn btn-sm btn-danger me-1" onclick="rejectGroup(' + g.id + ')">Reject</button>' : '')
-                        + '<button class="btn btn-sm btn-outline-danger" onclick="deleteGroup(' + g.id + ')">Delete</button>'
-                        + '</td></tr>';
-                }).join('');
-            } catch(_) {
-                document.getElementById('groupsTableBody').innerHTML = '<tr><td colspan="8" class="text-center text-danger">Error loading groups.</td></tr>';
-            }
-        }
-
-        async function approveGroup(id) {
-            if (!confirm('Approve this group?')) return;
-            await fetch(base + '/api/exchange-groups/' + id + '/approve', { method: 'POST' });
-            loadExchangeGroups();
-        }
-        async function rejectGroup(id) {
-            if (!confirm('Reject this group?')) return;
-            await fetch(base + '/api/exchange-groups/' + id + '/reject', { method: 'POST' });
-            loadExchangeGroups();
-        }
-        async function deleteGroup(id) {
-            if (!confirm('Delete this group permanently?')) return;
-            await fetch(base + '/api/exchange-groups/' + id, { method: 'DELETE' });
-            loadExchangeGroups();
-        }
-
-        document.getElementById('addGroupForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            var body = {
-                name: document.getElementById('groupName').value,
-                telegramGroupLink: document.getElementById('groupLink').value,
-                currencyCode: document.getElementById('groupCurrency').value || null,
-                countryCode: document.getElementById('groupCountry').value || null,
-                description: document.getElementById('groupDesc').value || null
-            };
-            try {
-                const r = await fetch(base + '/api/exchange-groups', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                });
-                if (!r.ok) { var d = await r.json().catch(() => ({})); throw new Error(d.detail || 'Error'); }
-                Swal.fire({ icon: 'success', title: 'Added', text: 'Group added.', timer: 2500, showConfirmButton: false });
-                document.getElementById('addGroupForm').reset();
-                loadExchangeGroups();
-            } catch(e) {
-                Swal.fire({ icon: 'error', title: 'Error', text: e.message });
-            }
-        });
-
-        document.getElementById('btnRefreshGroups').addEventListener('click', loadExchangeGroups);
-
-        loadTokenIntoInput();
-                loadUpdateMode();
-                loadWebhookInfo();
-                loadConnectionStatus();
-            } catch (err) {
-                Swal.fire({ icon: 'error', title: 'Error', text: err.message });
-            }
-        });
-
-        document.getElementById('btnTestToken').addEventListener('click', async function() {
-            try {
-                const r = await fetch(base + '/api/bot/me');
-                const data = await r.json().catch(() => ({}));
-                if (r.ok) {
-                    var lines = [
-                        '<strong>Name:</strong> ' + (data.firstName || '') + (data.lastName ? ' ' + data.lastName : ''),
-                        '<strong>Username:</strong> ' + (data.username ? '@' + data.username : '—'),
-                        '<strong>Bot ID:</strong> ' + (data.id ?? '—'),
-                        '<strong>Is Bot:</strong> ' + (data.isBot ? 'Yes' : 'No'),
-                        (data.languageCode ? '<strong>Language:</strong> ' + data.languageCode : '')
-                    ].filter(Boolean);
-                    Swal.fire({
-                        icon: 'success',
-                        title: 'Bot Information',
-                        html: '<div class="text-start" style="line-height:1.8;">' + lines.join('<br>') + '</div>',
-                        confirmButtonText: 'OK'
-                    });
-                } else {
-                    Swal.fire({ icon: 'error', title: 'Invalid token', text: data.detail || 'Could not find bot with this token.' });
-                }
-            } catch (err) {
-                Swal.fire({ icon: 'error', title: 'Error', text: err.message });
-            }
-        });
-
-        document.getElementById('btnSetWebhook').addEventListener('click', async function() {
-            const url = (document.getElementById('webhookUrl').value || '').trim();
-            if (!url) {
-                Swal.fire({ icon: 'warning', title: 'Webhook URL is required.', timer: 2000, showConfirmButton: false });
-                return;
-            }
-            if (!url.startsWith('https://')) {
-                Swal.fire({ icon: 'warning', title: 'URL must start with https://', timer: 2000, showConfirmButton: false });
-                return;
-            }
-            try {
-                const r = await fetch(base + '/api/webhook/set', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url })
-                });
-                const data = await r.json().catch(() => ({}));
-                if (!r.ok) throw new Error(data.detail || data.message || 'Error');
-                Swal.fire({ icon: 'success', title: 'Webhook updated successfully.', timer: 2500, showConfirmButton: false });
-                loadWebhookInfo();
-                loadConnectionStatus();
-            } catch (err) {
-                Swal.fire({ icon: 'error', title: 'Error', text: err.message });
-            }
-        });
-
-        function refreshWebhookMessages() {
-            fetch(base + '/api/webhook/logs')
-                .then(function(r) { return r.json(); })
-                .then(function(list) {
-                    const tbody = document.getElementById('webhookMessagesTable');
-                    if (Array.isArray(list) && list.length > 0) {
-                        tbody.innerHTML = list.map(function(msg) {
-                            const statusClass = msg.status === 'Received' ? 'success' : (msg.status === 'Error' ? 'danger' : 'info');
-                            const sourceClass = msg.source === 'Webhook' ? 'primary' : 'secondary';
-                            const timeStr = msg.time ? new Date(msg.time).toLocaleString('en-GB', {dateStyle:'short', timeStyle:'short'}) : '';
-                            
-                            // Services badges
-                            var services = [];
-                            if (msg.redisProcessed) services.push('<span class="badge bg-danger me-1" title="Redis">R</span>');
-                            if (msg.rabbitMqPublished) services.push('<span class="badge bg-warning text-dark me-1" title="RabbitMQ">MQ</span>');
-                            if (msg.sqlProcessed) services.push('<span class="badge bg-info me-1" title="SQL Server">SQL</span>');
-                            var servicesHtml = services.length > 0 ? services.join('') : '<span class="text-muted">-</span>';
-                            
-                            // Response sent
-                            var replyHtml = msg.responseSent 
-                                ? '<span class="badge bg-success">Yes</span>' 
-                                : '<span class="badge bg-secondary">No</span>';
-                            
-                            // Handler name
-                            var handlerHtml = msg.handlerName 
-                                ? '<code class="small">' + escapeHtml(msg.handlerName.replace('Handler','')) + '</code>' 
-                                : '<span class="text-muted">-</span>';
-                            
-                            return '<tr>' +
-                                '<td><small>' + escapeHtml(timeStr) + '</small></td>' +
-                                '<td><span class="badge bg-' + sourceClass + '">' + escapeHtml(msg.source || 'Unknown') + '</span></td>' +
-                                '<td><span class="badge bg-' + statusClass + '">' + escapeHtml(msg.status) + '</span></td>' +
-                                '<td>' + handlerHtml + '</td>' +
-                                '<td>' + servicesHtml + '</td>' +
-                                '<td>' + replyHtml + '</td>' +
-                                '<td>' + (msg.error ? '<small class="text-danger" title="' + escapeHtml(msg.error) + '">' + escapeHtml(msg.error.length > 20 ? msg.error.substring(0,20) + '...' : msg.error) + '</small>' : '-') + '</td>' +
-                                '</tr>';
-                        }).join('');
-                    } else {
-                        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No updates yet</td></tr>';
-                    }
-                })
-                .catch(function() {
-                    document.getElementById('webhookMessagesTable').innerHTML = '<tr><td colspan="7" class="text-center text-danger">Error loading messages</td></tr>';
-                });
-        }
-
-        document.getElementById('btnRefreshLogs').addEventListener('click', refreshWebhookMessages);
-
-        var PUBLIC_WEBHOOK_URL = 'https://webhook.abroadqs.com/webhook';
-        function updateWebhookUrlHint() {
-            var isNgrok = document.getElementById('webhookSourceNgrok').checked;
-            var isTunnel = document.getElementById('webhookSourceTunnel').checked;
-            var input = document.getElementById('webhookUrl');
-            var hint = document.getElementById('webhookUrlHint');
-            if (isTunnel) {
-                input.value = PUBLIC_WEBHOOK_URL;
-                input.placeholder = PUBLIC_WEBHOOK_URL;
-                hint.textContent = 'Fixed tunnel URL.';
-            } else if (isNgrok) {
-                input.placeholder = 'https://xxxx-xx-xx-xx-xx.ngrok-free.app/webhook';
-                hint.textContent = 'Your Ngrok public URL (HTTPS). Use the URL Ngrok gives you.';
-            } else {
-                input.placeholder = PUBLIC_WEBHOOK_URL;
-                hint.textContent = 'Server webhook URL (HTTPS). Use this URL when published on the server.';
-            }
-        }
-        document.getElementById('webhookSourceServer').addEventListener('change', updateWebhookUrlHint);
-        document.getElementById('webhookSourceTunnel').addEventListener('change', updateWebhookUrlHint);
-        document.getElementById('webhookSourceNgrok').addEventListener('change', updateWebhookUrlHint);
-
-        // Bot Status - Load and Toggle
-        async function loadBotStatus() {
-            try {
-                const r = await fetch(base + '/api/bot/status');
-                const data = await r.json().catch(() => ({}));
-                updateBotStatusUI(data.enabled);
-            } catch (_) {
-                updateBotStatusUI(null);
-            }
-        }
-
-        function updateBotStatusUI(enabled) {
-            var label = document.getElementById('botStatusLabel');
-            var btn = document.getElementById('btnBotToggle');
-            var btnText = document.getElementById('btnBotToggleText');
-            
-            if (enabled === true) {
-                label.textContent = 'Running';
-                label.className = 'badge bg-success';
-                btn.className = 'btn btn-danger';
-                btnText.textContent = 'Stop';
-            } else if (enabled === false) {
-                label.textContent = 'Stopped';
-                label.className = 'badge bg-secondary';
-                btn.className = 'btn btn-success';
-                btnText.textContent = 'Start';
-            } else {
-                label.textContent = '—';
-                label.className = 'badge bg-secondary';
-            }
-        }
-
-        document.getElementById('btnBotToggle').addEventListener('click', async function() {
-            try {
-                const r = await fetch(base + '/api/bot/toggle', { method: 'POST' });
-                const data = await r.json().catch(() => ({}));
-                if (r.ok) {
-                    updateBotStatusUI(data.enabled);
-                    Swal.fire({
-                        icon: data.enabled ? 'success' : 'info',
-                        title: data.enabled ? 'Bot Started' : 'Bot Stopped',
-                        text: data.enabled ? 'Bot will now respond to messages.' : 'Bot will ignore incoming messages.',
-                        timer: 2000,
-                        showConfirmButton: false
-                    });
-                }
-            } catch (err) {
-                Swal.fire({ icon: 'error', title: 'Error', text: err.message });
-            }
-        });
-
-        // ===== Bot Stages =====
-        let currentStageId = null;
-        let currentStageKey = null;
-
-        async function loadStages() {
-            try {
-                const r = await fetch(base + '/api/stages');
-                const stages = await r.json();
-                const body = document.getElementById('stagesBody');
-                body.innerHTML = stages.map(s => `<tr>
-                    <td><code>${s.stageKey}</code></td>
-                    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${esc(s.textFa||'')}</td>
-                    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${esc(s.textEn||'')}</td>
-                    <td>${s.isEnabled ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-secondary">No</span>'}</td>
-                    <td>${esc(s.requiredPermission||'—')}</td>
-                    <td>${esc(s.parentStageKey||'—')}</td>
-                    <td>${s.sortOrder}</td>
+    // ===== Exchange Requests =====
+    async function loadExchangeRequests(){
+        var status=document.getElementById('excReqStatusFilter').value;
+        try{
+            const r=await fetch(base+'/api/exchange/requests'+(status?'?status='+status:''));
+            var data=await r.json().catch(()=>[]);
+            if(!Array.isArray(data))data=[];
+            var tb=document.getElementById('excReqTable');
+            if(data.length===0){tb.innerHTML='<tr><td colspan="10" class="text-center text-muted">No requests found</td></tr>';return;}
+            tb.innerHTML=data.map(req=>{
+                var sClass=req.status==='pending_approval'?'warning':req.status==='approved'?'success':req.status==='rejected'?'danger':req.status==='matched'?'info':'secondary';
+                return `<tr>
+                    <td>#${req.requestNumber||req.id}</td>
+                    <td>${esc(req.userDisplayName||'')}</td>
+                    <td>${esc(req.transactionType)}</td>
+                    <td>${esc(req.currency)}</td>
+                    <td>${Number(req.amount||0).toLocaleString()}</td>
+                    <td>${Number(req.proposedRate||0).toLocaleString()}</td>
+                    <td>${esc(req.deliveryMethod)}</td>
+                    <td><span class="badge bg-${sClass}">${esc(req.status)}</span></td>
+                    <td><small>${req.createdAt?new Date(req.createdAt).toLocaleDateString():''}</small></td>
                     <td>
-                        <button class="btn btn-sm btn-outline-primary" onclick="editStage(${s.id},'${s.stageKey}',\`${esc(s.textFa||'')}\`,\`${esc(s.textEn||'')}\`,${s.isEnabled},'${s.requiredPermission||''}','${s.parentStageKey||''}',${s.sortOrder})">Edit</button>
-                        <button class="btn btn-sm btn-outline-info" onclick="showButtons(${s.id},'${s.stageKey}')">Buttons</button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="deleteStage(${s.id})">Del</button>
-                    </td></tr>`).join('');
-            } catch(e) { console.error(e); }
-        }
-
-        function esc(s) { return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : ''; }
-
-        document.getElementById('btnAddStage').addEventListener('click', async () => {
-            const { value: formValues } = await Swal.fire({
-                title: 'Add Stage', html:
-                    '<input id="sKey" class="swal2-input" placeholder="Stage Key (e.g. main_menu)">' +
-                    '<textarea id="sFa" class="swal2-textarea" placeholder="Text FA (HTML)"></textarea>' +
-                    '<textarea id="sEn" class="swal2-textarea" placeholder="Text EN (HTML)"></textarea>' +
-                    '<input id="sPerm" class="swal2-input" placeholder="Required Permission (empty=public)">' +
-                    '<input id="sParent" class="swal2-input" placeholder="Parent Stage Key (for back button)">' +
-                    '<input id="sOrder" class="swal2-input" type="number" value="0" placeholder="Sort Order">',
-                focusConfirm: false, preConfirm: () => ({
-                    stageKey: document.getElementById('sKey').value,
-                    textFa: document.getElementById('sFa').value,
-                    textEn: document.getElementById('sEn').value,
-                    isEnabled: true,
-                    requiredPermission: document.getElementById('sPerm').value || null,
-                    parentStageKey: document.getElementById('sParent').value || null,
-                    sortOrder: parseInt(document.getElementById('sOrder').value) || 0
-                })
-            });
-            if (!formValues || !formValues.stageKey) return;
-            try {
-                await fetch(base + '/api/stages', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(formValues) });
-                loadStages();
-            } catch(e) { Swal.fire('Error', e.message, 'error'); }
-        });
-
-        async function editStage(id, key, fa, en, enabled, perm, parent, order) {
-            const { value: formValues } = await Swal.fire({
-                title: 'Edit: ' + key, html:
-                    `<textarea id="sFa" class="swal2-textarea" placeholder="Text FA">${fa}</textarea>` +
-                    `<textarea id="sEn" class="swal2-textarea" placeholder="Text EN">${en}</textarea>` +
-                    `<label class="swal2-checkbox-label"><input id="sEnabled" type="checkbox" ${enabled?'checked':''}/> Enabled</label>` +
-                    `<input id="sPerm" class="swal2-input" placeholder="Required Permission" value="${perm}">` +
-                    `<input id="sParent" class="swal2-input" placeholder="Parent Stage Key" value="${parent}">` +
-                    `<input id="sOrder" class="swal2-input" type="number" value="${order}">`,
-                focusConfirm: false, preConfirm: () => ({
-                    textFa: document.getElementById('sFa').value,
-                    textEn: document.getElementById('sEn').value,
-                    isEnabled: document.getElementById('sEnabled').checked,
-                    requiredPermission: document.getElementById('sPerm').value || '',
-                    parentStageKey: document.getElementById('sParent').value || '',
-                    sortOrder: parseInt(document.getElementById('sOrder').value) || 0
-                })
-            });
-            if (!formValues) return;
-            try {
-                await fetch(base + '/api/stages/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(formValues) });
-                loadStages();
-            } catch(e) { Swal.fire('Error', e.message, 'error'); }
-        }
-
-        async function deleteStage(id) {
-            const r = await Swal.fire({ title: 'Delete stage?', icon:'warning', showCancelButton:true, confirmButtonText:'Delete' });
-            if (!r.isConfirmed) return;
-            await fetch(base + '/api/stages/' + id, { method:'DELETE' });
-            loadStages();
-        }
-
-        // ===== Stage Buttons =====
-        async function showButtons(stageId, stageKey) {
-            currentStageId = stageId;
-            currentStageKey = stageKey;
-            document.getElementById('stageButtonsPanel').style.display = 'block';
-            document.getElementById('stageButtonsTitle').textContent = 'Buttons for: ' + stageKey;
-            await loadButtons();
-        }
-
-        async function loadButtons() {
-            if (!currentStageKey) return;
-            try {
-                const r = await fetch(base + '/api/stages/' + currentStageKey + '/buttons');
-                const buttons = await r.json();
-                const body = document.getElementById('buttonsBody');
-                body.innerHTML = buttons.map(b => `<tr>
-                    <td>${esc(b.textFa||'')}</td><td>${esc(b.textEn||'')}</td><td>${b.buttonType}</td>
-                    <td><code>${esc(b.callbackData||'')}</code></td><td>${esc(b.targetStageKey||'')}</td>
-                    <td>${esc(b.url||'')}</td><td>${b.row}</td><td>${b.column}</td>
-                    <td>${b.isEnabled?'Y':'N'}</td><td>${esc(b.requiredPermission||'')}</td>
-                    <td>
-                        <button class="btn btn-sm btn-outline-primary" onclick="editButton(${b.id})">Edit</button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="deleteButton(${b.id})">Del</button>
-                    </td></tr>`).join('');
-            } catch(e) { console.error(e); }
-        }
-
-        document.getElementById('btnAddButton').addEventListener('click', async () => {
-            if (!currentStageId) return;
-            const { value: fv } = await Swal.fire({
-                title: 'Add Button', html:
-                    '<input id="bFa" class="swal2-input" placeholder="Text FA">' +
-                    '<input id="bEn" class="swal2-input" placeholder="Text EN">' +
-                    '<select id="bType" class="swal2-select"><option value="callback">callback</option><option value="url">url</option></select>' +
-                    '<input id="bCb" class="swal2-input" placeholder="Callback Data (e.g. stage:settings)">' +
-                    '<input id="bTarget" class="swal2-input" placeholder="Target Stage Key">' +
-                    '<input id="bUrl" class="swal2-input" placeholder="URL (for url buttons)">' +
-                    '<input id="bRow" class="swal2-input" type="number" value="0" placeholder="Row">' +
-                    '<input id="bCol" class="swal2-input" type="number" value="0" placeholder="Column">' +
-                    '<input id="bPerm" class="swal2-input" placeholder="Required Permission">',
-                focusConfirm: false, preConfirm: () => ({
-                    textFa: document.getElementById('bFa').value, textEn: document.getElementById('bEn').value,
-                    buttonType: document.getElementById('bType').value,
-                    callbackData: document.getElementById('bCb').value || null,
-                    targetStageKey: document.getElementById('bTarget').value || null,
-                    url: document.getElementById('bUrl').value || null,
-                    row: parseInt(document.getElementById('bRow').value)||0,
-                    column: parseInt(document.getElementById('bCol').value)||0,
-                    isEnabled: true, requiredPermission: document.getElementById('bPerm').value || null
-                })
-            });
-            if (!fv) return;
-            await fetch(base + '/api/stages/' + currentStageId + '/buttons', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(fv) });
-            loadButtons();
-        });
-
-        async function editButton(btnId) {
-            const { value: fv } = await Swal.fire({
-                title: 'Edit Button #' + btnId, html:
-                    '<input id="bFa" class="swal2-input" placeholder="Text FA">' +
-                    '<input id="bEn" class="swal2-input" placeholder="Text EN">' +
-                    '<input id="bCb" class="swal2-input" placeholder="Callback Data">' +
-                    '<input id="bTarget" class="swal2-input" placeholder="Target Stage Key">' +
-                    '<input id="bRow" class="swal2-input" type="number" placeholder="Row">' +
-                    '<input id="bCol" class="swal2-input" type="number" placeholder="Column">' +
-                    '<label class="swal2-checkbox-label"><input id="bEnabled" type="checkbox" checked/> Enabled</label>',
-                focusConfirm: false, preConfirm: () => ({
-                    textFa: document.getElementById('bFa').value || null,
-                    textEn: document.getElementById('bEn').value || null,
-                    callbackData: document.getElementById('bCb').value || null,
-                    targetStageKey: document.getElementById('bTarget').value || null,
-                    row: parseInt(document.getElementById('bRow').value) || null,
-                    column: parseInt(document.getElementById('bCol').value) || null,
-                    isEnabled: document.getElementById('bEnabled').checked
-                })
-            });
-            if (!fv) return;
-            await fetch(base + '/api/buttons/' + btnId, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(fv) });
-            loadButtons();
-        }
-
-        async function deleteButton(btnId) {
-            const r = await Swal.fire({ title: 'Delete button?', icon:'warning', showCancelButton:true });
-            if (!r.isConfirmed) return;
-            await fetch(base + '/api/buttons/' + btnId, { method:'DELETE' });
-            loadButtons();
-        }
-
-        // ===== Permissions =====
-        async function loadPermissions() {
-            try {
-                const r = await fetch(base + '/api/permissions');
-                const perms = await r.json();
-                document.getElementById('permissionsBody').innerHTML = perms.map(p => `<tr>
-                    <td><code>${p.permissionKey}</code></td><td>${esc(p.nameFa||'')}</td>
-                    <td>${esc(p.nameEn||'')}</td><td>${esc(p.description||'')}</td>
-                    <td><button class="btn btn-sm btn-outline-danger" onclick="deletePerm('${p.permissionKey}')">Del</button></td></tr>`).join('');
-            } catch(e) { console.error(e); }
-        }
-
-        document.getElementById('btnAddPermission').addEventListener('click', async () => {
-            const { value: fv } = await Swal.fire({
-                title: 'Add Permission', html:
-                    '<input id="pKey" class="swal2-input" placeholder="Permission Key">' +
-                    '<input id="pFa" class="swal2-input" placeholder="Name FA">' +
-                    '<input id="pEn" class="swal2-input" placeholder="Name EN">' +
-                    '<input id="pDesc" class="swal2-input" placeholder="Description">',
-                focusConfirm: false, preConfirm: () => ({
-                    permissionKey: document.getElementById('pKey').value,
-                    nameFa: document.getElementById('pFa').value || null,
-                    nameEn: document.getElementById('pEn').value || null,
-                    description: document.getElementById('pDesc').value || null
-                })
-            });
-            if (!fv || !fv.permissionKey) return;
-            await fetch(base + '/api/permissions', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(fv) });
-            loadPermissions();
-        });
-
-        async function deletePerm(key) {
-            const r = await Swal.fire({ title: 'Delete permission ' + key + '?', icon:'warning', showCancelButton:true });
-            if (!r.isConfirmed) return;
-            await fetch(base + '/api/permissions/' + key, { method:'DELETE' });
-            loadPermissions();
-        }
-
-        // ===== User Permissions =====
-        let currentPermUserId = null;
-        document.getElementById('btnLoadUserPerms').addEventListener('click', async () => {
-            currentPermUserId = parseInt(document.getElementById('userPermUserId').value);
-            if (!currentPermUserId) return;
-            document.getElementById('userPermsPanel').style.display = 'block';
-            await loadUserPerms();
-        });
-
-        async function loadUserPerms() {
-            if (!currentPermUserId) return;
-            try {
-                const r = await fetch(base + '/api/users/' + currentPermUserId + '/permissions');
-                const perms = await r.json();
-                document.getElementById('userPermsBody').innerHTML = perms.map(p => `<tr>
-                    <td><code>${p.permissionKey}</code></td><td>${new Date(p.grantedAt).toLocaleString()}</td>
-                    <td><button class="btn btn-sm btn-outline-danger" onclick="revokeUserPerm('${p.permissionKey}')">Revoke</button></td></tr>`).join('');
-            } catch(e) { console.error(e); }
-        }
-
-        document.getElementById('btnGrantPerm').addEventListener('click', async () => {
-            if (!currentPermUserId) return;
-            const key = document.getElementById('grantPermKey').value.trim();
-            if (!key) return;
-            await fetch(base + '/api/users/' + currentPermUserId + '/permissions/' + key, { method:'POST' });
-            document.getElementById('grantPermKey').value = '';
-            loadUserPerms();
-        });
-
-        async function revokeUserPerm(key) {
-            if (!currentPermUserId) return;
-            await fetch(base + '/api/users/' + currentPermUserId + '/permissions/' + key, { method:'DELETE' });
-            loadUserPerms();
-        }
-
-        // ===== KYC Review =====
-        async function loadKyc() {
-            var filter = document.getElementById('kycFilter').value;
-            var url = filter === 'all' ? base + '/api/kyc/all' : base + '/api/kyc/pending';
-            try {
-                const r = await fetch(url);
-                const data = await r.json();
-                const tbody = document.getElementById('kycTableBody');
-                if (Array.isArray(data) && data.length > 0) {
-                    tbody.innerHTML = data.map(function(u) {
-                        var name = escapeHtml((u.firstName || '') + ' ' + (u.lastName || '')).trim() || '—';
-                        var statusBadge = u.kycStatus === 'pending_review'
-                            ? '<span class="badge bg-warning text-dark">Pending</span>'
-                            : u.kycStatus === 'approved'
-                            ? '<span class="badge bg-success">Approved</span>'
-                            : u.kycStatus === 'rejected'
-                            ? '<span class="badge bg-danger">Rejected</span>'
-                            : '<span class="badge bg-secondary">' + escapeHtml(u.kycStatus || 'none') + '</span>';
-                        return '<tr>' +
-                            '<td><code>' + u.telegramUserId + '</code></td>' +
-                            '<td>' + name + '</td>' +
-                            '<td>' + escapeHtml(u.phoneNumber || '—') +
-                                (u.phoneVerified && u.phoneVerificationMethod === 'otp' ? ' <span class="badge bg-success">OTP</span>' : '') +
-                                (u.phoneVerificationMethod === 'manual_support' ? ' <span class="badge bg-info text-dark">Manual</span>' : '') +
-                            '</td>' +
-                            '<td>' + escapeHtml(u.email || '—') + (u.emailVerified ? ' <span class="badge bg-success">V</span>' : '') + '</td>' +
-                            '<td>' + escapeHtml(u.country || '—') + '</td>' +
-                            '<td>' + statusBadge + '</td>' +
-                            '<td>' +
-                                '<button class="btn btn-sm btn-outline-info me-1" onclick="viewKycDetail(' + u.telegramUserId + ')">View</button>' +
-                                (u.kycStatus === 'pending_review' ? '<button class="btn btn-sm btn-success me-1" onclick="approveKyc(' + u.telegramUserId + ')">Approve</button><button class="btn btn-sm btn-danger" onclick="rejectKycDialog(' + u.telegramUserId + ')">Reject</button>' : '') +
-                            '</td></tr>';
-                    }).join('');
-                } else {
-                    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No submissions found.</td></tr>';
-                }
-            } catch(e) {
-                document.getElementById('kycTableBody').innerHTML = '<tr><td colspan="7" class="text-center text-danger">Error loading KYC data</td></tr>';
-            }
-        }
-
-        document.getElementById('btnRefreshKyc').addEventListener('click', loadKyc);
-        document.getElementById('kycFilter').addEventListener('change', loadKyc);
-
-        window.viewKycDetail = async function(userId) {
-            var modal = new bootstrap.Modal(document.getElementById('kycDetailModal'));
-            document.getElementById('kycDetailTitle').textContent = 'KYC Details - User ' + userId;
-            document.getElementById('kycDetailBody').innerHTML = '<div class="text-center text-muted">Loading...</div>';
-            document.getElementById('kycDetailFooter').innerHTML = '';
-            modal.show();
-
-            try {
-                const r = await fetch(base + '/api/kyc/' + userId);
-                const u = await r.json();
-                if (!r.ok) throw new Error(u.detail || 'Error');
-
-                var statusBadge = u.kycStatus === 'approved' ? '<span class="badge bg-success">Approved</span>'
-                    : u.kycStatus === 'pending_review' ? '<span class="badge bg-warning text-dark">Pending Review</span>'
-                    : u.kycStatus === 'rejected' ? '<span class="badge bg-danger">Rejected</span>'
-                    : '<span class="badge bg-secondary">' + escapeHtml(u.kycStatus||'none') + '</span>';
-
-                var html = '<div class="row">' +
-                    '<div class="col-md-6">' +
-                    '<table class="table table-sm">' +
-                    '<tr><th>Telegram ID</th><td><code>' + u.telegramUserId + '</code></td></tr>' +
-                    '<tr><th>Username</th><td>' + (u.username ? '@' + escapeHtml(u.username) : '—') + '</td></tr>' +
-                    '<tr><th>Name</th><td>' + escapeHtml((u.firstName||'') + ' ' + (u.lastName||'')) + '</td></tr>' +
-                    '<tr><th>Phone</th><td>' + escapeHtml(u.phoneNumber || '—') +
-                        (u.phoneVerified && u.phoneVerificationMethod === 'otp' ? ' <span class="badge bg-success">Verified (OTP)</span>' : '') +
-                        (u.phoneVerificationMethod === 'manual_support' ? ' <span class="badge bg-info text-dark">Manual Support</span>' : '') +
-                        (!u.phoneVerified && !u.phoneVerificationMethod && u.phoneNumber ? ' <span class="badge bg-secondary">Not Verified</span>' : '') +
-                    '</td></tr>' +
-                    '<tr><th>Email</th><td>' + escapeHtml(u.email || '—') + (u.emailVerified ? ' <span class="badge bg-success">Verified</span>' : '') + '</td></tr>' +
-                    '<tr><th>Country</th><td>' + escapeHtml(u.country || '—') + '</td></tr>' +
-                    '<tr><th>Status</th><td>' + statusBadge + '</td></tr>' +
-                    '</table>' +
-                    (u.kycRejectionData ? '<div class="alert alert-danger"><strong>Rejection Reasons:</strong><br>' + escapeHtml(u.kycRejectionData) + '</div>' : '') +
-                    '</div>' +
-                    '<div class="col-md-6 text-center">' +
-                    '<h6>Verification Photo</h6>' +
-                    '<div id="kycPhotoContainer"><div class="text-muted">Loading photo...</div></div>' +
-                    '</div></div>';
-
-                document.getElementById('kycDetailBody').innerHTML = html;
-
-                // Load photo
-                if (u.verificationPhotoFileId) {
-                    // Use direct proxy URL — the API downloads from Telegram and returns image bytes
-                    var photoSrc = base + '/api/kyc/' + userId + '/photo';
-                    document.getElementById('kycPhotoContainer').innerHTML =
-                        '<img src="' + photoSrc + '" class="img-fluid rounded" style="max-height:400px;" alt="Verification Photo" ' +
-                        'onerror="this.parentElement.innerHTML=\'<div class=\\\'text-muted\\\'>Could not load photo</div>\'" />';
-                } else {
-                    document.getElementById('kycPhotoContainer').innerHTML = '<div class="text-muted">No photo uploaded</div>';
-                }
-
-                // Footer buttons
-                if (u.kycStatus === 'pending_review') {
-                    document.getElementById('kycDetailFooter').innerHTML =
-                        '<button class="btn btn-success" onclick="approveKyc(' + userId + ')">Approve</button> ' +
-                        '<button class="btn btn-danger" onclick="rejectKycDialog(' + userId + ')">Reject</button>';
-                }
-            } catch(e) {
-                document.getElementById('kycDetailBody').innerHTML = '<div class="text-center text-danger">' + escapeHtml(e.message) + '</div>';
-            }
-        };
-
-        window.approveKyc = async function(userId) {
-            const confirm = await Swal.fire({
-                title: 'Approve KYC?',
-                text: 'Approve identity verification for user ' + userId + '?',
-                icon: 'question',
-                showCancelButton: true,
-                confirmButtonText: 'Approve',
-                confirmButtonColor: '#28a745'
-            });
-            if (!confirm.isConfirmed) return;
-            try {
-                const r = await fetch(base + '/api/kyc/' + userId + '/approve', { method: 'POST' });
-                const data = await r.json();
-                if (!r.ok) throw new Error(data.detail || data.error || 'Error');
-                Swal.fire({ icon: 'success', title: 'Approved', text: 'User has been verified and notified.', timer: 2500 });
-                loadKyc();
-                // Close modal if open
-                try { bootstrap.Modal.getInstance(document.getElementById('kycDetailModal'))?.hide(); } catch(_){}
-            } catch(e) {
-                Swal.fire({ icon: 'error', title: 'Error', text: e.message });
-            }
-        };
-
-        window.rejectKycDialog = async function(userId) {
-            var fieldOptions = [
-                { field: 'name', label: 'Name' },
-                { field: 'phone', label: 'Phone' },
-                { field: 'email', label: 'Email' },
-                { field: 'country', label: 'Country' },
-                { field: 'photo', label: 'Verification Photo' }
-            ];
-
-            var fieldsHtml = fieldOptions.map(function(f) {
-                return '<div class="form-check mb-2">' +
-                    '<input class="form-check-input" type="checkbox" id="reject_' + f.field + '" value="' + f.field + '">' +
-                    '<label class="form-check-label" for="reject_' + f.field + '">' + f.label + '</label>' +
-                    '<input type="text" class="form-control form-control-sm mt-1" id="reason_' + f.field + '" placeholder="Reason for rejection..." style="display:none;">' +
-                    '</div>';
+                        <button class="btn btn-sm btn-outline-info" onclick="viewRequestDetail(${req.id})">View</button>
+                        ${req.status==='pending_approval'?`<button class="btn btn-sm btn-success" onclick="approveRequest(${req.id})">Approve</button><button class="btn btn-sm btn-danger" onclick="rejectRequest(${req.id})">Reject</button>`:''}
+                    </td>
+                </tr>`;
             }).join('');
+        }catch(err){document.getElementById('excReqTable').innerHTML='<tr><td colspan="10" class="text-danger">'+esc(err.message)+'</td></tr>';}
+    }
+    document.getElementById('excReqStatusFilter').addEventListener('change',loadExchangeRequests);
 
-            var { value: result } = await Swal.fire({
-                title: 'Reject KYC - User ' + userId,
-                html: '<p class="text-start">Select fields to reject and provide reasons:</p>' +
-                    '<div class="text-start">' + fieldsHtml + '</div>',
-                showCancelButton: true,
-                confirmButtonText: 'Reject',
-                confirmButtonColor: '#dc3545',
-                didOpen: function() {
-                    fieldOptions.forEach(function(f) {
-                        document.getElementById('reject_' + f.field).addEventListener('change', function() {
-                            document.getElementById('reason_' + f.field).style.display = this.checked ? 'block' : 'none';
-                        });
-                    });
-                },
-                preConfirm: function() {
-                    var reasons = {};
-                    var hasAny = false;
-                    fieldOptions.forEach(function(f) {
-                        if (document.getElementById('reject_' + f.field).checked) {
-                            var reason = document.getElementById('reason_' + f.field).value.trim() || 'Rejected';
-                            reasons[f.field] = reason;
-                            hasAny = true;
-                        }
-                    });
-                    if (!hasAny) {
-                        Swal.showValidationMessage('Select at least one field to reject');
-                        return false;
-                    }
-                    return reasons;
-                }
-            });
+    async function viewRequestDetail(id){
+        try{
+            const r=await fetch(base+'/api/exchange/requests/'+id);
+            const req=await r.json();
+            var body=document.getElementById('reqDetailBody');
+            body.innerHTML=`
+                <div class="row g-2">
+                    <div class="col-6"><strong>Request #</strong> ${req.requestNumber||req.id}</div>
+                    <div class="col-6"><strong>Status:</strong> <span class="badge bg-${req.status==='pending_approval'?'warning':req.status==='approved'?'success':'secondary'}">${req.status}</span></div>
+                    <div class="col-6"><strong>User:</strong> ${esc(req.userDisplayName||'')}</div>
+                    <div class="col-6"><strong>Telegram ID:</strong> ${req.telegramUserId}</div>
+                    <div class="col-6"><strong>Type:</strong> ${esc(req.transactionType)}</div>
+                    <div class="col-6"><strong>Currency:</strong> ${esc(req.currency)} ${req.destinationCurrency?'→ '+esc(req.destinationCurrency):''}</div>
+                    <div class="col-6"><strong>Amount:</strong> ${Number(req.amount||0).toLocaleString()}</div>
+                    <div class="col-6"><strong>Rate:</strong> ${Number(req.proposedRate||0).toLocaleString()}</div>
+                    <div class="col-6"><strong>Delivery:</strong> ${esc(req.deliveryMethod)} ${req.accountType?'('+esc(req.accountType)+')':''}</div>
+                    <div class="col-6"><strong>Country:</strong> ${esc(req.country||'-')}</div>
+                    ${req.city?'<div class="col-6"><strong>City:</strong> '+esc(req.city)+'</div>':''}
+                    ${req.meetingPreference?'<div class="col-6"><strong>Meeting:</strong> '+esc(req.meetingPreference)+'</div>':''}
+                    ${req.paypalEmail?'<div class="col-6"><strong>PayPal:</strong> '+esc(req.paypalEmail)+'</div>':''}
+                    ${req.iban?'<div class="col-6"><strong>IBAN:</strong> '+esc(req.iban)+'</div>':''}
+                    ${req.bankName?'<div class="col-6"><strong>Bank:</strong> '+esc(req.bankName)+'</div>':''}
+                    <div class="col-6"><strong>Fee:</strong> ${req.feePercent||0}% (${Number(req.feeAmount||0).toLocaleString()} T)</div>
+                    <div class="col-6"><strong>Total:</strong> ${Number(req.totalAmount||0).toLocaleString()} T</div>
+                    ${req.description?'<div class="col-12"><strong>Description:</strong> '+esc(req.description)+'</div>':''}
+                    ${req.adminNote?'<div class="col-12"><strong>Admin Note:</strong> '+esc(req.adminNote)+'</div>':''}
+                    <div class="col-6"><strong>Created:</strong> ${req.createdAt?new Date(req.createdAt).toLocaleString():'-'}</div>
+                    ${req.channelMessageId?'<div class="col-6"><strong>Channel Msg ID:</strong> '+req.channelMessageId+'</div>':''}
+                </div>`;
+            var footer=document.getElementById('reqDetailFooter');
+            footer.innerHTML=req.status==='pending_approval'?
+                `<button class="btn btn-success" onclick="approveRequest(${req.id});bootstrap.Modal.getInstance(document.getElementById('reqDetailModal')).hide();">Approve</button>
+                 <button class="btn btn-danger" onclick="rejectRequest(${req.id});bootstrap.Modal.getInstance(document.getElementById('reqDetailModal')).hide();">Reject</button>
+                 <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>`:
+                `<button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>`;
+            new bootstrap.Modal(document.getElementById('reqDetailModal')).show();
+        }catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
+    }
 
-            if (!result) return;
+    async function approveRequest(id){
+        try{
+            const r=await fetch(base+'/api/exchange/requests/'+id+'/approve',{method:'POST'});
+            const d=await r.json().catch(()=>({}));
+            if(r.ok){Swal.fire({icon:'success',title:'Approved',text:'Request approved'+(d.channelMsgId?' and posted to channel':''),timer:2000,showConfirmButton:false});loadExchangeRequests();}
+            else Swal.fire({icon:'error',title:'Error',text:d.detail||d.error||'Failed'});
+        }catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
+    }
 
-            try {
-                const r = await fetch(base + '/api/kyc/' + userId + '/reject', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ reasons: result })
-                });
-                const data = await r.json();
-                if (!r.ok) throw new Error(data.detail || data.error || 'Error');
-                Swal.fire({ icon: 'info', title: 'Rejected', text: 'User has been notified with rejection reasons.', timer: 2500 });
-                loadKyc();
-                try { bootstrap.Modal.getInstance(document.getElementById('kycDetailModal'))?.hide(); } catch(_){}
-            } catch(e) {
-                Swal.fire({ icon: 'error', title: 'Error', text: e.message });
-            }
+    async function rejectRequest(id){
+        const{value:note}=await Swal.fire({title:'Reject Request',input:'textarea',inputPlaceholder:'Rejection reason (optional)',showCancelButton:true,confirmButtonText:'Reject',confirmButtonColor:'#dc3545'});
+        if(note===undefined)return;
+        try{
+            const r=await fetch(base+'/api/exchange/requests/'+id+'/reject',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note:note||''})});
+            if(r.ok){Swal.fire({icon:'success',title:'Rejected',timer:1500,showConfirmButton:false});loadExchangeRequests();}
+        }catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
+    }
+
+    // ===== Ad Pricing =====
+    async function loadAdPricing(){
+        try{
+            const r=await fetch(base+'/api/settings/ad-pricing');
+            const d=await r.json();
+            document.getElementById(d.mode==='paid'?'pricingModePaid':'pricingModeFree').checked=true;
+            document.getElementById('paidSettings').style.display=d.mode==='paid'?'':'none';
+            document.getElementById('adPriceAmount').value=d.price||'';
+            document.getElementById('adPaymentMethod').value=d.paymentMethod||'wallet';
+            document.getElementById('commissionTiming').value=d.commissionTiming||'after_match';
+            document.getElementById('commissionPercent').value=d.commissionPercent||'';
+            document.getElementById('commissionFixed').value=d.commissionFixed||'';
+        }catch(_){}
+        try{
+            const r=await fetch(base+'/api/settings/exchange-fee');
+            const d=await r.json();
+            document.getElementById('exchangeFeePercent').value=d.feePercent||'0';
+        }catch(_){}
+    }
+
+    document.querySelectorAll('input[name="pricingMode"]').forEach(r=>r.addEventListener('change',()=>{
+        document.getElementById('paidSettings').style.display=document.getElementById('pricingModePaid').checked?'':'none';
+    }));
+
+    document.getElementById('adPricingForm').addEventListener('submit',async e=>{
+        e.preventDefault();
+        var body={
+            mode:document.getElementById('pricingModePaid').checked?'paid':'free',
+            price:document.getElementById('adPriceAmount').value||'0',
+            paymentMethod:document.getElementById('adPaymentMethod').value,
+            commissionTiming:document.getElementById('commissionTiming').value,
+            commissionPercent:document.getElementById('commissionPercent').value||'0',
+            commissionFixed:document.getElementById('commissionFixed').value||'0'
         };
+        try{
+            const r=await fetch(base+'/api/settings/ad-pricing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+            if(r.ok)Swal.fire({icon:'success',title:'Saved',timer:1500,showConfirmButton:false});
+            else{const d=await r.json().catch(()=>({}));Swal.fire({icon:'error',title:'Error',text:d.detail||'Failed'});}
+        }catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
+    });
 
-        // ===== Support Telegram Username =====
-        async function loadSupportTelegram() {
-            try {
-                const r = await fetch(base + '/api/settings/support-telegram');
-                const data = await r.json().catch(() => ({}));
-                if (r.ok && data.username) {
-                    document.getElementById('supportTelegramUsername').value = data.username;
+    async function saveExchangeFee(){
+        try{
+            const r=await fetch(base+'/api/settings/exchange-fee',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feePercent:document.getElementById('exchangeFeePercent').value||'0'})});
+            if(r.ok)Swal.fire({icon:'success',title:'Fee saved',timer:1500,showConfirmButton:false});
+        }catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
+    }
+
+    // ===== Exchange Groups =====
+    async function loadExchangeGroups(){
+        try{
+            const r=await fetch(base+'/api/exchange-groups');
+            var data=await r.json().catch(()=>[]);
+            if(!Array.isArray(data))data=[];
+            var tb=document.getElementById('excGrpTable');
+            if(data.length===0){tb.innerHTML='<tr><td colspan="9" class="text-center text-muted">No groups</td></tr>';return;}
+            tb.innerHTML=data.map(g=>{
+                var sClass=g.status==='approved'?'success':g.status==='pending'?'warning':'danger';
+                return `<tr>
+                    <td>${g.id}</td>
+                    <td>${esc(g.name)}</td>
+                    <td><a href="${esc(g.telegramGroupLink)}" target="_blank" class="small">${esc(g.telegramGroupLink)}</a></td>
+                    <td>${esc(g.currencyCode||'-')}</td>
+                    <td>${esc(g.countryCode||'-')}</td>
+                    <td>${g.memberCount||0}</td>
+                    <td><span class="badge bg-${sClass}">${esc(g.status)}</span></td>
+                    <td><small>${g.createdAt?new Date(g.createdAt).toLocaleDateString():''}</small></td>
+                    <td>
+                        ${g.status==='pending'?`<button class="btn btn-sm btn-success" onclick="approveGroup(${g.id})">Approve</button><button class="btn btn-sm btn-warning" onclick="rejectGroup(${g.id})">Reject</button>`:''}
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteGroup(${g.id})">Del</button>
+                    </td>
+                </tr>`;
+            }).join('');
+        }catch(err){document.getElementById('excGrpTable').innerHTML='<tr><td colspan="9" class="text-danger">'+esc(err.message)+'</td></tr>';}
+    }
+
+    function showAddGroupForm(){document.getElementById('addGroupForm').style.display=document.getElementById('addGroupForm').style.display==='none'?'':'none';}
+
+    async function submitNewGroup(e){
+        e.preventDefault();
+        var body={name:document.getElementById('newGrpName').value,telegramGroupLink:document.getElementById('newGrpLink').value,currencyCode:document.getElementById('newGrpCurrency').value||null,countryCode:document.getElementById('newGrpCountry').value||null};
+        try{
+            const r=await fetch(base+'/api/exchange-groups',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+            if(r.ok){Swal.fire({icon:'success',title:'Group created',timer:1500,showConfirmButton:false});document.getElementById('addGroupForm').style.display='none';loadExchangeGroups();}
+        }catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
+    }
+
+    async function approveGroup(id){
+        try{await fetch(base+'/api/exchange-groups/'+id+'/approve',{method:'POST'});loadExchangeGroups();}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
+    }
+    async function rejectGroup(id){
+        try{await fetch(base+'/api/exchange-groups/'+id+'/reject',{method:'POST'});loadExchangeGroups();}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
+    }
+    async function deleteGroup(id){
+        const c=await Swal.fire({title:'Delete group?',icon:'warning',showCancelButton:true,confirmButtonText:'Delete',confirmButtonColor:'#dc3545'});
+        if(!c.isConfirmed)return;
+        try{await fetch(base+'/api/exchange-groups/'+id,{method:'DELETE'});loadExchangeGroups();}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
+    }
+
+    // ===== Bids =====
+    async function loadBidsForRequest(){
+        var reqId=document.getElementById('bidRequestIdInput').value;
+        if(!reqId)return;
+        try{
+            const r=await fetch(base+'/api/bids/'+reqId);
+            var data=await r.json().catch(()=>[]);
+            if(!Array.isArray(data))data=[];
+            var tb=document.getElementById('bidsTable');
+            if(data.length===0){tb.innerHTML='<tr><td colspan="9" class="text-center text-muted">No bids for this request</td></tr>';return;}
+            tb.innerHTML=data.map(b=>{
+                var sClass=b.status==='accepted'?'success':b.status==='rejected'?'danger':b.status==='pending'?'warning':'secondary';
+                return `<tr>
+                    <td>${b.id}</td>
+                    <td>${esc(b.bidderDisplayName||'')}</td>
+                    <td>${Number(b.bidAmount||0).toLocaleString()}</td>
+                    <td>${Number(b.bidRate||0).toLocaleString()}</td>
+                    <td>${Number((b.bidAmount||0)*(b.bidRate||0)).toLocaleString()}</td>
+                    <td>${esc(b.message||'-')}</td>
+                    <td><span class="badge bg-${sClass}">${esc(b.status)}</span></td>
+                    <td><small>${b.createdAt?new Date(b.createdAt).toLocaleDateString():''}</small></td>
+                    <td>
+                        ${b.status==='pending'?`<button class="btn btn-sm btn-success" onclick="acceptBid(${b.id})">Accept</button><button class="btn btn-sm btn-danger" onclick="rejectBid(${b.id})">Reject</button>`:''}
+                    </td>
+                </tr>`;
+            }).join('');
+        }catch(err){document.getElementById('bidsTable').innerHTML='<tr><td colspan="9" class="text-danger">'+esc(err.message)+'</td></tr>';}
+    }
+
+    async function acceptBid(id){
+        try{await fetch(base+'/api/bids/'+id+'/accept',{method:'POST'});loadBidsForRequest();}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
+    }
+    async function rejectBid(id){
+        try{await fetch(base+'/api/bids/'+id+'/reject',{method:'POST'});loadBidsForRequest();}catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
+    }
+
+    // ===== Exchange Rates =====
+    async function loadExchangeRates(){
+        try{
+            const r=await fetch(base+'/api/exchange/rates');
+            var data=await r.json().catch(()=>[]);
+            if(!Array.isArray(data))data=[];
+            var tb=document.getElementById('ratesTable');
+            if(data.length===0){tb.innerHTML='<tr><td colspan="8" class="text-center text-muted">No rates</td></tr>';return;}
+            tb.innerHTML=data.map(rate=>`<tr>
+                <td><strong>${esc(rate.currencyCode)}</strong></td>
+                <td>${esc(rate.currencyNameFa||'')}</td>
+                <td>${esc(rate.currencyNameEn||'')}</td>
+                <td><strong>${Number(rate.rate||0).toLocaleString()}</strong></td>
+                <td>${rate.change>0?'<span class="text-success">+'+rate.change+'</span>':rate.change<0?'<span class="text-danger">'+rate.change+'</span>':'0'}</td>
+                <td>${esc(rate.source||'')}</td>
+                <td><small>${rate.updatedAt?new Date(rate.updatedAt).toLocaleString():''}</small></td>
+                <td><button class="btn btn-sm btn-outline-primary" onclick="editRate(${rate.id})">Edit</button></td>
+            </tr>`).join('');
+        }catch(err){document.getElementById('ratesTable').innerHTML='<tr><td colspan="8" class="text-danger">'+esc(err.message)+'</td></tr>';}
+        try{
+            const r=await fetch(base+'/api/exchange/rates/usage');
+            const d=await r.json().catch(()=>({}));
+            document.getElementById('ratesUsage').textContent=d.dailyUsed!==undefined?`API Usage: ${d.dailyUsed}/${d.dailyLimit} today`:'';
+        }catch(_){}
+    }
+
+    async function fetchLatestRates(){
+        try{
+            const r=await fetch(base+'/api/exchange/rates/fetch',{method:'POST'});
+            const d=await r.json().catch(()=>({}));
+            if(r.ok)Swal.fire({icon:'success',title:'Rates updated',text:`${d.updated||0} rates fetched`,timer:2000,showConfirmButton:false});
+            else Swal.fire({icon:'error',title:'Error',text:d.detail||d.error||'Failed'});
+            loadExchangeRates();
+        }catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
+    }
+
+    async function editRate(id){
+        const{value:newRate}=await Swal.fire({title:'Edit Rate',input:'number',inputPlaceholder:'New rate (Toman)',showCancelButton:true});
+        if(!newRate)return;
+        try{
+            const r=await fetch(base+'/api/exchange/rates/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({rate:parseFloat(newRate)})});
+            if(r.ok){Swal.fire({icon:'success',title:'Rate updated',timer:1500,showConfirmButton:false});loadExchangeRates();}
+        }catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
+    }
+
+    // ===== Channel Settings =====
+    async function loadChannelSettings(){
+        try{
+            const r=await fetch(base+'/api/settings/exchange-channel');
+            const d=await r.json();
+            document.getElementById('channelIdInput').value=d.channelId||'';
+        }catch(_){}
+    }
+
+    async function saveChannelId(){
+        var cid=document.getElementById('channelIdInput').value.trim();
+        try{
+            const r=await fetch(base+'/api/settings/exchange-channel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({channelId:cid})});
+            if(r.ok)Swal.fire({icon:'success',title:'Channel saved',timer:1500,showConfirmButton:false});
+        }catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
+    }
+
+    // ===== Bot Operations (existing) =====
+    (function(){
+        var input=document.getElementById('botToken');
+        var btn=document.getElementById('btnToggleTokenVisibility');
+        btn.addEventListener('click',async function(){
+            if(input.type==='password'){
+                if((input.value||'').indexOf('***')!==-1){
+                    try{var r=await fetch(base+'/api/settings/token?reveal=true');var d=await r.json().catch(()=>({}));if(r.ok&&d.token)input.value=d.token;}catch(_){}
                 }
-            } catch(_) {}
-        }
-
-        document.getElementById('supportTelegramForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            var username = (document.getElementById('supportTelegramUsername').value || '').trim();
-            if (!username) {
-                Swal.fire({ icon: 'warning', title: 'Username is required', timer: 2000, showConfirmButton: false });
-                return;
-            }
-            try {
-                const r = await fetch(base + '/api/settings/support-telegram', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: username })
-                });
-                const data = await r.json().catch(() => ({}));
-                if (!r.ok) throw new Error(data.detail || data.error || 'Error');
-                Swal.fire({ icon: 'success', title: 'Saved', text: 'Support Telegram username updated.', timer: 2500, showConfirmButton: false });
-            } catch(err) {
-                Swal.fire({ icon: 'error', title: 'Error', text: err.message });
-            }
+                input.type='text';btn.textContent='Hide';
+            }else{input.type='password';btn.textContent='Show';}
         });
+    })();
 
-        // ===== Exchange Rates =====
-        async function loadExchangeRates() {
-            try {
-                const r = await fetch(base + '/api/exchange/rates');
-                const data = await r.json();
-                const tbody = document.getElementById('ratesTableBody');
-                if (Array.isArray(data) && data.length > 0) {
-                    tbody.innerHTML = data.map(function(rate) {
-                        var changeClass = rate.change > 0 ? 'text-success' : rate.change < 0 ? 'text-danger' : 'text-muted';
-                        var changeIcon = rate.change > 0 ? '▲' : rate.change < 0 ? '▼' : '—';
-                        var srcBadge = rate.source === 'navasan' ? '<span class="badge bg-primary">API</span>' : '<span class="badge bg-secondary">Manual</span>';
-                        var updated = rate.lastUpdatedAt ? new Date(rate.lastUpdatedAt).toLocaleString('en-GB', {dateStyle:'short', timeStyle:'short'}) : '—';
-                        return '<tr>' +
-                            '<td><code>' + escapeHtml(rate.currencyCode) + '</code></td>' +
-                            '<td>' + escapeHtml(rate.currencyNameFa || '—') + '</td>' +
-                            '<td>' + escapeHtml(rate.currencyNameEn || '—') + '</td>' +
-                            '<td><strong>' + Number(rate.rate).toLocaleString('en-US') + '</strong></td>' +
-                            '<td class="' + changeClass + '">' + changeIcon + ' ' + Math.abs(rate.change).toLocaleString('en-US') + '</td>' +
-                            '<td>' + srcBadge + '</td>' +
-                            '<td><small>' + escapeHtml(updated) + '</small></td>' +
-                            '<td><button class="btn btn-sm btn-outline-primary" onclick="editRate(' + rate.id + ',\'' + escapeHtml(rate.currencyCode) + '\',\'' + escapeHtml(rate.currencyNameFa||'') + '\',\'' + escapeHtml(rate.currencyNameEn||'') + '\',' + rate.rate + ')">Edit</button></td>' +
-                            '</tr>';
-                    }).join('');
-                } else {
-                    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No rates found. Fetch from API or add manually.</td></tr>';
-                }
-            } catch(e) {
-                document.getElementById('ratesTableBody').innerHTML = '<tr><td colspan="8" class="text-center text-danger">Error loading rates</td></tr>';
-            }
-        }
+    async function loadTokenIntoInput(){
+        try{
+            const r=await fetch(base+'/api/settings/token');
+            const d=await r.json().catch(()=>({}));
+            var input=document.getElementById('botToken');
+            if(r.ok&&d.set&&d.masked){input.value=d.masked;input.placeholder='Token is set';}
+            else{input.value='';input.placeholder='123456789:ABCdef...';}
+        }catch(_){}
+    }
 
-        async function loadApiUsage() {
-            try {
-                const r = await fetch(base + '/api/exchange/rates/usage');
-                const data = await r.json();
-                var badge = document.getElementById('apiUsageBadge');
-                badge.textContent = 'API: ' + (data.used || 0) + '/' + (data.limit || 120);
-                badge.className = 'badge ' + ((data.used || 0) >= (data.limit || 120) ? 'bg-danger' : (data.used || 0) >= 100 ? 'bg-warning text-dark' : 'bg-info');
-            } catch(_) {}
-        }
+    async function loadUpdateMode(){
+        try{const r=await fetch(base+'/api/settings/update-mode');const d=await r.json().catch(()=>({}));
+        if(r.ok&&d.mode){document.getElementById('updateModeWebhook').checked=d.mode!=='GetUpdates';document.getElementById('updateModeGetUpdates').checked=d.mode==='GetUpdates';}}catch(_){}
+    }
 
-        document.getElementById('btnRefreshRates').addEventListener('click', function() { loadExchangeRates(); loadApiUsage(); });
+    async function loadWebhookInfo(){
+        try{const r=await fetch(base+'/api/webhook/info');const d=await r.json().catch(()=>({}));if(r.ok&&d.url)document.getElementById('webhookUrl').value=d.url;}catch(_){}
+    }
 
-        document.getElementById('btnFetchRates').addEventListener('click', async function() {
-            var btn = this;
-            btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Fetching...';
-            try {
-                const r = await fetch(base + '/api/exchange/rates/fetch', { method: 'POST' });
-                const data = await r.json();
-                if (data.success) {
-                    Swal.fire({ icon: 'success', title: 'Rates Updated', text: data.message, timer: 3000, showConfirmButton: false });
-                } else {
-                    Swal.fire({ icon: 'warning', title: 'Warning', text: data.message });
-                }
-                loadExchangeRates();
-                loadApiUsage();
-            } catch(e) {
-                Swal.fire({ icon: 'error', title: 'Error', text: e.message });
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-cloud-download" viewBox="0 0 16 16"><path d="M4.406 1.342A5.53 5.53 0 0 1 8 0c2.69 0 4.923 2 5.166 4.579C14.758 4.804 16 6.137 16 7.773 16 9.569 14.502 11 12.687 11H10a.5.5 0 0 1 0-1h2.688C13.979 10 15 8.988 15 7.773c0-1.216-1.02-2.228-2.313-2.228h-.5v-.5C12.188 2.825 10.328 1 8 1a4.53 4.53 0 0 1-2.941 1.1c-.757.652-1.153 1.438-1.153 2.055v.448l-.445.049C2.064 4.805 1 5.952 1 7.318 1 8.785 2.23 10 3.781 10H6a.5.5 0 0 1 0 1H3.781C1.708 11 0 9.366 0 7.318c0-1.763 1.266-3.223 2.942-3.593.143-.863.698-1.723 1.464-2.383z"/><path d="M7.646 15.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 14.293V5.5a.5.5 0 0 0-1 0v8.793l-2.146-2.147a.5.5 0 0 0-.708.708l3 3z"/></svg> Fetch from API';
-            }
-        });
+    async function loadConnectionStatus(){
+        try{
+            const r=await fetch(base+'/api/dashboard/status');const st=await r.json().catch(()=>({}));
+            if(!r.ok)return;
+            var te=document.getElementById('statusToken');te.textContent=st.tokenSet?'Set':'Not set';te.className='badge '+(st.tokenSet?'bg-success':'bg-secondary');
+            var me=document.getElementById('statusUpdateMode');if(me){me.textContent=st.updateMode||'Webhook';me.className='badge bg-info';}
+            var we=document.getElementById('statusWebhook');we.textContent=st.webhookSyncedAt?'Synced':'Not set';we.className='badge '+(st.webhookSyncedAt?'bg-success':'bg-secondary');
+            var be=document.getElementById('statusBot');
+            if(st.lastEventAt){var a=st.lastEventStatus==='Received';be.textContent=a?'Connected':'Last error';be.className='badge '+(a?'bg-success':'bg-danger');document.getElementById('statusBotTime').textContent='Last: '+new Date(st.lastEventAt).toLocaleString();}
+            else{be.textContent='No activity';be.className='badge bg-secondary';}
+        }catch(_){}
+    }
 
-        document.getElementById('btnAddRate').addEventListener('click', async function() {
-            const { value: fv } = await Swal.fire({
-                title: 'Add Exchange Rate', html:
-                    '<input id="rCode" class="swal2-input" placeholder="Currency Code (e.g. USD)">' +
-                    '<input id="rNameFa" class="swal2-input" placeholder="Name FA (e.g. دلار آمریکا)">' +
-                    '<input id="rNameEn" class="swal2-input" placeholder="Name EN (e.g. US Dollar)">' +
-                    '<input id="rRate" class="swal2-input" type="number" step="1" placeholder="Rate in Toman">',
-                focusConfirm: false, preConfirm: () => ({
-                    currencyCode: document.getElementById('rCode').value.trim().toUpperCase(),
-                    currencyNameFa: document.getElementById('rNameFa').value.trim(),
-                    currencyNameEn: document.getElementById('rNameEn').value.trim(),
-                    rate: parseFloat(document.getElementById('rRate').value) || 0
-                })
-            });
-            if (!fv || !fv.currencyCode) return;
-            try {
-                await fetch(base + '/api/exchange/rates/0', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(fv) });
-                loadExchangeRates();
-                Swal.fire({ icon: 'success', title: 'Rate Added', timer: 2000, showConfirmButton: false });
-            } catch(e) { Swal.fire({ icon: 'error', title: 'Error', text: e.message }); }
-        });
+    document.getElementById('credentialsForm').addEventListener('submit',async function(e){
+        e.preventDefault();
+        const token=(document.getElementById('botToken').value||'').trim();
+        if(!token){Swal.fire({icon:'warning',title:'Bot token required',timer:2000,showConfirmButton:false});return;}
+        const mode=document.getElementById('updateModeGetUpdates').checked?'GetUpdates':'Webhook';
+        try{
+            var r=await fetch(base+'/api/settings/token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});
+            if(!r.ok){var d=await r.json().catch(()=>({}));throw new Error(d.detail||'Error');}
+            await fetch(base+'/api/settings/update-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})});
+            Swal.fire({icon:'success',title:'Saved',text:'Restart to apply changes.',timer:5000,showConfirmButton:true});
+            loadTokenIntoInput();loadUpdateMode();loadWebhookInfo();loadConnectionStatus();
+        }catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
+    });
 
-        window.editRate = async function(id, code, nameFa, nameEn, rate) {
-            const { value: fv } = await Swal.fire({
-                title: 'Edit Rate: ' + code, html:
-                    '<input id="rNameFa" class="swal2-input" placeholder="Name FA" value="' + nameFa + '">' +
-                    '<input id="rNameEn" class="swal2-input" placeholder="Name EN" value="' + nameEn + '">' +
-                    '<input id="rRate" class="swal2-input" type="number" step="1" placeholder="Rate in Toman" value="' + rate + '">',
-                focusConfirm: false, preConfirm: () => ({
-                    currencyCode: code,
-                    currencyNameFa: document.getElementById('rNameFa').value.trim(),
-                    currencyNameEn: document.getElementById('rNameEn').value.trim(),
-                    rate: parseFloat(document.getElementById('rRate').value) || 0
-                })
-            });
-            if (!fv) return;
-            try {
-                await fetch(base + '/api/exchange/rates/' + id, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(fv) });
-                loadExchangeRates();
-                Swal.fire({ icon: 'success', title: 'Rate Updated', timer: 2000, showConfirmButton: false });
-            } catch(e) { Swal.fire({ icon: 'error', title: 'Error', text: e.message }); }
-        };
+    document.getElementById('btnTestToken').addEventListener('click',async function(){
+        try{
+            const r=await fetch(base+'/api/bot/me');const d=await r.json().catch(()=>({}));
+            if(r.ok)Swal.fire({icon:'success',title:'Bot: @'+(d.username||'unknown'),html:'<b>'+esc(d.firstName||'')+'</b> (ID: '+d.id+')'});
+            else Swal.fire({icon:'error',title:'Invalid token',text:d.detail||''});
+        }catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
+    });
 
-        // ===== Exchange Requests =====
-        async function loadExchangeRequests() {
-            var filter = document.getElementById('excReqFilter').value;
-            var url = base + '/api/exchange/requests' + (filter ? '?status=' + filter : '');
-            try {
-                const r = await fetch(url);
-                const data = await r.json();
-                const tbody = document.getElementById('excReqTableBody');
-                if (Array.isArray(data) && data.length > 0) {
-                    tbody.innerHTML = data.map(function(req) {
-                        var typeBadge = req.transactionType === 'buy' ? '<span class="badge bg-success">Buy</span>'
-                            : req.transactionType === 'sell' ? '<span class="badge bg-danger">Sell</span>'
-                            : '<span class="badge bg-primary">Exchange</span>';
-                        var statusBadge = req.status === 'pending_approval' ? '<span class="badge bg-warning text-dark">Pending</span>'
-                            : req.status === 'approved' ? '<span class="badge bg-success">Approved</span>'
-                            : req.status === 'rejected' ? '<span class="badge bg-danger">Rejected</span>'
-                            : '<span class="badge bg-secondary">' + escapeHtml(req.status) + '</span>';
-                        var deliveryFa = req.deliveryMethod === 'bank' ? 'Bank' : req.deliveryMethod === 'paypal' ? 'PayPal' : req.deliveryMethod === 'cash' ? 'Cash' : req.deliveryMethod;
-                        var date = req.createdAt ? new Date(req.createdAt).toLocaleString('en-GB', {dateStyle:'short', timeStyle:'short'}) : '—';
-                        var actions = '<button class="btn btn-sm btn-outline-info me-1" onclick="viewExcReqDetail(' + req.id + ')">View</button>';
-                        if (req.status === 'pending_approval') {
-                            actions += '<button class="btn btn-sm btn-success me-1" onclick="approveExcReq(' + req.id + ')">Approve</button>';
-                            actions += '<button class="btn btn-sm btn-danger" onclick="rejectExcReq(' + req.id + ')">Reject</button>';
-                        }
-                        return '<tr>' +
-                            '<td><code>#' + req.requestNumber + '</code></td>' +
-                            '<td>' + escapeHtml(req.userDisplayName || String(req.telegramUserId)) + '</td>' +
-                            '<td>' + typeBadge + '</td>' +
-                            '<td>' + escapeHtml(req.currency) + '</td>' +
-                            '<td>' + Number(req.amount).toLocaleString('en-US') + '</td>' +
-                            '<td>' + Number(req.proposedRate).toLocaleString('en-US') + '</td>' +
-                            '<td><strong>' + Number(req.totalAmount).toLocaleString('en-US') + '</strong></td>' +
-                            '<td>' + escapeHtml(deliveryFa) + '</td>' +
-                            '<td>' + statusBadge + '</td>' +
-                            '<td><small>' + escapeHtml(date) + '</small></td>' +
-                            '<td>' + actions + '</td>' +
-                            '</tr>';
-                    }).join('');
-                } else {
-                    tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted">No requests found.</td></tr>';
-                }
-            } catch(e) {
-                document.getElementById('excReqTableBody').innerHTML = '<tr><td colspan="11" class="text-center text-danger">Error loading requests</td></tr>';
-            }
-        }
+    document.getElementById('btnSetWebhook').addEventListener('click',async function(){
+        const url=(document.getElementById('webhookUrl').value||'').trim();
+        if(!url||!url.startsWith('https://')){Swal.fire({icon:'warning',title:'Valid HTTPS URL required',timer:2000,showConfirmButton:false});return;}
+        try{
+            const r=await fetch(base+'/api/webhook/set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
+            if(r.ok)Swal.fire({icon:'success',title:'Webhook set',timer:2000,showConfirmButton:false});
+            loadConnectionStatus();
+        }catch(err){Swal.fire({icon:'error',title:'Error',text:err.message});}
+    });
 
-        document.getElementById('btnRefreshExcReq').addEventListener('click', loadExchangeRequests);
-        document.getElementById('excReqFilter').addEventListener('change', loadExchangeRequests);
-
-        window.viewExcReqDetail = async function(id) {
-            var modal = new bootstrap.Modal(document.getElementById('excReqDetailModal'));
-            document.getElementById('excReqDetailTitle').textContent = 'Exchange Request Details';
-            document.getElementById('excReqDetailBody').innerHTML = '<div class="text-center text-muted">Loading...</div>';
-            document.getElementById('excReqDetailFooter').innerHTML = '';
-            modal.show();
-            try {
-                const r = await fetch(base + '/api/exchange/requests/' + id);
-                const req = await r.json();
-                if (!r.ok) throw new Error(req.detail || 'Error');
-                var typeFa = req.transactionType === 'buy' ? 'خرید' : req.transactionType === 'sell' ? 'فروش' : 'تبادل';
-                var deliveryFa = req.deliveryMethod === 'bank' ? 'حواله بانکی' : req.deliveryMethod === 'paypal' ? 'پی‌پال' : req.deliveryMethod === 'cash' ? 'اسکناس' : req.deliveryMethod;
-                var statusBadge = req.status === 'pending_approval' ? '<span class="badge bg-warning text-dark">Pending</span>'
-                    : req.status === 'approved' ? '<span class="badge bg-success">Approved</span>'
-                    : req.status === 'rejected' ? '<span class="badge bg-danger">Rejected</span>'
-                    : '<span class="badge bg-secondary">' + escapeHtml(req.status) + '</span>';
-
-                var html = '<table class="table table-sm">' +
-                    '<tr><th>Request #</th><td><code>#' + req.requestNumber + '</code></td></tr>' +
-                    '<tr><th>User</th><td>' + escapeHtml(req.userDisplayName || '') + ' (<code>' + req.telegramUserId + '</code>)</td></tr>' +
-                    '<tr><th>Type</th><td>' + escapeHtml(typeFa) + '</td></tr>' +
-                    '<tr><th>Currency</th><td>' + escapeHtml(req.currency) + '</td></tr>' +
-                    '<tr><th>Amount</th><td>' + Number(req.amount).toLocaleString('en-US') + '</td></tr>' +
-                    '<tr><th>Proposed Rate</th><td>' + Number(req.proposedRate).toLocaleString('en-US') + ' Toman</td></tr>' +
-                    '<tr><th>Delivery</th><td>' + escapeHtml(deliveryFa) + (req.accountType ? ' (' + escapeHtml(req.accountType) + ')' : '') + '</td></tr>' +
-                    (req.country ? '<tr><th>Country</th><td>' + escapeHtml(req.country) + '</td></tr>' : '') +
-                    '<tr><th>Fee</th><td>' + req.feePercent + '% = ' + Number(req.feeAmount).toLocaleString('en-US') + ' Toman</td></tr>' +
-                    '<tr><th>Total</th><td><strong>' + Number(req.totalAmount).toLocaleString('en-US') + ' Toman</strong></td></tr>' +
-                    (req.description ? '<tr><th>Description</th><td>' + escapeHtml(req.description) + '</td></tr>' : '') +
-                    '<tr><th>Status</th><td>' + statusBadge + '</td></tr>' +
-                    (req.adminNote ? '<tr><th>Admin Note</th><td class="text-danger">' + escapeHtml(req.adminNote) + '</td></tr>' : '') +
-                    '<tr><th>Created</th><td>' + (req.createdAt ? new Date(req.createdAt).toLocaleString() : '—') + '</td></tr>' +
-                    (req.channelMessageId ? '<tr><th>Channel Msg ID</th><td>' + req.channelMessageId + '</td></tr>' : '') +
-                    '</table>';
-                document.getElementById('excReqDetailBody').innerHTML = html;
-
-                if (req.status === 'pending_approval') {
-                    document.getElementById('excReqDetailFooter').innerHTML =
-                        '<button class="btn btn-success" onclick="approveExcReq(' + id + ')">Approve & Post</button> ' +
-                        '<button class="btn btn-danger" onclick="rejectExcReq(' + id + ')">Reject</button>';
-                }
-            } catch(e) {
-                document.getElementById('excReqDetailBody').innerHTML = '<div class="text-center text-danger">' + escapeHtml(e.message) + '</div>';
-            }
-        };
-
-        window.approveExcReq = async function(id) {
-            const confirm = await Swal.fire({
-                title: 'Approve & Post?',
-                text: 'This will approve the request and post it to the exchange channel.',
-                icon: 'question',
-                showCancelButton: true,
-                confirmButtonText: 'Approve',
-                confirmButtonColor: '#28a745'
-            });
-            if (!confirm.isConfirmed) return;
-            try {
-                const r = await fetch(base + '/api/exchange/requests/' + id + '/approve', { method: 'POST' });
-                const data = await r.json();
-                if (!r.ok) throw new Error(data.detail || data.error || 'Error');
-                Swal.fire({ icon: 'success', title: 'Approved', text: data.channelMsgId ? 'Posted to channel (msg #' + data.channelMsgId + ')' : 'Approved (no channel configured)', timer: 3000 });
-                loadExchangeRequests();
-                try { bootstrap.Modal.getInstance(document.getElementById('excReqDetailModal'))?.hide(); } catch(_){}
-            } catch(e) {
-                Swal.fire({ icon: 'error', title: 'Error', text: e.message });
-            }
-        };
-
-        window.rejectExcReq = async function(id) {
-            // Fully dispose Bootstrap modal to release focus trap before SweetAlert opens
-            var bsModalEl = document.getElementById('excReqDetailModal');
-            var bsModal = bootstrap.Modal.getInstance(bsModalEl);
-            if (bsModal) {
-                bsModal.hide();
-                // Wait for the hidden.bs.modal event to ensure focus trap is fully released
-                await new Promise(function(resolve) {
-                    var handler = function() {
-                        bsModalEl.removeEventListener('hidden.bs.modal', handler);
-                        resolve();
-                    };
-                    bsModalEl.addEventListener('hidden.bs.modal', handler);
-                    // Safety timeout in case the event doesn't fire
-                    setTimeout(resolve, 600);
-                });
-                bsModal.dispose();
-            }
-
-            const { value: note } = await Swal.fire({
-                title: 'Reject Request',
-                input: 'textarea',
-                inputLabel: 'Reason for rejection (optional)',
-                inputPlaceholder: 'Enter reason...',
-                showCancelButton: true,
-                confirmButtonText: 'Reject',
-                confirmButtonColor: '#dc3545',
-                didOpen: function() {
-                    // Force focus into the SweetAlert textarea
-                    var ta = document.querySelector('.swal2-textarea');
-                    if (ta) setTimeout(function() { ta.focus(); }, 100);
-                }
-            });
-            if (note === undefined) return; // cancelled
-            try {
-                const r = await fetch(base + '/api/exchange/requests/' + id + '/reject', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ note: note || null })
-                });
-                const data = await r.json();
-                if (!r.ok) throw new Error(data.detail || data.error || 'Error');
-                Swal.fire({ icon: 'info', title: 'Rejected', text: 'User has been notified.', timer: 2500 });
-                loadExchangeRequests();
-            } catch(e) {
-                Swal.fire({ icon: 'error', title: 'Error', text: e.message });
-            }
-        };
-
-        // ===== Exchange Settings =====
-        async function loadExchangeSettings() {
-            loadAdPricing();
-            try {
-                const r = await fetch(base + '/api/settings/exchange-channel');
-                const data = await r.json().catch(() => ({}));
-                if (r.ok && data.channelId) document.getElementById('exchangeChannelId').value = data.channelId;
-            } catch(_) {}
-            try {
-                const r = await fetch(base + '/api/settings/exchange-fee');
-                const data = await r.json().catch(() => ({}));
-                if (r.ok) document.getElementById('exchangeFeePercent').value = data.feePercent || '0';
-            } catch(_) {}
-        }
-
-        document.getElementById('exchangeChannelForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            var channelId = (document.getElementById('exchangeChannelId').value || '').trim();
-            try {
-                const r = await fetch(base + '/api/settings/exchange-channel', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ channelId: channelId })
-                });
-                const data = await r.json().catch(() => ({}));
-                if (!r.ok) throw new Error(data.detail || 'Error');
-                Swal.fire({ icon: 'success', title: 'Saved', text: 'Exchange channel updated.', timer: 2500, showConfirmButton: false });
-            } catch(e) {
-                Swal.fire({ icon: 'error', title: 'Error', text: e.message });
-            }
-        });
-
-        document.getElementById('exchangeFeeForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            var fee = (document.getElementById('exchangeFeePercent').value || '0').trim();
-            try {
-                const r = await fetch(base + '/api/settings/exchange-fee', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ feePercent: fee })
-                });
-                const data = await r.json().catch(() => ({}));
-                if (!r.ok) throw new Error(data.detail || 'Error');
-                Swal.fire({ icon: 'success', title: 'Saved', text: 'Fee percentage updated.', timer: 2500, showConfirmButton: false });
-            } catch(e) {
-                Swal.fire({ icon: 'error', title: 'Error', text: e.message });
-            }
-        });
-
-
-        // ===== Ad Pricing =====
-        async function loadAdPricing() {
-            try {
-                const r = await fetch(base + '/api/settings/ad-pricing');
-                const data = await r.json().catch(() => ({}));
-                if (r.ok) {
-                    document.getElementById('adPricingMode').value = data.mode || 'free';
-                    document.getElementById('adPrice').value = data.price || '0';
-                }
-            } catch(_) {}
-        }
-
-        document.getElementById('adPricingForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            var mode = document.getElementById('adPricingMode').value;
-            var price = document.getElementById('adPrice').value || '0';
-            try {
-                const r = await fetch(base + '/api/settings/ad-pricing', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ mode: mode, price: price })
-                });
-                const data = await r.json().catch(() => ({}));
-                if (!r.ok) throw new Error(data.detail || 'Error');
-                Swal.fire({ icon: 'success', title: 'Saved', text: 'Ad pricing updated.', timer: 2500, showConfirmButton: false });
-            } catch(e) {
-                Swal.fire({ icon: 'error', title: 'Error', text: e.message });
-            }
-        });
-
-        // ===== Exchange Groups =====
-        async function loadExchangeGroups() {
-            try {
-                const r = await fetch(base + '/api/exchange-groups');
-                const data = await r.json().catch(() => []);
-                var tbody = document.getElementById('groupsTableBody');
-                if (!r.ok || !data.length) { tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No groups found.</td></tr>'; return; }
-                tbody.innerHTML = data.map(function(g) {
-                    var statusBadge = g.status === 'approved' ? '<span class="badge bg-success">Approved</span>'
-                        : g.status === 'rejected' ? '<span class="badge bg-danger">Rejected</span>'
-                        : '<span class="badge bg-warning text-dark">Pending</span>';
-                    return '<tr><td>' + g.id + '</td><td>' + (g.name||'') + '</td><td>' + (g.currencyCode||'-') + '</td><td>' + (g.countryCode||'-') + '</td>'
-                        + '<td><a href="' + (g.telegramGroupLink||'#') + '" target="_blank">Link</a></td>'
-                        + '<td>' + statusBadge + '</td><td>' + (g.memberCount||0) + '</td>'
-                        + '<td>'
-                        + (g.status !== 'approved' ? '<button class="btn btn-sm btn-success me-1" onclick="approveGroup(' + g.id + ')">Approve</button>' : '')
-                        + (g.status !== 'rejected' ? '<button class="btn btn-sm btn-danger me-1" onclick="rejectGroup(' + g.id + ')">Reject</button>' : '')
-                        + '<button class="btn btn-sm btn-outline-danger" onclick="deleteGroup(' + g.id + ')">Delete</button>'
-                        + '</td></tr>';
+    function refreshWebhookMessages(){
+        fetch(base+'/api/webhook/logs').then(r=>r.json()).then(list=>{
+            var tb=document.getElementById('webhookMessagesTable');
+            if(Array.isArray(list)&&list.length>0){
+                tb.innerHTML=list.map(m=>{
+                    var sc=m.status==='Received'?'success':m.status==='Error'?'danger':'info';
+                    return '<tr><td><small>'+esc(m.time?new Date(m.time).toLocaleString():'')+'</small></td><td><span class="badge bg-'+sc+'">'+esc(m.status)+'</span></td><td><code style="font-size:0.8rem;">'+esc(m.payloadPreview||'')+'</code></td><td>'+(m.error?'<small class="text-danger">'+esc(m.error)+'</small>':'-')+'</td></tr>';
                 }).join('');
-            } catch(_) {
-                document.getElementById('groupsTableBody').innerHTML = '<tr><td colspan="8" class="text-center text-danger">Error loading groups.</td></tr>';
-            }
-        }
+            }else tb.innerHTML='<tr><td colspan="4" class="text-center text-muted">No messages</td></tr>';
+        }).catch(()=>{});
+    }
+    document.getElementById('btnRefreshLogs').addEventListener('click',refreshWebhookMessages);
 
-        async function approveGroup(id) {
-            if (!confirm('Approve this group?')) return;
-            await fetch(base + '/api/exchange-groups/' + id + '/approve', { method: 'POST' });
-            loadExchangeGroups();
-        }
-        async function rejectGroup(id) {
-            if (!confirm('Reject this group?')) return;
-            await fetch(base + '/api/exchange-groups/' + id + '/reject', { method: 'POST' });
-            loadExchangeGroups();
-        }
-        async function deleteGroup(id) {
-            if (!confirm('Delete this group permanently?')) return;
-            await fetch(base + '/api/exchange-groups/' + id, { method: 'DELETE' });
-            loadExchangeGroups();
-        }
-
-        document.getElementById('addGroupForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            var body = {
-                name: document.getElementById('groupName').value,
-                telegramGroupLink: document.getElementById('groupLink').value,
-                currencyCode: document.getElementById('groupCurrency').value || null,
-                countryCode: document.getElementById('groupCountry').value || null,
-                description: document.getElementById('groupDesc').value || null
-            };
-            try {
-                const r = await fetch(base + '/api/exchange-groups', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                });
-                if (!r.ok) { var d = await r.json().catch(() => ({})); throw new Error(d.detail || 'Error'); }
-                Swal.fire({ icon: 'success', title: 'Added', text: 'Group added.', timer: 2500, showConfirmButton: false });
-                document.getElementById('addGroupForm').reset();
-                loadExchangeGroups();
-            } catch(e) {
-                Swal.fire({ icon: 'error', title: 'Error', text: e.message });
-            }
-        });
-
-        document.getElementById('btnRefreshGroups').addEventListener('click', loadExchangeGroups);
-
-        loadTokenIntoInput();
-        loadUpdateMode();
-        loadWebhookInfo();
-        loadConnectionStatus();
-        loadBotStatus();
-        loadSupportTelegram();
-        loadUsers();
-        refreshWebhookMessages();
-        setInterval(refreshWebhookMessages, 10000);
-        setInterval(loadConnectionStatus, 15000);
-        setInterval(loadBotStatus, 5000);
+    // ===== Init =====
+    loadTokenIntoInput();loadUpdateMode();loadWebhookInfo();loadConnectionStatus();refreshWebhookMessages();
+    setInterval(refreshWebhookMessages,10000);setInterval(loadConnectionStatus,15000);
     </script>
 </body>
 </html>

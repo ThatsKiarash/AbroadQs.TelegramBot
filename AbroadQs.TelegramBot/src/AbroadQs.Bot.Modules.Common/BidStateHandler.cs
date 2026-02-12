@@ -16,6 +16,7 @@ public sealed class BidStateHandler : IUpdateHandler
     private readonly IExchangeRepository _exchangeRepo;
     private readonly IBidRepository _bidRepo;
     private readonly IUserMessageStateRepository? _msgStateRepo;
+    private readonly ISettingsRepository? _settingsRepo;
 
     private const string BtnBack = "🔙 بازگشت";
     private const string BtnCancel = "❌ انصراف";
@@ -27,7 +28,8 @@ public sealed class BidStateHandler : IUpdateHandler
         IUserConversationStateStore stateStore,
         IExchangeRepository exchangeRepo,
         IBidRepository bidRepo,
-        IUserMessageStateRepository? msgStateRepo = null)
+        IUserMessageStateRepository? msgStateRepo = null,
+        ISettingsRepository? settingsRepo = null)
     {
         _sender = sender;
         _userRepo = userRepo;
@@ -35,6 +37,7 @@ public sealed class BidStateHandler : IUpdateHandler
         _exchangeRepo = exchangeRepo;
         _bidRepo = bidRepo;
         _msgStateRepo = msgStateRepo;
+        _settingsRepo = settingsRepo;
     }
 
     public string? Command => null;
@@ -427,6 +430,49 @@ public sealed class BidStateHandler : IUpdateHandler
             var rejectMsg = $"⚠️ متأسفانه پیشنهاد شما برای آگهی #{request.RequestNumber} پذیرفته نشد.\nآگهی‌دهنده پیشنهاد دیگری را انتخاب کرده است.";
             try { await _sender.SendTextMessageAsync(other.BidderTelegramUserId, rejectMsg, ct).ConfigureAwait(false); } catch { }
         }
+
+        // Update channel post: remove bid button, mark as closed
+        await UpdateChannelPostClosed(request, bid, ct);
+    }
+
+    /// <summary>
+    /// Edits the channel post for a matched request: removes bid button, adds "closed" label.
+    /// </summary>
+    private async Task UpdateChannelPostClosed(ExchangeRequestDto request, AdBidDto acceptedBid, CancellationToken ct)
+    {
+        if (request.ChannelMessageId == null || _settingsRepo == null) return;
+        try
+        {
+            var channelId = await _settingsRepo.GetValueAsync("exchange_channel_id", ct).ConfigureAwait(false);
+            if (string.IsNullOrEmpty(channelId)) return;
+
+            long chatId = 0;
+            if (long.TryParse(channelId, out var cid)) chatId = cid;
+            if (chatId == 0) return; // Can't edit via @username with IResponseSender
+
+            var currFa = ExchangeStateHandler.GetCurrencyNameFa(request.Currency);
+            var txFa = request.TransactionType == "buy" ? "خرید" : request.TransactionType == "sell" ? "فروش" : "تبادل";
+            var roleFa = request.TransactionType == "buy" ? "خریدار" : request.TransactionType == "sell" ? "فروشنده" : "متقاضی تبادل";
+            var deliveryFa = request.DeliveryMethod switch
+            {
+                "bank" => "حواله بانکی",
+                "paypal" => "پی‌پال",
+                "cash" => "اسکناس",
+                _ => request.DeliveryMethod
+            };
+
+            var closedText = $"✅ <b>بسته شده — پیشنهاد پذیرفته شد</b>\n\n" +
+                $"💎 {roleFa}: <b>{request.UserDisplayName}</b>\n" +
+                $"💰 مبلغ: <b>{request.Amount:N0}</b> {currFa}\n" +
+                $"💲 نرخ توافقی: <b>{acceptedBid.BidRate:N0}</b> تومان\n" +
+                $"🏦 نوع حواله: {deliveryFa}\n\n" +
+                "🔒 این آگهی بسته شده است.";
+
+            // Edit with empty keyboard (removes the bid button)
+            await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, request.ChannelMessageId.Value, closedText,
+                Array.Empty<IReadOnlyList<InlineButton>>(), ct).ConfigureAwait(false);
+        }
+        catch { /* swallow channel edit failures */ }
     }
 
     private async Task ShowBidsForRequest(long chatId, long userId, int requestId, int? editMsgId, CancellationToken ct)

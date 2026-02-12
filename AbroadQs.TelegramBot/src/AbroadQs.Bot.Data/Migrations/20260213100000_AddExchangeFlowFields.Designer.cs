@@ -4,6 +4,7 @@ using AbroadQs.Bot.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AbroadQs.Bot.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260213100000_AddExchangeFlowFields")]
+    partial class AddExchangeFlowFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -21,54 +24,6 @@ namespace AbroadQs.Bot.Data.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
-
-            modelBuilder.Entity("AbroadQs.Bot.Data.AdBidEntity", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<decimal>("BidAmount")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("BidRate")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<long>("BidderTelegramUserId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("BidderDisplayName")
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
-
-                    b.Property<int?>("ChannelReplyMessageId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int>("ExchangeRequestId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Message")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BidderTelegramUserId");
-
-                    b.HasIndex("ExchangeRequestId");
-
-                    b.ToTable("AdBids", (string)null);
-                });
 
             modelBuilder.Entity("AbroadQs.Bot.Data.BotStageButtonEntity", b =>
                 {
@@ -189,19 +144,22 @@ namespace AbroadQs.Bot.Data.Migrations
                         .HasColumnType("nvarchar(20)");
 
                     b.Property<string>("Description")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<string>("GroupType")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("general");
 
                     b.Property<bool>("IsOfficial")
-                        .HasColumnType("bit");
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
 
                     b.Property<int>("MemberCount")
-                        .HasColumnType("int");
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -211,7 +169,8 @@ namespace AbroadQs.Bot.Data.Migrations
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("pending");
 
                     b.Property<long?>("SubmittedByUserId")
                         .HasColumnType("bigint");
@@ -228,6 +187,10 @@ namespace AbroadQs.Bot.Data.Migrations
                         .HasColumnType("datetimeoffset");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CountryCode");
+
+                    b.HasIndex("CurrencyCode");
 
                     b.HasIndex("GroupType");
 
@@ -480,62 +443,6 @@ namespace AbroadQs.Bot.Data.Migrations
                     b.ToTable("Messages", (string)null);
                 });
 
-            modelBuilder.Entity("AbroadQs.Bot.Data.PaymentEntity", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<decimal>("Amount")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<long?>("GatewayIdGet")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("GatewayName")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("GatewayTransactionId")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("Purpose")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("ReferenceId")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
-
-                    b.Property<long>("TelegramUserId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTimeOffset?>("VerifiedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("GatewayIdGet");
-
-                    b.HasIndex("Status");
-
-                    b.HasIndex("TelegramUserId");
-
-                    b.ToTable("Payments", (string)null);
-                });
-
             modelBuilder.Entity("AbroadQs.Bot.Data.PermissionEntity", b =>
                 {
                     b.Property<int>("Id")
@@ -755,82 +662,6 @@ namespace AbroadQs.Bot.Data.Migrations
                     b.ToTable("UserPermissions", (string)null);
                 });
 
-            modelBuilder.Entity("AbroadQs.Bot.Data.WalletEntity", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<decimal>("Balance")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<long>("TelegramUserId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TelegramUserId")
-                        .IsUnique();
-
-                    b.ToTable("Wallets", (string)null);
-                });
-
-            modelBuilder.Entity("AbroadQs.Bot.Data.WalletTransactionEntity", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<decimal>("Amount")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<string>("ReferenceId")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<int>("WalletId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("WalletId");
-
-                    b.ToTable("WalletTransactions", (string)null);
-                });
-
-            modelBuilder.Entity("AbroadQs.Bot.Data.AdBidEntity", b =>
-                {
-                    b.HasOne("AbroadQs.Bot.Data.ExchangeRequestEntity", "ExchangeRequest")
-                        .WithMany()
-                        .HasForeignKey("ExchangeRequestId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("ExchangeRequest");
-                });
-
             modelBuilder.Entity("AbroadQs.Bot.Data.BotStageButtonEntity", b =>
                 {
                     b.HasOne("AbroadQs.Bot.Data.BotStageEntity", "Stage")
@@ -889,17 +720,6 @@ namespace AbroadQs.Bot.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
-                });
-
-            modelBuilder.Entity("AbroadQs.Bot.Data.WalletTransactionEntity", b =>
-                {
-                    b.HasOne("AbroadQs.Bot.Data.WalletEntity", "Wallet")
-                        .WithMany()
-                        .HasForeignKey("WalletId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Wallet");
                 });
 
             modelBuilder.Entity("AbroadQs.Bot.Data.BotStageEntity", b =>

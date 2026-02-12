@@ -1116,7 +1116,23 @@ app.MapPost("/api/exchange/requests/{id:int}/approve", async (int id, HttpContex
                         var targetChat = chatIdParsed != 0
                             ? (Telegram.Bot.Types.ChatId)chatIdParsed
                             : (Telegram.Bot.Types.ChatId)channelId;
-                        var sent = await botClient.SendMessage(targetChat, text, parseMode: Telegram.Bot.Types.Enums.ParseMode.Html).ConfigureAwait(false);
+
+                        // Build bid button: deep link to bot with bid_{requestId}
+                        Telegram.Bot.Types.ReplyMarkups.InlineKeyboardMarkup? channelKb = null;
+                        try
+                        {
+                            var me = await botClient.GetMe(ctx.RequestAborted).ConfigureAwait(false);
+                            if (!string.IsNullOrEmpty(me.Username))
+                            {
+                                channelKb = new Telegram.Bot.Types.ReplyMarkups.InlineKeyboardMarkup(new[]
+                                {
+                                    new[] { Telegram.Bot.Types.ReplyMarkups.InlineKeyboardButton.WithUrl("📩 ارسال پیشنهاد", $"https://t.me/{me.Username}?start=bid_{id}") },
+                                });
+                            }
+                        }
+                        catch { /* getMe failed — post without button */ }
+
+                        var sent = await botClient.SendMessage(targetChat, text, parseMode: Telegram.Bot.Types.Enums.ParseMode.Html, replyMarkup: channelKb).ConfigureAwait(false);
                         channelMsgId = sent.Id;
                     }
                 }

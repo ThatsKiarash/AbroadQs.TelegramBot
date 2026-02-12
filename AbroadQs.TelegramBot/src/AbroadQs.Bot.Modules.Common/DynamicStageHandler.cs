@@ -25,6 +25,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
     private readonly ExchangeStateHandler? _exchangeHandler;
     private readonly IExchangeRepository? _exchangeRepo;
     private readonly IGroupRepository? _groupRepo;
+    private readonly GroupStateHandler? _groupHandler;
 
     private const int TradesPageSize = 5;
 
@@ -37,7 +38,8 @@ public sealed class DynamicStageHandler : IUpdateHandler
         IUserMessageStateRepository? msgStateRepo = null,
         ExchangeStateHandler? exchangeHandler = null,
         IExchangeRepository? exchangeRepo = null,
-        IGroupRepository? groupRepo = null)
+        IGroupRepository? groupRepo = null,
+        GroupStateHandler? groupHandler = null)
     {
         _sender = sender;
         _stageRepo = stageRepo;
@@ -48,6 +50,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
         _exchangeHandler = exchangeHandler;
         _exchangeRepo = exchangeRepo;
         _groupRepo = groupRepo;
+        _groupHandler = groupHandler;
     }
 
     public string? Command => null;
@@ -292,7 +295,10 @@ public sealed class DynamicStageHandler : IUpdateHandler
                 // ── Exchange Groups: show group list ──────────────────
                 if (string.Equals(stageKey, "exchange_groups", StringComparison.OrdinalIgnoreCase))
                 {
-                    await ShowExchangeGroupsList(chatId, currentUser, editMessageId, cancellationToken).ConfigureAwait(false);
+                    if (_groupHandler != null)
+                        await _groupHandler.ShowGroupsMenu(chatId, editMessageId, cancellationToken).ConfigureAwait(false);
+                    else
+                        await ShowExchangeGroupsList(chatId, currentUser, editMessageId, cancellationToken).ConfigureAwait(false);
                     return true;
                 }
 
@@ -821,7 +827,10 @@ public sealed class DynamicStageHandler : IUpdateHandler
         "approved" => "🟢",
         "rejected" => "🔴",
         "posted" => "🔵",
+        "matched" => "🤝",
+        "in_progress" => "⏳",
         "completed" => "✅",
+        "disputed" => "⚠️",
         "cancelled" => "⚫",
         _ => "⚪"
     };
@@ -832,7 +841,10 @@ public sealed class DynamicStageHandler : IUpdateHandler
         "approved" => "تایید شده",
         "rejected" => "رد شده",
         "posted" => "منتشر شده",
+        "matched" => "مچ شده",
+        "in_progress" => "در حال انجام",
         "completed" => "تکمیل شده",
+        "disputed" => "اختلاف",
         "cancelled" => "لغو شده",
         _ => status
     };
@@ -843,7 +855,10 @@ public sealed class DynamicStageHandler : IUpdateHandler
         "approved" => "Approved",
         "rejected" => "Rejected",
         "posted" => "Posted",
+        "matched" => "Matched",
+        "in_progress" => "In Progress",
         "completed" => "Completed",
+        "disputed" => "Disputed",
         "cancelled" => "Cancelled",
         _ => status
     };
