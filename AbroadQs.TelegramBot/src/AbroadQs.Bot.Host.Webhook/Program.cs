@@ -116,12 +116,15 @@ if (!string.IsNullOrWhiteSpace(connStr))
     builder.Services.AddScoped<IUserMessageStateRepository, UserMessageStateRepository>();
     builder.Services.AddScoped<IBotStageRepository, BotStageRepository>();
     builder.Services.AddScoped<IPermissionRepository, PermissionRepository>();
+    builder.Services.AddScoped<IExchangeRepository, ExchangeRepository>();
+    builder.Services.AddScoped<NavasanApiService>();
 }
 else
 {
     builder.Services.AddSingleton<ITelegramUserRepository, NoOpTelegramUserRepository>();
     builder.Services.AddSingleton<IBotStageRepository, NoOpBotStageRepository>();
     builder.Services.AddSingleton<IPermissionRepository, NoOpPermissionRepository>();
+    builder.Services.AddSingleton<IExchangeRepository, NoOpExchangeRepository>();
 }
 
 builder.Services.AddEndpointsApiExplorer();
@@ -961,6 +964,261 @@ app.MapPost("/api/settings/support-telegram", async (HttpContext ctx) =>
     catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
 }).WithName("SupportTelegramSet");
 
+// ===== Exchange Rates =====
+app.MapGet("/api/exchange/rates", async (HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var repo = scope.ServiceProvider.GetService<IExchangeRepository>();
+        if (repo == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+        var rates = await repo.GetRatesAsync(ctx.RequestAborted).ConfigureAwait(false);
+        return Results.Json(rates);
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("ExchangeRatesGet");
+
+app.MapPost("/api/exchange/rates/fetch", async (HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var svc = scope.ServiceProvider.GetService<NavasanApiService>();
+        if (svc == null) return Results.Json(new { detail = "Service not configured" }, statusCode: 503);
+        var (success, message) = await svc.FetchAndCacheRatesAsync(ctx.RequestAborted).ConfigureAwait(false);
+        return Results.Json(new { success, message });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("ExchangeRatesFetch");
+
+app.MapGet("/api/exchange/rates/usage", async (HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var svc = scope.ServiceProvider.GetService<NavasanApiService>();
+        if (svc == null) return Results.Json(new { detail = "Service not configured" }, statusCode: 503);
+        var (used, limit) = await svc.GetUsageAsync(ctx.RequestAborted).ConfigureAwait(false);
+        return Results.Json(new { used, limit });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("ExchangeRatesUsage");
+
+app.MapPut("/api/exchange/rates/{id:int}", async (int id, HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var repo = scope.ServiceProvider.GetService<IExchangeRepository>();
+        if (repo == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+        var body = await ctx.Request.ReadFromJsonAsync<ManualRateUpdate>(ctx.RequestAborted).ConfigureAwait(false);
+        if (body == null) return Results.BadRequest(new { detail = "Invalid body" });
+        await repo.SaveRateAsync(new ExchangeRateDto(id, body.CurrencyCode ?? "", body.CurrencyNameFa, body.CurrencyNameEn,
+            body.Rate, 0, "manual", DateTimeOffset.UtcNow), ctx.RequestAborted).ConfigureAwait(false);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("ExchangeRateUpdate");
+
+// ===== Exchange Requests =====
+app.MapGet("/api/exchange/requests", async (HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var repo = scope.ServiceProvider.GetService<IExchangeRepository>();
+        if (repo == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+        var status = ctx.Request.Query["status"].FirstOrDefault();
+        var requests = await repo.ListRequestsAsync(status, null, ctx.RequestAborted).ConfigureAwait(false);
+        return Results.Json(requests);
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("ExchangeRequestsList");
+
+app.MapGet("/api/exchange/requests/{id:int}", async (int id, HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var repo = scope.ServiceProvider.GetService<IExchangeRepository>();
+        if (repo == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+        var req = await repo.GetRequestAsync(id, ctx.RequestAborted).ConfigureAwait(false);
+        if (req == null) return Results.NotFound(new { detail = "Not found" });
+        return Results.Json(req);
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("ExchangeRequestGet");
+
+app.MapPost("/api/exchange/requests/{id:int}/approve", async (int id, HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var repo = scope.ServiceProvider.GetService<IExchangeRepository>();
+        var settingsRepo = scope.ServiceProvider.GetService<ISettingsRepository>();
+        var botClient = scope.ServiceProvider.GetService<ITelegramBotClient>();
+        if (repo == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+
+        var req = await repo.GetRequestAsync(id, ctx.RequestAborted).ConfigureAwait(false);
+        if (req == null) return Results.NotFound(new { detail = "Not found" });
+
+        // Post to channel
+        int? channelMsgId = null;
+        if (settingsRepo != null && botClient != null && botClient is not PlaceholderTelegramBotClient)
+        {
+            var channelId = await settingsRepo.GetValueAsync("exchange_channel_id", ctx.RequestAborted).ConfigureAwait(false);
+            if (!string.IsNullOrEmpty(channelId))
+            {
+                var currFa = AbroadQs.Bot.Modules.Common.ExchangeStateHandler.GetCurrencyNameFa(req.Currency);
+                var txFa = req.TransactionType == "buy" ? "خرید" : req.TransactionType == "sell" ? "فروش" : "تبادل";
+                var roleFa = req.TransactionType == "buy" ? "خریدار" : req.TransactionType == "sell" ? "فروشنده" : "متقاضی تبادل";
+                var txHashtag = $"#{txFa}_{currFa.Replace(" ", "_")}";
+                var deliveryFa = req.DeliveryMethod switch
+                {
+                    "bank" => req.AccountType == "company"
+                        ? $"حواله بانکی حساب شرکتی{(req.Country != null ? $" به {req.Country}" : "")}"
+                        : $"حواله بانکی حساب شخصی{(req.Country != null ? $" به {req.Country}" : "")}",
+                    "paypal" => "پی‌پال",
+                    "cash" => "اسکناس",
+                    _ => req.DeliveryMethod
+                };
+
+                var text = $"❗ حواله جدید بابت {txHashtag}\n\n" +
+                    $"💎 {roleFa}: <b>{req.UserDisplayName}</b>\n" +
+                    $"💰 مبلغ: <b>{req.Amount:N0}</b> {currFa}\n" +
+                    $"💲 نرخ پیشنهادی: <b>{req.ProposedRate:N0}</b> تومان\n" +
+                    $"🏦 نوع حواله: {deliveryFa}\n" +
+                    (!string.IsNullOrEmpty(req.Description) ? $"✍ توضیحات: {req.Description}\n" : "") +
+                    $"\n🏷 مبلغ کل: <b>{req.TotalAmount:N0}</b> تومان";
+
+                try
+                {
+                    var chatIdParsed = long.TryParse(channelId, out var cid) ? cid : 0;
+                    if (channelId.StartsWith("@") || chatIdParsed != 0)
+                    {
+                        var targetChat = chatIdParsed != 0
+                            ? (Telegram.Bot.Types.ChatId)chatIdParsed
+                            : (Telegram.Bot.Types.ChatId)channelId;
+                        var sent = await botClient.SendMessage(targetChat, text, parseMode: Telegram.Bot.Types.Enums.ParseMode.Html).ConfigureAwait(false);
+                        channelMsgId = sent.Id;
+                    }
+                }
+                catch (Exception cex)
+                {
+                    app.Logger.LogWarning(cex, "Failed to post exchange request #{Num} to channel", req.RequestNumber);
+                }
+            }
+        }
+
+        await repo.UpdateStatusAsync(id, "approved", null, channelMsgId, ctx.RequestAborted).ConfigureAwait(false);
+
+        // Notify user
+        if (botClient != null && botClient is not PlaceholderTelegramBotClient)
+        {
+            try
+            {
+                await botClient.SendMessage(req.TelegramUserId,
+                    $"✅ درخواست شماره <b>#{req.RequestNumber}</b> تایید و در کانال منتشر شد.",
+                    parseMode: Telegram.Bot.Types.Enums.ParseMode.Html).ConfigureAwait(false);
+            }
+            catch { }
+        }
+
+        return Results.Json(new { ok = true, channelMsgId });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("ExchangeRequestApprove");
+
+app.MapPost("/api/exchange/requests/{id:int}/reject", async (int id, HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var repo = scope.ServiceProvider.GetService<IExchangeRepository>();
+        var botClient = scope.ServiceProvider.GetService<ITelegramBotClient>();
+        if (repo == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+
+        var body = await ctx.Request.ReadFromJsonAsync<RejectRequest>(ctx.RequestAborted).ConfigureAwait(false);
+        var req = await repo.GetRequestAsync(id, ctx.RequestAborted).ConfigureAwait(false);
+        if (req == null) return Results.NotFound(new { detail = "Not found" });
+
+        await repo.UpdateStatusAsync(id, "rejected", body?.Note, null, ctx.RequestAborted).ConfigureAwait(false);
+
+        // Notify user
+        if (botClient != null && botClient is not PlaceholderTelegramBotClient)
+        {
+            try
+            {
+                var note = !string.IsNullOrEmpty(body?.Note) ? $"\nدلیل: {body.Note}" : "";
+                await botClient.SendMessage(req.TelegramUserId,
+                    $"❌ درخواست شماره <b>#{req.RequestNumber}</b> رد شد.{note}",
+                    parseMode: Telegram.Bot.Types.Enums.ParseMode.Html).ConfigureAwait(false);
+            }
+            catch { }
+        }
+
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("ExchangeRequestReject");
+
+// ===== Exchange Channel Setting =====
+app.MapGet("/api/settings/exchange-channel", async (HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var repo = scope.ServiceProvider.GetService<ISettingsRepository>();
+        if (repo == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+        var channelId = await repo.GetValueAsync("exchange_channel_id", ctx.RequestAborted).ConfigureAwait(false);
+        return Results.Json(new { channelId = channelId ?? "" });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("ExchangeChannelGet");
+
+app.MapPost("/api/settings/exchange-channel", async (HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var repo = scope.ServiceProvider.GetService<ISettingsRepository>();
+        if (repo == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+        var body = await ctx.Request.ReadFromJsonAsync<SetChannelRequest>(ctx.RequestAborted).ConfigureAwait(false);
+        var channelId = (body?.ChannelId ?? "").Trim();
+        await repo.SetValueAsync("exchange_channel_id", channelId, ctx.RequestAborted).ConfigureAwait(false);
+        return Results.Json(new { ok = true, channelId });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("ExchangeChannelSet");
+
+// ===== Exchange Fee Setting =====
+app.MapGet("/api/settings/exchange-fee", async (HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var repo = scope.ServiceProvider.GetService<ISettingsRepository>();
+        if (repo == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+        var fee = await repo.GetValueAsync("exchange_fee_percent", ctx.RequestAborted).ConfigureAwait(false);
+        return Results.Json(new { feePercent = fee ?? "0" });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("ExchangeFeeGet");
+
+app.MapPost("/api/settings/exchange-fee", async (HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var repo = scope.ServiceProvider.GetService<ISettingsRepository>();
+        if (repo == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+        var body = await ctx.Request.ReadFromJsonAsync<SetFeeRequest>(ctx.RequestAborted).ConfigureAwait(false);
+        await repo.SetValueAsync("exchange_fee_percent", (body?.FeePercent ?? "0").Trim(), ctx.RequestAborted).ConfigureAwait(false);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("ExchangeFeeSet");
+
 // تست: اگر این 200 برگردونه، مسیرهای API درست ثبت شدن
 app.MapGet("/api/ping", () => Results.Json(new { ok = true })).WithName("Ping");
 
@@ -1513,3 +1771,7 @@ record SetTokenRequest(string? Token);
 record SetUpdateModeRequest(string? Mode);
 record KycRejectRequest(Dictionary<string, string>? Reasons);
 record SetSupportTelegramRequest(string? Username);
+record ManualRateUpdate(string? CurrencyCode, string? CurrencyNameFa, string? CurrencyNameEn, decimal Rate);
+record RejectRequest(string? Note);
+record SetChannelRequest(string? ChannelId);
+record SetFeeRequest(string? FeePercent);

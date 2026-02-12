@@ -24,4 +24,13 @@ public sealed class NoOpUserConversationStateStore : IUserConversationStateStore
 
     public Task<List<int>> GetAndClearFlowMessageIdsAsync(long userId, CancellationToken cancellationToken = default)
         => Task.FromResult(new List<int>());
+
+    public Task SetFlowDataAsync(long userId, string key, string value, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task<string?> GetFlowDataAsync(long userId, string key, CancellationToken cancellationToken = default)
+        => Task.FromResult<string?>(null);
+
+    public Task ClearAllFlowDataAsync(long userId, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
 }

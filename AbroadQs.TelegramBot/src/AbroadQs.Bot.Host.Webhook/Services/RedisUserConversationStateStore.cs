@@ -133,4 +133,48 @@ public sealed class RedisUserConversationStateStore : IUserConversationStateStor
         catch (Exception ex) { _logger.LogWarning(ex, "Redis GetAndClearFlowMessageIds failed for user {UserId}", userId); }
         return result;
     }
+
+    // ── Flow data (key-value for multi-step flows) ───────────────────
+
+    private const string FlowDataPrefix = "user:flowdata:";
+    private static readonly TimeSpan FlowDataTtl = TimeSpan.FromHours(2);
+
+    public async Task SetFlowDataAsync(long userId, string key, string value, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var redisKey = FlowDataPrefix + userId;
+            await _db.HashSetAsync(redisKey, key, value).ConfigureAwait(false);
+            await _db.KeyExpireAsync(redisKey, FlowDataTtl).ConfigureAwait(false);
+            if (_processingContext != null) _processingContext.RedisAccessed = true;
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "Redis SetFlowData failed for user {UserId} key {Key}", userId, key); }
+    }
+
+    public async Task<string?> GetFlowDataAsync(long userId, string key, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var redisKey = FlowDataPrefix + userId;
+            var value = await _db.HashGetAsync(redisKey, key).ConfigureAwait(false);
+            if (_processingContext != null) _processingContext.RedisAccessed = true;
+            return value.HasValue ? value.ToString() : null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Redis GetFlowData failed for user {UserId} key {Key}", userId, key);
+            return null;
+        }
+    }
+
+    public async Task ClearAllFlowDataAsync(long userId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var redisKey = FlowDataPrefix + userId;
+            await _db.KeyDeleteAsync(redisKey).ConfigureAwait(false);
+            if (_processingContext != null) _processingContext.RedisAccessed = true;
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "Redis ClearAllFlowData failed for user {UserId}", userId); }
+    }
 }

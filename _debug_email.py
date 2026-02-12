@@ -1,15 +1,47 @@
-"""Test email relay from bot server."""
-import paramiko, sys
+"""Add missing columns directly via SQL and restart bot."""
+import paramiko, sys, time
 sys.stdout.reconfigure(encoding='utf-8')
 
 ssh = paramiko.SSHClient()
 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 ssh.connect("167.235.159.117", port=2200, username="root", password="Kia135724!", timeout=30)
 
-print("Testing email relay from bot server...")
+# Add columns via SQL - use the correct password
+print("=== Adding missing columns via SQL ===")
+sql_commands = [
+    "IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('TelegramUsers') AND name = 'PhoneVerified') ALTER TABLE TelegramUsers ADD PhoneVerified BIT NOT NULL DEFAULT 0; ELSE PRINT 'PhoneVerified exists';",
+    "IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('TelegramUsers') AND name = 'PhoneVerificationMethod') ALTER TABLE TelegramUsers ADD PhoneVerificationMethod NVARCHAR(30) NULL; ELSE PRINT 'PhoneVerificationMethod exists';",
+    "IF NOT EXISTS (SELECT * FROM [__EFMigrationsHistory] WHERE MigrationId = '20260211100000_AddPhoneVerification') INSERT INTO [__EFMigrationsHistory] (MigrationId, ProductVersion) VALUES ('20260211100000_AddPhoneVerification', '8.0.11'); ELSE PRINT 'Migration exists';"
+]
+
+for sql in sql_commands:
+    cmd = f"""docker exec abroadqs-sqlserver /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'YourStrong@Pass123' -d AbroadQsBot -C -Q "{sql}" 2>&1"""
+    stdin, stdout, stderr = ssh.exec_command(cmd, timeout=15)
+    out = stdout.read().decode('utf-8', errors='replace').strip()
+    err = stderr.read().decode('utf-8', errors='replace').strip()
+    print(out or err or "(success)")
+
+# Restart bot
+print("\n=== Restarting bot ===")
 stdin, stdout, stderr = ssh.exec_command(
-    """curl -s -w '\\nHTTP:%{http_code} TIME:%{time_total}s' --max-time 30 -X POST https://abroadqs.com/emailrelay -H 'Content-Type: application/json' -d '{"token":"AbroadQs_Email_Relay_2026_Secure","to":"kiarash.zavare1@gmail.com","subject":"AbroadQs - Test from Bot Server","body":"<h2>AbroadQs</h2><p>Test email from bot server. Code: <b>99887</b></p>"}' 2>&1""",
-    timeout=35
+    "cd /root/AbroadQs.TelegramBot/AbroadQs.TelegramBot && docker compose -f docker-compose.server.yml restart bot 2>&1",
+    timeout=30
 )
-print(stdout.read().decode().strip())
+print(stdout.read().decode('utf-8', errors='replace').strip())
+
+time.sleep(6)
+
+# Verify
+print("\n=== Testing API ===")
+stdin, stdout, stderr = ssh.exec_command(
+    "curl -s --max-time 5 http://localhost:5252/api/users 2>&1 | head -200",
+    timeout=10
+)
+result = stdout.read().decode('utf-8', errors='replace').strip()
+if '"error"' in result:
+    print("ERROR:", result[:500])
+else:
+    print("SUCCESS - Users loaded:", result[:300])
+
 ssh.close()
+print("\nDone!")

@@ -21,6 +21,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
     private readonly ITelegramUserRepository _userRepo;
     private readonly IUserConversationStateStore _stateStore;
     private readonly IUserMessageStateRepository? _msgStateRepo;
+    private readonly ExchangeStateHandler? _exchangeHandler;
 
     public DynamicStageHandler(
         IResponseSender sender,
@@ -28,7 +29,8 @@ public sealed class DynamicStageHandler : IUpdateHandler
         IPermissionRepository permRepo,
         ITelegramUserRepository userRepo,
         IUserConversationStateStore stateStore,
-        IUserMessageStateRepository? msgStateRepo = null)
+        IUserMessageStateRepository? msgStateRepo = null,
+        ExchangeStateHandler? exchangeHandler = null)
     {
         _sender = sender;
         _stageRepo = stageRepo;
@@ -36,6 +38,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
         _userRepo = userRepo;
         _stateStore = stateStore;
         _msgStateRepo = msgStateRepo;
+        _exchangeHandler = exchangeHandler;
     }
 
     public string? Command => null;
@@ -175,6 +178,22 @@ public sealed class DynamicStageHandler : IUpdateHandler
                     return true;
                 }
 
+                // ── Exchange flow: verified user clicking buy/sell/exchange ──
+                if (RequiresVerification(stageKey) && _exchangeHandler != null)
+                {
+                    var txType = stageKey switch
+                    {
+                        "buy_currency" => "buy",
+                        "sell_currency" => "sell",
+                        "do_exchange" => "exchange",
+                        _ => "ask"
+                    };
+                    if (cleanMode && editMessageId.HasValue)
+                        await _sender.DeleteMessageAsync(chatId, editMessageId.Value, cancellationToken).ConfigureAwait(false);
+                    await _exchangeHandler.StartExchangeFlow(chatId, userId, txType, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+
                 if (IsReplyKeyboardStage(stageKey))
                 {
                     // Type change: inline → reply-kb
@@ -311,6 +330,22 @@ public sealed class DynamicStageHandler : IUpdateHandler
                         if (cleanMode)
                             await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
                         await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, msg, keyboard, cancellationToken).ConfigureAwait(false);
+                        return true;
+                    }
+
+                    // User is verified → start exchange flow
+                    if (_exchangeHandler != null)
+                    {
+                        var txType = targetStage switch
+                        {
+                            "buy_currency" => "buy",
+                            "sell_currency" => "sell",
+                            "do_exchange" => "exchange",
+                            _ => "ask"
+                        };
+                        if (cleanMode)
+                            await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
+                        await _exchangeHandler.StartExchangeFlow(chatId, userId, txType, cancellationToken).ConfigureAwait(false);
                         return true;
                     }
                 }

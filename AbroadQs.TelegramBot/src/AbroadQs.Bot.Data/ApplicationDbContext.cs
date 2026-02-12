@@ -17,6 +17,8 @@ public sealed class ApplicationDbContext : DbContext
     public DbSet<BotStageButtonEntity> BotStageButtons => Set<BotStageButtonEntity>();
     public DbSet<PermissionEntity> Permissions => Set<PermissionEntity>();
     public DbSet<UserPermissionEntity> UserPermissions => Set<UserPermissionEntity>();
+    public DbSet<ExchangeRequestEntity> ExchangeRequests => Set<ExchangeRequestEntity>();
+    public DbSet<ExchangeRateEntity> ExchangeRates => Set<ExchangeRateEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -142,6 +144,43 @@ public sealed class ApplicationDbContext : DbContext
                 .HasForeignKey(x => x.TelegramUserId)
                 .HasPrincipalKey(x => x.TelegramUserId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ExchangeRequestEntity>(e =>
+        {
+            e.ToTable("ExchangeRequests");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.TelegramUserId).IsRequired();
+            e.Property(x => x.Currency).IsRequired().HasMaxLength(20);
+            e.Property(x => x.TransactionType).IsRequired().HasMaxLength(20);
+            e.Property(x => x.DeliveryMethod).IsRequired().HasMaxLength(20);
+            e.Property(x => x.AccountType).HasMaxLength(20);
+            e.Property(x => x.Country).HasMaxLength(100);
+            e.Property(x => x.Amount).HasColumnType("decimal(18,2)");
+            e.Property(x => x.ProposedRate).HasColumnType("decimal(18,2)");
+            e.Property(x => x.Description).HasMaxLength(1000);
+            e.Property(x => x.FeePercent).HasColumnType("decimal(5,2)");
+            e.Property(x => x.FeeAmount).HasColumnType("decimal(18,2)");
+            e.Property(x => x.TotalAmount).HasColumnType("decimal(18,2)");
+            e.Property(x => x.Status).IsRequired().HasMaxLength(30);
+            e.Property(x => x.AdminNote).HasMaxLength(1000);
+            e.Property(x => x.UserDisplayName).HasMaxLength(256);
+            e.HasIndex(x => x.TelegramUserId);
+            e.HasIndex(x => x.Status);
+            e.HasIndex(x => x.RequestNumber).IsUnique();
+        });
+
+        modelBuilder.Entity<ExchangeRateEntity>(e =>
+        {
+            e.ToTable("ExchangeRates");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.CurrencyCode).IsRequired().HasMaxLength(50);
+            e.HasIndex(x => x.CurrencyCode).IsUnique();
+            e.Property(x => x.CurrencyNameFa).HasMaxLength(100);
+            e.Property(x => x.CurrencyNameEn).HasMaxLength(100);
+            e.Property(x => x.Rate).HasColumnType("decimal(18,2)");
+            e.Property(x => x.Change).HasColumnType("decimal(18,2)");
+            e.Property(x => x.Source).IsRequired().HasMaxLength(20);
         });
     }
 }

@@ -17,4 +17,11 @@ public interface IUserConversationStateStore
     /// <summary>Track message IDs during multi-step flows (KYC etc.) for bulk cleanup.</summary>
     Task AddFlowMessageIdAsync(long userId, int messageId, CancellationToken cancellationToken = default);
     Task<List<int>> GetAndClearFlowMessageIdsAsync(long userId, CancellationToken cancellationToken = default);
+
+    /// <summary>Store a key-value pair for multi-step flows (e.g. exchange currency, amount).</summary>
+    Task SetFlowDataAsync(long userId, string key, string value, CancellationToken cancellationToken = default);
+    /// <summary>Retrieve a flow data value.</summary>
+    Task<string?> GetFlowDataAsync(long userId, string key, CancellationToken cancellationToken = default);
+    /// <summary>Clear all flow data for a user.</summary>
+    Task ClearAllFlowDataAsync(long userId, CancellationToken cancellationToken = default);
 }
