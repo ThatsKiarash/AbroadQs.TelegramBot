@@ -13,6 +13,8 @@ public sealed class GroupStateHandler : IUpdateHandler
     private readonly IUserConversationStateStore _stateStore;
     private readonly IGroupRepository _groupRepo;
     private readonly IUserMessageStateRepository? _msgStateRepo;
+    private readonly IBotStageRepository? _stageRepo;
+    private readonly IPermissionRepository? _permRepo;
 
     private const string BtnBack = "🔙 بازگشت";
     private const string BtnCancel = "❌ انصراف";
@@ -22,13 +24,17 @@ public sealed class GroupStateHandler : IUpdateHandler
         ITelegramUserRepository userRepo,
         IUserConversationStateStore stateStore,
         IGroupRepository groupRepo,
-        IUserMessageStateRepository? msgStateRepo = null)
+        IUserMessageStateRepository? msgStateRepo = null,
+        IBotStageRepository? stageRepo = null,
+        IPermissionRepository? permRepo = null)
     {
         _sender = sender;
         _userRepo = userRepo;
         _stateStore = stateStore;
         _groupRepo = groupRepo;
         _msgStateRepo = msgStateRepo;
+        _stageRepo = stageRepo;
+        _permRepo = permRepo;
     }
 
     public string? Command => null;
@@ -56,6 +62,15 @@ public sealed class GroupStateHandler : IUpdateHandler
             var cb = context.MessageText?.Trim() ?? "";
             await SafeAnswerCallback(context.CallbackQueryId, ct);
             var editMsgId = context.CallbackMessageId;
+
+            // ── Stale inline cleanup: if user is on main_menu and not in group flow, delete old inline messages ──
+            var currentState = await _stateStore.GetStateAsync(userId, ct).ConfigureAwait(false);
+            var isInGroupFlow = currentState != null && currentState.StartsWith("grp_");
+            if (!isInGroupFlow && (cb == "grp_submit_confirm" || cb == "grp_submit_cancel"))
+            {
+                await SafeDelete(chatId, editMsgId, ct);
+                return true;
+            }
 
             if (cb == "grp_list_all") { await ShowGroupList(chatId, null, null, null, editMsgId, ct); return true; }
             if (cb == "grp_filter_currency") { await ShowCurrencyFilter(chatId, editMsgId, ct); return true; }
@@ -371,7 +386,7 @@ public sealed class GroupStateHandler : IUpdateHandler
             Id: 0, Name: desc ?? link, TelegramGroupId: null, TelegramGroupLink: link,
             GroupType: grpType, CurrencyCode: currency, CountryCode: country,
             Description: desc, MemberCount: 0, SubmittedByUserId: userId,
-            Status: "pending", IsOfficial: false, CreatedAt: DateTimeOffset.UtcNow, UpdatedAt: null);
+            Status: "pending", AdminNote: null, IsOfficial: false, CreatedAt: DateTimeOffset.UtcNow, UpdatedAt: null);
 
         await _groupRepo.CreateGroupAsync(dto, ct).ConfigureAwait(false);
 
@@ -379,13 +394,54 @@ public sealed class GroupStateHandler : IUpdateHandler
         await _stateStore.ClearAllFlowDataAsync(userId, ct).ConfigureAwait(false);
         await SafeDelete(chatId, triggerMsgId, ct);
 
-        await SafeSendInline(chatId,
-            "✅ <b>گروه شما با موفقیت ثبت شد</b>\n\nپس از تأیید ادمین در لیست گروه‌ها نمایش داده خواهد شد.",
-            new List<IReadOnlyList<InlineButton>>
-            {
-                new[] { new InlineButton("👥 مشاهده گروه‌ها", "grp_menu") },
-                new[] { new InlineButton("🏠 منوی اصلی", "stage:main_menu") },
-            }, ct);
+        // Send plain notification without buttons, then show main menu
+        try { await _sender.SendTextMessageAsync(chatId, "✅ <b>گروه شما با موفقیت ثبت شد</b>\n\nپس از تأیید ادمین در لیست گروه‌ها نمایش داده خواهد شد.", ct).ConfigureAwait(false); } catch { }
+        await SendMainMenuAsync(chatId, userId, ct);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Send main menu (reply keyboard) after submission
+    // ═══════════════════════════════════════════════════════════════
+
+    private async Task SendMainMenuAsync(long chatId, long userId, CancellationToken ct)
+    {
+        if (_stageRepo == null)
+        {
+            await _stateStore.SetReplyStageAsync(userId, "main_menu", ct).ConfigureAwait(false);
+            return;
+        }
+
+        TelegramUserDto? user = null;
+        try { user = await _userRepo.GetByTelegramUserIdAsync(userId, ct).ConfigureAwait(false); } catch { }
+        var lang = user?.PreferredLanguage ?? "fa";
+        var isFa = lang == "fa";
+
+        var stage = await _stageRepo.GetByKeyAsync("main_menu", ct).ConfigureAwait(false);
+        var text = stage != null && stage.IsEnabled
+            ? (isFa ? (stage.TextFa ?? stage.TextEn ?? "منوی اصلی") : (stage.TextEn ?? stage.TextFa ?? "Main Menu"))
+            : (isFa ? "منوی اصلی" : "Main Menu");
+
+        var allButtons = await _stageRepo.GetButtonsAsync("main_menu", ct).ConfigureAwait(false);
+        var permSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (_permRepo != null)
+        {
+            var userPerms = await _permRepo.GetUserPermissionsAsync(userId, ct).ConfigureAwait(false);
+            permSet = new HashSet<string>(userPerms, StringComparer.OrdinalIgnoreCase);
+        }
+
+        var keyboard = new List<IReadOnlyList<string>>();
+        foreach (var row in allButtons
+            .Where(b => b.IsEnabled && (string.IsNullOrEmpty(b.RequiredPermission) || permSet.Contains(b.RequiredPermission)))
+            .GroupBy(b => b.Row).OrderBy(g => g.Key))
+        {
+            var rowTexts = row.OrderBy(b => b.Column)
+                .Select(b => isFa ? (b.TextFa ?? b.TextEn ?? "?") : (b.TextEn ?? b.TextFa ?? "?"))
+                .ToList();
+            if (rowTexts.Count > 0) keyboard.Add(rowTexts);
+        }
+
+        await _stateStore.SetReplyStageAsync(userId, "main_menu", ct).ConfigureAwait(false);
+        try { await _sender.SendTextMessageWithReplyKeyboardAsync(chatId, text, keyboard, ct).ConfigureAwait(false); } catch { }
     }
 
     // ═══════════════════════════════════════════════════════════════

@@ -97,10 +97,11 @@ public sealed class DynamicStageHandler : IUpdateHandler
             await _sender.AnswerCallbackQueryAsync(context.CallbackQueryId, null, cancellationToken).ConfigureAwait(false);
 
         // ── Stale inline message cleanup ────────────────────────────────
-        // If user clicked an inline button but their active reply stage is main_menu,
-        // the inline message is stale (leftover). Delete it and stop.
-        if (context.IsCallbackQuery && editMessageId.HasValue
-            && (data == "noop" || data.StartsWith("exc_hist:", StringComparison.Ordinal) || data.StartsWith("exc_rates:", StringComparison.Ordinal) || data.StartsWith("exc_grp:", StringComparison.Ordinal)))
+        // If user clicked an inline button but they are on main_menu reply stage
+        // and NOT currently in any active inline section, the message is stale.
+        // Only clean up "noop" callbacks (truly stale). For valid navigation callbacks
+        // like exc_hist:, exc_rates:, exc_grp:, stage:, let them proceed normally.
+        if (context.IsCallbackQuery && editMessageId.HasValue && data == "noop")
         {
             var replyStage = await _stateStore.GetReplyStageAsync(userId, cancellationToken).ConfigureAwait(false);
             if (string.Equals(replyStage, "main_menu", StringComparison.OrdinalIgnoreCase))

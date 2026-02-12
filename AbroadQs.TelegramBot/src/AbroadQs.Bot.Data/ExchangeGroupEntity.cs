@@ -22,6 +22,8 @@ public sealed class ExchangeGroupEntity
     public long? SubmittedByUserId { get; set; }
     /// <summary>"pending", "approved", "rejected".</summary>
     public string Status { get; set; } = "pending";
+    /// <summary>Admin note, e.g. rejection reason.</summary>
+    public string? AdminNote { get; set; }
     public bool IsOfficial { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }

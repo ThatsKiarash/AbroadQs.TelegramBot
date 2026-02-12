@@ -1155,7 +1155,7 @@ app.MapPost("/api/exchange/requests/{id:int}/approve", async (int id, HttpContex
 
         await repo.UpdateStatusAsync(id, "approved", null, channelMsgId, ctx.RequestAborted).ConfigureAwait(false);
 
-        // Notify user with clean-chat delete button
+        // Notify user without buttons, then send main menu
         if (botClient != null && botClient is not PlaceholderTelegramBotClient)
         {
             try
@@ -1167,15 +1167,12 @@ app.MapPost("/api/exchange/requests/{id:int}/approve", async (int id, HttpContex
                     $"💵 مبلغ نهایی: <b>{req.TotalAmount:N0}</b> تومان\n\n" +
                     "📢 آگهی شما در کانال منتشر شد.";
 
-                var approveKb = new Telegram.Bot.Types.ReplyMarkups.InlineKeyboardMarkup(new[]
-                {
-                    new[] { Telegram.Bot.Types.ReplyMarkups.InlineKeyboardButton.WithCallbackData("🗑 پاک کردن پیام", "exc_del_msg:0") },
-                    new[] { Telegram.Bot.Types.ReplyMarkups.InlineKeyboardButton.WithCallbackData("🔙 منوی اصلی", "stage:main_menu") },
-                });
-
+                // Send notification without buttons
                 await botClient.SendMessage(req.TelegramUserId, approveMsg,
-                    parseMode: Telegram.Bot.Types.Enums.ParseMode.Html,
-                    replyMarkup: approveKb).ConfigureAwait(false);
+                    parseMode: Telegram.Bot.Types.Enums.ParseMode.Html).ConfigureAwait(false);
+
+                // Send main menu reply keyboard
+                await SendMainMenuFromApi(scope.ServiceProvider, botClient, req.TelegramUserId, ctx.RequestAborted).ConfigureAwait(false);
             }
             catch { }
         }
@@ -1200,7 +1197,7 @@ app.MapPost("/api/exchange/requests/{id:int}/reject", async (int id, HttpContext
 
         await repo.UpdateStatusAsync(id, "rejected", body?.Note, null, ctx.RequestAborted).ConfigureAwait(false);
 
-        // Notify user with clean-chat delete button
+        // Notify user without buttons, then send main menu
         if (botClient != null && botClient is not PlaceholderTelegramBotClient)
         {
             try
@@ -1209,15 +1206,12 @@ app.MapPost("/api/exchange/requests/{id:int}/reject", async (int id, HttpContext
                 var rejectMsg = $"❌ <b>درخواست #{req.RequestNumber} رد شد.</b>{note}\n\n" +
                     "<i>در صورت نیاز می‌توانید درخواست جدیدی ثبت کنید.</i>";
 
-                var rejectKb = new Telegram.Bot.Types.ReplyMarkups.InlineKeyboardMarkup(new[]
-                {
-                    new[] { Telegram.Bot.Types.ReplyMarkups.InlineKeyboardButton.WithCallbackData("🗑 پاک کردن پیام", "exc_del_msg:0") },
-                    new[] { Telegram.Bot.Types.ReplyMarkups.InlineKeyboardButton.WithCallbackData("🔙 منوی اصلی", "stage:main_menu") },
-                });
-
+                // Send notification without buttons
                 await botClient.SendMessage(req.TelegramUserId, rejectMsg,
-                    parseMode: Telegram.Bot.Types.Enums.ParseMode.Html,
-                    replyMarkup: rejectKb).ConfigureAwait(false);
+                    parseMode: Telegram.Bot.Types.Enums.ParseMode.Html).ConfigureAwait(false);
+
+                // Send main menu reply keyboard
+                await SendMainMenuFromApi(scope.ServiceProvider, botClient, req.TelegramUserId, ctx.RequestAborted).ConfigureAwait(false);
             }
             catch { }
         }
@@ -1334,7 +1328,7 @@ app.MapGet("/api/exchange-groups", async (HttpContext ctx) =>
         var db = scope.ServiceProvider.GetService<AbroadQs.Bot.Data.ApplicationDbContext>();
         if (db == null) return Results.Json(Array.Empty<object>());
         var groups = await db.ExchangeGroups.OrderByDescending(g => g.CreatedAt).ToListAsync(ctx.RequestAborted).ConfigureAwait(false);
-        return Results.Json(groups.Select(g => new { g.Id, g.Name, g.CurrencyCode, g.CountryCode, g.TelegramGroupLink, g.Description, g.Status, g.MemberCount, g.SubmittedByUserId, g.CreatedAt }));
+        return Results.Json(groups.Select(g => new { g.Id, g.Name, g.CurrencyCode, g.CountryCode, g.TelegramGroupLink, g.Description, g.Status, g.AdminNote, g.MemberCount, g.SubmittedByUserId, g.CreatedAt }));
     }
     catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
 }).WithName("ExchangeGroupsList");
@@ -1372,11 +1366,25 @@ app.MapPost("/api/exchange-groups/{id}/approve", async (int id, HttpContext ctx)
     {
         using var scope = ctx.RequestServices.CreateScope();
         var db = scope.ServiceProvider.GetService<AbroadQs.Bot.Data.ApplicationDbContext>();
+        var botClient = scope.ServiceProvider.GetService<ITelegramBotClient>();
         if (db == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
         var g = await db.ExchangeGroups.FindAsync(new object[] { id }, ctx.RequestAborted).ConfigureAwait(false);
         if (g == null) return Results.NotFound();
         g.Status = "approved"; g.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ctx.RequestAborted).ConfigureAwait(false);
+
+        // Notify user who submitted the group
+        if (g.SubmittedByUserId.HasValue && botClient != null && botClient is not PlaceholderTelegramBotClient)
+        {
+            try
+            {
+                var notifyMsg = $"✅ <b>گروه شما تأیید شد!</b>\n\n🔗 {g.TelegramGroupLink}\n\nگروه شما در لیست گروه‌های تبادل ارز نمایش داده می‌شود.";
+                await botClient.SendMessage(g.SubmittedByUserId.Value, notifyMsg, parseMode: Telegram.Bot.Types.Enums.ParseMode.Html).ConfigureAwait(false);
+                await SendMainMenuFromApi(scope.ServiceProvider, botClient, g.SubmittedByUserId.Value, ctx.RequestAborted).ConfigureAwait(false);
+            }
+            catch { }
+        }
+
         return Results.Json(new { ok = true });
     }
     catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
@@ -1388,11 +1396,29 @@ app.MapPost("/api/exchange-groups/{id}/reject", async (int id, HttpContext ctx) 
     {
         using var scope = ctx.RequestServices.CreateScope();
         var db = scope.ServiceProvider.GetService<AbroadQs.Bot.Data.ApplicationDbContext>();
+        var botClient = scope.ServiceProvider.GetService<ITelegramBotClient>();
         if (db == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+
+        var body = await ctx.Request.ReadFromJsonAsync<GroupRejectRequest>(ctx.RequestAborted).ConfigureAwait(false);
         var g = await db.ExchangeGroups.FindAsync(new object[] { id }, ctx.RequestAborted).ConfigureAwait(false);
         if (g == null) return Results.NotFound();
         g.Status = "rejected"; g.UpdatedAt = DateTimeOffset.UtcNow;
+        if (!string.IsNullOrEmpty(body?.Note)) g.AdminNote = body.Note;
         await db.SaveChangesAsync(ctx.RequestAborted).ConfigureAwait(false);
+
+        // Notify user who submitted the group
+        if (g.SubmittedByUserId.HasValue && botClient != null && botClient is not PlaceholderTelegramBotClient)
+        {
+            try
+            {
+                var reasonText = !string.IsNullOrEmpty(body?.Note) ? $"\n\n📝 دلیل: {body.Note}" : "";
+                var notifyMsg = $"❌ <b>گروه شما رد شد.</b>\n\n🔗 {g.TelegramGroupLink}{reasonText}\n\n<i>در صورت نیاز می‌توانید گروه جدیدی ثبت کنید.</i>";
+                await botClient.SendMessage(g.SubmittedByUserId.Value, notifyMsg, parseMode: Telegram.Bot.Types.Enums.ParseMode.Html).ConfigureAwait(false);
+                await SendMainMenuFromApi(scope.ServiceProvider, botClient, g.SubmittedByUserId.Value, ctx.RequestAborted).ConfigureAwait(false);
+            }
+            catch { }
+        }
+
         return Results.Json(new { ok = true });
     }
     catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
@@ -2061,6 +2087,57 @@ static string GetUpdatePreview(Update u)
 app.MapGet("/", () => Results.Ok("AbroadQs Telegram Bot (Webhook) is running."))
     .WithName("Health");
 
+// ═══════════════════════════════════════════════════════════════════
+//  Helper: send main menu reply keyboard from API endpoints
+// ═══════════════════════════════════════════════════════════════════
+static async Task SendMainMenuFromApi(IServiceProvider sp, ITelegramBotClient botClient, long userId, CancellationToken ct)
+{
+    try
+    {
+        var stageRepo = sp.GetService<IBotStageRepository>();
+        var permRepo = sp.GetService<IPermissionRepository>();
+        var userRepo = sp.GetService<ITelegramUserRepository>();
+        var stateStore = sp.GetService<IUserConversationStateStore>();
+        if (stageRepo == null) return;
+
+        var user = userRepo != null ? await userRepo.GetByTelegramUserIdAsync(userId, ct).ConfigureAwait(false) : null;
+        var isFa = (user?.PreferredLanguage ?? "fa") == "fa";
+
+        var stage = await stageRepo.GetByKeyAsync("main_menu", ct).ConfigureAwait(false);
+        var menuText = stage != null && stage.IsEnabled
+            ? (isFa ? (stage.TextFa ?? stage.TextEn ?? "منوی اصلی") : (stage.TextEn ?? stage.TextFa ?? "Main Menu"))
+            : (isFa ? "منوی اصلی" : "Main Menu");
+
+        var allButtons = await stageRepo.GetButtonsAsync("main_menu", ct).ConfigureAwait(false);
+        var permSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (permRepo != null)
+        {
+            var userPerms = await permRepo.GetUserPermissionsAsync(userId, ct).ConfigureAwait(false);
+            permSet = new HashSet<string>(userPerms, StringComparer.OrdinalIgnoreCase);
+        }
+
+        var rows = new List<Telegram.Bot.Types.ReplyMarkups.KeyboardButton[]>();
+        foreach (var row in allButtons
+            .Where(b => b.IsEnabled && (string.IsNullOrEmpty(b.RequiredPermission) || permSet.Contains(b.RequiredPermission)))
+            .GroupBy(b => b.Row).OrderBy(g => g.Key))
+        {
+            rows.Add(row.OrderBy(b => b.Column)
+                .Select(b => new Telegram.Bot.Types.ReplyMarkups.KeyboardButton(isFa ? (b.TextFa ?? b.TextEn ?? "?") : (b.TextEn ?? b.TextFa ?? "?")))
+                .ToArray());
+        }
+
+        if (rows.Count > 0)
+        {
+            var menuKb = new Telegram.Bot.Types.ReplyMarkups.ReplyKeyboardMarkup(rows) { ResizeKeyboard = true };
+            await botClient.SendMessage(userId, menuText, parseMode: Telegram.Bot.Types.Enums.ParseMode.Html, replyMarkup: menuKb, cancellationToken: ct).ConfigureAwait(false);
+        }
+
+        if (stateStore != null)
+            await stateStore.SetReplyStageAsync(userId, "main_menu", ct).ConfigureAwait(false);
+    }
+    catch { /* swallow — best effort */ }
+}
+
 app.Run();
 
 record SetWebhookRequest(string? Url);
@@ -2070,5 +2147,6 @@ record KycRejectRequest(Dictionary<string, string>? Reasons);
 record SetSupportTelegramRequest(string? Username);
 record ManualRateUpdate(string? CurrencyCode, string? CurrencyNameFa, string? CurrencyNameEn, decimal Rate);
 record RejectRequest(string? Note);
+record GroupRejectRequest(string? Note);
 record SetChannelRequest(string? ChannelId);
 record SetFeeRequest(string? FeePercent);

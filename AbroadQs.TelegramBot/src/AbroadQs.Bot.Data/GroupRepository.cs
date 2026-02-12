@@ -47,11 +47,12 @@ public sealed class GroupRepository : IGroupRepository
         return list.Select(ToDto).ToList();
     }
 
-    public async Task UpdateGroupStatusAsync(int id, string status, CancellationToken ct = default)
+    public async Task UpdateGroupStatusAsync(int id, string status, string? adminNote = null, CancellationToken ct = default)
     {
         var e = await _db.ExchangeGroups.FindAsync(new object[] { id }, ct).ConfigureAwait(false);
         if (e == null) return;
         e.Status = status;
+        if (adminNote != null) e.AdminNote = adminNote;
         e.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct).ConfigureAwait(false);
     }
@@ -78,5 +79,5 @@ public sealed class GroupRepository : IGroupRepository
     private static ExchangeGroupDto ToDto(ExchangeGroupEntity e) => new(
         e.Id, e.Name, e.TelegramGroupId, e.TelegramGroupLink, e.GroupType,
         e.CurrencyCode, e.CountryCode, e.Description, e.MemberCount,
-        e.SubmittedByUserId, e.Status, e.IsOfficial, e.CreatedAt, e.UpdatedAt);
+        e.SubmittedByUserId, e.Status, e.AdminNote, e.IsOfficial, e.CreatedAt, e.UpdatedAt);
 }

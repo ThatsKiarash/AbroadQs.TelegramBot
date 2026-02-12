@@ -21,6 +21,9 @@ public sealed class ExchangeStateHandler : IUpdateHandler
     private readonly IExchangeRepository _exchangeRepo;
     private readonly ISettingsRepository? _settingsRepo;
     private readonly IUserMessageStateRepository? _msgStateRepo;
+    private readonly IBotStageRepository? _stageRepo;
+    private readonly IPermissionRepository? _permRepo;
+    private readonly IWalletRepository? _walletRepo;
 
     private const string CbConfirm = "exc_confirm";
     private const string CbCancel = "exc_cancel";
@@ -63,7 +66,10 @@ public sealed class ExchangeStateHandler : IUpdateHandler
         IUserConversationStateStore stateStore,
         IExchangeRepository exchangeRepo,
         ISettingsRepository? settingsRepo = null,
-        IUserMessageStateRepository? msgStateRepo = null)
+        IUserMessageStateRepository? msgStateRepo = null,
+        IBotStageRepository? stageRepo = null,
+        IPermissionRepository? permRepo = null,
+        IWalletRepository? walletRepo = null)
     {
         _sender = sender;
         _userRepo = userRepo;
@@ -71,6 +77,9 @@ public sealed class ExchangeStateHandler : IUpdateHandler
         _exchangeRepo = exchangeRepo;
         _settingsRepo = settingsRepo;
         _msgStateRepo = msgStateRepo;
+        _stageRepo = stageRepo;
+        _permRepo = permRepo;
+        _walletRepo = walletRepo;
     }
 
     public string? Command => null;
@@ -99,16 +108,21 @@ public sealed class ExchangeStateHandler : IUpdateHandler
             var cb = context.MessageText?.Trim() ?? "";
             await SafeAnswerCallback(context.CallbackQueryId, null, ct);
 
-            if (cb.StartsWith("exc_del_msg:"))
+            // ── Stale inline cleanup: if user is on main_menu and not in exchange flow, delete old inline messages ──
+            var currentState = await _stateStore.GetStateAsync(userId, ct).ConfigureAwait(false);
+            var isInExchangeFlow = currentState != null && currentState.StartsWith("exc_");
+            if (!isInExchangeFlow && (cb == CbConfirm || cb == CbCancel))
             {
                 await SafeDelete(chatId, context.CallbackMessageId, ct);
+                return true;
+            }
+
+            if (cb.StartsWith("exc_del_msg:"))
+            {
+                // Just delete the message and show main menu directly
+                await SafeDelete(chatId, context.CallbackMessageId, ct);
                 await _stateStore.ClearStateAsync(userId, ct).ConfigureAwait(false);
-                await _stateStore.SetReplyStageAsync(userId, "main_menu", ct).ConfigureAwait(false);
-                await SafeSendInline(chatId, "پیام حذف شد.",
-                    new List<IReadOnlyList<InlineButton>>
-                    {
-                        new[] { new InlineButton("بازگشت به منوی اصلی", "stage:main_menu") },
-                    }, ct);
+                await SendMainMenuAsync(chatId, userId, ct);
                 return true;
             }
 
@@ -121,8 +135,8 @@ public sealed class ExchangeStateHandler : IUpdateHandler
                 {
                     await _stateStore.ClearStateAsync(userId, ct).ConfigureAwait(false);
                     await _stateStore.ClearAllFlowDataAsync(userId, ct).ConfigureAwait(false);
-                    await SafeSendInline(chatId, "⚠️ خطایی رخ داد. لطفاً دوباره تلاش کنید.",
-                        new List<IReadOnlyList<InlineButton>> { new[] { new InlineButton("🏠 منوی اصلی", "stage:main_menu") } }, ct);
+                    await _sender.SendTextMessageAsync(chatId, "⚠️ خطایی رخ داد. لطفاً دوباره تلاش کنید.", ct).ConfigureAwait(false);
+                    await SendMainMenuAsync(chatId, userId, ct);
                 }
                 return true;
             }
@@ -136,8 +150,8 @@ public sealed class ExchangeStateHandler : IUpdateHandler
                 {
                     await _stateStore.ClearStateAsync(userId, ct).ConfigureAwait(false);
                     await _stateStore.ClearAllFlowDataAsync(userId, ct).ConfigureAwait(false);
-                    await SafeSendInline(chatId, "⚠️ خطایی در ثبت درخواست رخ داد. لطفاً دوباره تلاش کنید.",
-                        new List<IReadOnlyList<InlineButton>> { new[] { new InlineButton("🏠 منوی اصلی", "stage:main_menu") } }, ct);
+                    await _sender.SendTextMessageAsync(chatId, "⚠️ خطایی در ثبت درخواست رخ داد. لطفاً دوباره تلاش کنید.", ct).ConfigureAwait(false);
+                    await SendMainMenuAsync(chatId, userId, ct);
                 }
                 return true;
             }
@@ -1212,6 +1226,58 @@ public sealed class ExchangeStateHandler : IUpdateHandler
         decimal.TryParse(feeAmountStr, out var feeAmount);
         decimal.TryParse(totalAmountStr, out var totalAmount);
 
+        // ── Payment gate: check if ad requires payment before submission ──
+        if (_settingsRepo != null)
+        {
+            try
+            {
+                var pricingMode = await _settingsRepo.GetValueAsync("ad_pricing_mode", ct).ConfigureAwait(false) ?? "free";
+                if (pricingMode == "paid")
+                {
+                    var adPriceStr = await _settingsRepo.GetValueAsync("ad_price_amount", ct).ConfigureAwait(false) ?? "0";
+                    decimal.TryParse(adPriceStr, out var adPrice);
+                    if (adPrice > 0)
+                    {
+                        var paymentMethod = await _settingsRepo.GetValueAsync("ad_payment_method", ct).ConfigureAwait(false) ?? "wallet";
+                        if (paymentMethod == "wallet" && _walletRepo != null)
+                        {
+                            var balance = await _walletRepo.GetBalanceAsync(userId, ct).ConfigureAwait(false);
+                            if (balance < adPrice)
+                            {
+                                await SafeDelete(chatId, triggerMsgId, ct);
+                                await RemoveReplyKbSilent(chatId, ct);
+                                var errMsg = $"<b>⚠️ موجودی کیف پول کافی نیست</b>\n━━━━━━━━━━━━━━━━━━━\n\n" +
+                                             $"💰 هزینه ثبت آگهی: <b>{adPrice:N0}</b> تومان\n" +
+                                             $"💳 موجودی فعلی: <b>{balance:N0}</b> تومان\n\n" +
+                                             "لطفاً ابتدا کیف پول خود را شارژ کنید.";
+                                await SafeSendInline(chatId, errMsg, new List<IReadOnlyList<InlineButton>>
+                                {
+                                    new[] { new InlineButton("🔙 بازگشت به پیش‌نمایش", CbCancel) },
+                                }, ct);
+                                return;
+                            }
+                            // Debit wallet
+                            await _walletRepo.DebitAsync(userId, adPrice, $"هزینه ثبت آگهی تبادل ارز", null, ct).ConfigureAwait(false);
+                        }
+                        else if (paymentMethod == "gateway")
+                        {
+                            // Gateway payment — inform user and block submission until paid
+                            await SafeDelete(chatId, triggerMsgId, ct);
+                            await RemoveReplyKbSilent(chatId, ct);
+                            var gatewayMsg = $"<b>💳 پرداخت هزینه آگهی</b>\n━━━━━━━━━━━━━━━━━━━\n\n" +
+                                             $"💰 هزینه ثبت آگهی: <b>{adPrice:N0}</b> تومان\n\n" +
+                                             "لطفاً از طریق کیف پول خود هزینه را پرداخت کنید.\n" +
+                                             "پس از شارژ کیف پول، مجدداً اقدام به ثبت درخواست نمایید.";
+                            await _sender.SendTextMessageAsync(chatId, gatewayMsg, ct).ConfigureAwait(false);
+                            await SendMainMenuAsync(chatId, userId, ct);
+                            return;
+                        }
+                    }
+                }
+            }
+            catch { /* settings read failed — proceed without payment */ }
+        }
+
         var requestNumber = await _exchangeRepo.GetNextRequestNumberAsync(ct).ConfigureAwait(false);
 
         var dto = new ExchangeRequestDto(
@@ -1246,14 +1312,10 @@ public sealed class ExchangeStateHandler : IUpdateHandler
                   "\n🕐 وضعیت: <b>در انتظار بررسی</b>\n\n" +
                   "درخواست شما برای بررسی به تیم ارسال شد.";
 
-        var kb = new List<IReadOnlyList<InlineButton>>
-        {
-            new[] { new InlineButton("📋 مشاهده تبادلات من", "stage:my_exchanges") },
-            new[] { new InlineButton("🗑 حذف پیام", "exc_del_msg:0") },
-            new[] { new InlineButton("🏠 بازگشت به منوی اصلی", "stage:main_menu") },
-        };
-
-        await SafeSendInline(chatId, msg, kb, ct);
+        // Send plain notification without buttons
+        await _sender.SendTextMessageAsync(chatId, msg, ct).ConfigureAwait(false);
+        // Then immediately show main menu
+        await SendMainMenuAsync(chatId, userId, ct);
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -1267,23 +1329,56 @@ public sealed class ExchangeStateHandler : IUpdateHandler
         await SafeDelete(chatId, triggerMsgId, ct);
         await RemoveReplyKbSilent(chatId, ct);
 
-        await SafeSendInline(chatId,
-            "❌ <b>درخواست لغو شد</b>\n\nاطلاعات وارد شده حذف گردید.",
-            new List<IReadOnlyList<InlineButton>>
-            {
-                new[] { new InlineButton("🗑 حذف پیام", "exc_del_msg:0") },
-                new[] { new InlineButton("🏠 بازگشت به منوی اصلی", "stage:main_menu") },
-            }, ct);
+        // Send plain notification without buttons
+        await _sender.SendTextMessageAsync(chatId, "❌ <b>درخواست لغو شد</b>\n\nاطلاعات وارد شده حذف گردید.", ct).ConfigureAwait(false);
+        // Then immediately show main menu
+        await SendMainMenuAsync(chatId, userId, ct);
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  Notification buttons — used from Program.cs
+    //  Send Main Menu helper
     // ═══════════════════════════════════════════════════════════════
 
-    public static List<IReadOnlyList<InlineButton>> NotificationButtons(bool isFa, int? channelMsgId = null) => new()
+    private async Task SendMainMenuAsync(long chatId, long userId, CancellationToken ct)
     {
-        new[] { new InlineButton(isFa ? "حذف پیام" : "Delete", "exc_del_msg:0") },
-    };
+        if (_stageRepo == null)
+        {
+            // Fallback: just set the reply stage and send a basic message
+            await _stateStore.SetReplyStageAsync(userId, "main_menu", ct).ConfigureAwait(false);
+            return;
+        }
+
+        var user = await SafeGetUser(userId, ct);
+        var lang = user?.PreferredLanguage ?? "fa";
+        var isFa = lang == "fa";
+
+        var stage = await _stageRepo.GetByKeyAsync("main_menu", ct).ConfigureAwait(false);
+        var text = stage != null && stage.IsEnabled
+            ? (isFa ? (stage.TextFa ?? stage.TextEn ?? "منوی اصلی") : (stage.TextEn ?? stage.TextFa ?? "Main Menu"))
+            : (isFa ? "منوی اصلی" : "Main Menu");
+
+        var allButtons = await _stageRepo.GetButtonsAsync("main_menu", ct).ConfigureAwait(false);
+        var permSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (_permRepo != null)
+        {
+            var userPerms = await _permRepo.GetUserPermissionsAsync(userId, ct).ConfigureAwait(false);
+            permSet = new HashSet<string>(userPerms, StringComparer.OrdinalIgnoreCase);
+        }
+
+        var keyboard = new List<IReadOnlyList<string>>();
+        foreach (var row in allButtons
+            .Where(b => b.IsEnabled && (string.IsNullOrEmpty(b.RequiredPermission) || permSet.Contains(b.RequiredPermission)))
+            .GroupBy(b => b.Row).OrderBy(g => g.Key))
+        {
+            var rowTexts = row.OrderBy(b => b.Column)
+                .Select(b => isFa ? (b.TextFa ?? b.TextEn ?? "?") : (b.TextEn ?? b.TextFa ?? "?"))
+                .ToList();
+            if (rowTexts.Count > 0) keyboard.Add(rowTexts);
+        }
+
+        await _stateStore.SetReplyStageAsync(userId, "main_menu", ct).ConfigureAwait(false);
+        await _sender.SendTextMessageWithReplyKeyboardAsync(chatId, text, keyboard, ct).ConfigureAwait(false);
+    }
 
     // ═══════════════════════════════════════════════════════════════
     //  Keyboard builders

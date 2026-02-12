@@ -258,6 +258,7 @@ public sealed class ApplicationDbContext : DbContext
             e.Property(x => x.CountryCode).HasMaxLength(10);
             e.Property(x => x.Description).HasMaxLength(1000);
             e.Property(x => x.Status).IsRequired().HasMaxLength(20);
+            e.Property(x => x.AdminNote).HasMaxLength(1000);
             e.HasIndex(x => x.Status);
             e.HasIndex(x => x.GroupType);
         });
