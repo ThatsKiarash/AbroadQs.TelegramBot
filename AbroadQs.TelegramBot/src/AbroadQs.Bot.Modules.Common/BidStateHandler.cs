@@ -85,7 +85,14 @@ public sealed class BidStateHandler : IUpdateHandler
             {
                 var st = await _stateStore.GetStateAsync(userId, ct).ConfigureAwait(false);
                 if (st != "bid_preview") return false;
-                await DoSubmitBid(chatId, userId, context.CallbackMessageId, ct);
+                try { await DoSubmitBid(chatId, userId, context.CallbackMessageId, ct); }
+                catch
+                {
+                    await _stateStore.ClearStateAsync(userId, ct).ConfigureAwait(false);
+                    await _stateStore.ClearAllFlowDataAsync(userId, ct).ConfigureAwait(false);
+                    await SafeSendInline(chatId, "⚠️ خطایی در ثبت پیشنهاد رخ داد. لطفاً دوباره تلاش کنید.",
+                        new List<IReadOnlyList<InlineButton>> { new[] { new InlineButton("🏠 منوی اصلی", "stage:main_menu") } }, ct);
+                }
                 return true;
             }
 
