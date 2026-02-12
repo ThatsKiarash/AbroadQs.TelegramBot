@@ -381,6 +381,8 @@ public sealed class DynamicStageHandler : IUpdateHandler
             catch { /* edit failed (e.g. not modified) — just swallow, don't send new message */ }
             return;
         }
+        // Remove the reply keyboard first so the phone soft keyboard closes
+        try { await _sender.RemoveReplyKeyboardSilentAsync(chatId, ct).ConfigureAwait(false); } catch { }
         await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, text, keyboard, ct).ConfigureAwait(false);
     }
 

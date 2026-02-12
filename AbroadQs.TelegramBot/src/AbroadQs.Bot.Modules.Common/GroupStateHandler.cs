@@ -129,7 +129,7 @@ public sealed class GroupStateHandler : IUpdateHandler
             try { await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, editMsgId.Value, text, kb, ct).ConfigureAwait(false); return; }
             catch { }
         }
-        await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, text, kb, ct).ConfigureAwait(false);
+        await SafeSendInline(chatId, text, kb, ct);
     }
 
     private async Task ShowGroupList(long chatId, string? groupType, string? currencyCode, string? countryCode, int? editMsgId, CancellationToken ct)
@@ -162,7 +162,7 @@ public sealed class GroupStateHandler : IUpdateHandler
             try { await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, editMsgId.Value, sb.ToString(), kb, ct).ConfigureAwait(false); return; }
             catch { }
         }
-        await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, sb.ToString(), kb, ct).ConfigureAwait(false);
+        await SafeSendInline(chatId, sb.ToString(), kb, ct);
     }
 
     private async Task ShowCurrencyFilter(long chatId, int? editMsgId, CancellationToken ct)
@@ -187,7 +187,7 @@ public sealed class GroupStateHandler : IUpdateHandler
             try { await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, editMsgId.Value, text, kb, ct).ConfigureAwait(false); return; }
             catch { }
         }
-        await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, text, kb, ct).ConfigureAwait(false);
+        await SafeSendInline(chatId, text, kb, ct);
     }
 
     private async Task ShowCountryFilter(long chatId, int? editMsgId, CancellationToken ct)
@@ -209,7 +209,7 @@ public sealed class GroupStateHandler : IUpdateHandler
             try { await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, editMsgId.Value, text, kb, ct).ConfigureAwait(false); return; }
             catch { }
         }
-        await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, text, kb, ct).ConfigureAwait(false);
+        await SafeSendInline(chatId, text, kb, ct);
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -355,7 +355,7 @@ public sealed class GroupStateHandler : IUpdateHandler
             new[] { new InlineButton("✅ ارسال برای تأیید", "grp_submit_confirm") },
             new[] { new InlineButton("❌ انصراف", "grp_submit_cancel") },
         };
-        await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, preview, kb, ct).ConfigureAwait(false);
+        await SafeSendInline(chatId, preview, kb, ct);
         return true;
     }
 
@@ -379,13 +379,13 @@ public sealed class GroupStateHandler : IUpdateHandler
         await _stateStore.ClearAllFlowDataAsync(userId, ct).ConfigureAwait(false);
         await SafeDelete(chatId, triggerMsgId, ct);
 
-        await _sender.SendTextMessageWithInlineKeyboardAsync(chatId,
+        await SafeSendInline(chatId,
             "✅ <b>گروه شما با موفقیت ثبت شد</b>\n\nپس از تأیید ادمین در لیست گروه‌ها نمایش داده خواهد شد.",
             new List<IReadOnlyList<InlineButton>>
             {
                 new[] { new InlineButton("👥 مشاهده گروه‌ها", "grp_menu") },
                 new[] { new InlineButton("🏠 منوی اصلی", "stage:main_menu") },
-            }, ct).ConfigureAwait(false);
+            }, ct);
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -394,6 +394,16 @@ public sealed class GroupStateHandler : IUpdateHandler
 
     private async Task SafeSendReplyKb(long chatId, string text, List<IReadOnlyList<string>> kb, CancellationToken ct)
     { try { await _sender.SendTextMessageWithReplyKeyboardAsync(chatId, text, kb, ct).ConfigureAwait(false); } catch { } }
+    private async Task SafeSendInline(long chatId, string text, List<IReadOnlyList<InlineButton>> kb, CancellationToken ct)
+    {
+        try
+        {
+            // Always remove the reply keyboard first so the phone soft keyboard closes
+            await RemoveReplyKbSilent(chatId, ct);
+            await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, text, kb, ct).ConfigureAwait(false);
+        }
+        catch { }
+    }
     private async Task SafeDelete(long chatId, int? msgId, CancellationToken ct)
     { if (msgId.HasValue) try { await _sender.DeleteMessageAsync(chatId, msgId.Value, ct).ConfigureAwait(false); } catch { } }
     private async Task SafeAnswerCallback(string? id, CancellationToken ct)

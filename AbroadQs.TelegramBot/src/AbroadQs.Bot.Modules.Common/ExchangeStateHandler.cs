@@ -1331,7 +1331,15 @@ public sealed class ExchangeStateHandler : IUpdateHandler
     { try { await _sender.SendTextMessageWithReplyKeyboardAsync(chatId, text, kb, ct).ConfigureAwait(false); } catch { } }
 
     private async Task SafeSendInline(long chatId, string text, List<IReadOnlyList<InlineButton>> kb, CancellationToken ct)
-    { try { await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, text, kb, ct).ConfigureAwait(false); } catch { } }
+    {
+        try
+        {
+            // Always remove the reply keyboard first so the phone soft keyboard closes
+            await RemoveReplyKbSilent(chatId, ct);
+            await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, text, kb, ct).ConfigureAwait(false);
+        }
+        catch { }
+    }
 
     private async Task SafeDelete(long chatId, int? msgId, CancellationToken ct)
     { if (msgId.HasValue) try { await _sender.DeleteMessageAsync(chatId, msgId.Value, ct).ConfigureAwait(false); } catch { } }
