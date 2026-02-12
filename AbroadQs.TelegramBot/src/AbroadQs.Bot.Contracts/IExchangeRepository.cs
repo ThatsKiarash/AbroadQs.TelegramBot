@@ -47,7 +47,13 @@ public sealed record ExchangeRequestDto(
     string? AdminNote,
     string? UserDisplayName,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? UpdatedAt);
+    DateTimeOffset? UpdatedAt,
+    string? DestinationCurrency = null,
+    string? City = null,
+    string? MeetingPreference = null,
+    string? PaypalEmail = null,
+    string? Iban = null,
+    string? BankName = null);
 
 public sealed record ExchangeRateDto(
     int Id,

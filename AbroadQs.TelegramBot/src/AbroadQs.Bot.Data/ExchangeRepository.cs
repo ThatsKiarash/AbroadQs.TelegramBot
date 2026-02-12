@@ -38,6 +38,12 @@ public sealed class ExchangeRepository : IExchangeRepository
             TotalAmount = dto.TotalAmount,
             Status = dto.Status,
             UserDisplayName = dto.UserDisplayName,
+            DestinationCurrency = dto.DestinationCurrency,
+            City = dto.City,
+            MeetingPreference = dto.MeetingPreference,
+            PaypalEmail = dto.PaypalEmail,
+            Iban = dto.Iban,
+            BankName = dto.BankName,
             CreatedAt = DateTimeOffset.UtcNow,
         };
         _db.ExchangeRequests.Add(entity);
@@ -183,7 +189,8 @@ public sealed class ExchangeRepository : IExchangeRepository
         e.Id, e.RequestNumber, e.TelegramUserId, e.Currency, e.TransactionType,
         e.DeliveryMethod, e.AccountType, e.Country, e.Amount, e.ProposedRate,
         e.Description, e.FeePercent, e.FeeAmount, e.TotalAmount, e.Status,
-        e.ChannelMessageId, e.AdminNote, e.UserDisplayName, e.CreatedAt, e.UpdatedAt);
+        e.ChannelMessageId, e.AdminNote, e.UserDisplayName, e.CreatedAt, e.UpdatedAt,
+        e.DestinationCurrency, e.City, e.MeetingPreference, e.PaypalEmail, e.Iban, e.BankName);
 
     private static ExchangeRateDto ToDto(ExchangeRateEntity e) => new(
         e.Id, e.CurrencyCode, e.CurrencyNameFa, e.CurrencyNameEn,

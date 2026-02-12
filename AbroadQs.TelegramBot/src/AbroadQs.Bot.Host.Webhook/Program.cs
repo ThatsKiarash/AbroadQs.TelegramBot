@@ -117,8 +117,24 @@ if (!string.IsNullOrWhiteSpace(connStr))
     builder.Services.AddScoped<IBotStageRepository, BotStageRepository>();
     builder.Services.AddScoped<IPermissionRepository, PermissionRepository>();
     builder.Services.AddScoped<IExchangeRepository, ExchangeRepository>();
+    builder.Services.AddScoped<IGroupRepository, GroupRepository>();
+    builder.Services.AddScoped<IWalletRepository, WalletRepository>();
+    builder.Services.AddScoped<IBidRepository, BidRepository>();
+    builder.Services.AddScoped<IGroupRepository, GroupRepository>();
     builder.Services.AddScoped<NavasanApiService>();
     builder.Services.AddHostedService<RateAutoRefreshService>();
+
+    // BitPay service
+    builder.Services.AddHttpClient<AbroadQs.Bot.Host.Webhook.Services.BitPayService>();
+    builder.Services.AddScoped(sp =>
+    {
+        var http = sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(AbroadQs.Bot.Host.Webhook.Services.BitPayService));
+        var logger = sp.GetRequiredService<ILogger<AbroadQs.Bot.Host.Webhook.Services.BitPayService>>();
+        var settingsRepo = sp.GetService<ISettingsRepository>();
+        var apiKey = settingsRepo?.GetValueAsync("bitpay_api_key").GetAwaiter().GetResult() ?? "";
+        var testMode = settingsRepo?.GetValueAsync("bitpay_test_mode").GetAwaiter().GetResult() == "true";
+        return new AbroadQs.Bot.Host.Webhook.Services.BitPayService(http, logger, apiKey, testMode);
+    });
 }
 else
 {
@@ -1241,6 +1257,238 @@ app.MapPost("/api/settings/exchange-fee", async (HttpContext ctx) =>
     }
     catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
 }).WithName("ExchangeFeeSet");
+
+// ===== Ad Pricing Setting =====
+app.MapGet("/api/settings/ad-pricing", async (HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var repo = scope.ServiceProvider.GetService<ISettingsRepository>();
+        if (repo == null) return Results.Json(new { mode = "free", price = "0", paymentMethod = "wallet", commissionTiming = "after_match", commissionPercent = "0", commissionFixed = "0" });
+        var mode = await repo.GetValueAsync("ad_pricing_mode", ctx.RequestAborted).ConfigureAwait(false) ?? "free";
+        var price = await repo.GetValueAsync("ad_price_amount", ctx.RequestAborted).ConfigureAwait(false) ?? "0";
+        var paymentMethod = await repo.GetValueAsync("ad_payment_method", ctx.RequestAborted).ConfigureAwait(false) ?? "wallet";
+        var commissionTiming = await repo.GetValueAsync("commission_timing", ctx.RequestAborted).ConfigureAwait(false) ?? "after_match";
+        var commissionPercent = await repo.GetValueAsync("commission_percent", ctx.RequestAborted).ConfigureAwait(false) ?? "0";
+        var commissionFixed = await repo.GetValueAsync("commission_fixed_amount", ctx.RequestAborted).ConfigureAwait(false) ?? "0";
+        return Results.Json(new { mode, price, paymentMethod, commissionTiming, commissionPercent, commissionFixed });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("AdPricingGet");
+
+app.MapPost("/api/settings/ad-pricing", async (HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var repo = scope.ServiceProvider.GetService<ISettingsRepository>();
+        if (repo == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+        var body = await ctx.Request.ReadFromJsonAsync<Dictionary<string, string>>(ctx.RequestAborted).ConfigureAwait(false);
+        if (body != null)
+        {
+            if (body.ContainsKey("mode")) await repo.SetValueAsync("ad_pricing_mode", body["mode"], ctx.RequestAborted).ConfigureAwait(false);
+            if (body.ContainsKey("price")) await repo.SetValueAsync("ad_price_amount", body["price"], ctx.RequestAborted).ConfigureAwait(false);
+            if (body.ContainsKey("paymentMethod")) await repo.SetValueAsync("ad_payment_method", body["paymentMethod"], ctx.RequestAborted).ConfigureAwait(false);
+            if (body.ContainsKey("commissionTiming")) await repo.SetValueAsync("commission_timing", body["commissionTiming"], ctx.RequestAborted).ConfigureAwait(false);
+            if (body.ContainsKey("commissionPercent")) await repo.SetValueAsync("commission_percent", body["commissionPercent"], ctx.RequestAborted).ConfigureAwait(false);
+            if (body.ContainsKey("commissionFixed")) await repo.SetValueAsync("commission_fixed_amount", body["commissionFixed"], ctx.RequestAborted).ConfigureAwait(false);
+        }
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("AdPricingSet");
+
+// ===== Exchange Groups API =====
+app.MapGet("/api/exchange-groups", async (HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var db = scope.ServiceProvider.GetService<AbroadQs.Bot.Data.ApplicationDbContext>();
+        if (db == null) return Results.Json(Array.Empty<object>());
+        var groups = await db.ExchangeGroups.OrderByDescending(g => g.CreatedAt).ToListAsync(ctx.RequestAborted).ConfigureAwait(false);
+        return Results.Json(groups.Select(g => new { g.Id, g.Name, g.CurrencyCode, g.CountryCode, g.TelegramGroupLink, g.Description, g.Status, g.MemberCount, g.SubmittedByUserId, g.CreatedAt }));
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("ExchangeGroupsList");
+
+app.MapPost("/api/exchange-groups", async (HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var db = scope.ServiceProvider.GetService<AbroadQs.Bot.Data.ApplicationDbContext>();
+        if (db == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+        var body = await ctx.Request.ReadFromJsonAsync<Dictionary<string, string>>(ctx.RequestAborted).ConfigureAwait(false);
+        if (body == null || !body.ContainsKey("name") || !body.ContainsKey("telegramGroupLink"))
+            return Results.BadRequest(new { detail = "name and telegramGroupLink required" });
+        var entity = new AbroadQs.Bot.Data.ExchangeGroupEntity
+        {
+            Name = body["name"],
+            TelegramGroupLink = body["telegramGroupLink"],
+            CurrencyCode = body.GetValueOrDefault("currencyCode"),
+            CountryCode = body.GetValueOrDefault("countryCode"),
+            Description = body.GetValueOrDefault("description"),
+            Status = "approved",
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        db.ExchangeGroups.Add(entity);
+        await db.SaveChangesAsync(ctx.RequestAborted).ConfigureAwait(false);
+        return Results.Json(new { ok = true, id = entity.Id });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("ExchangeGroupsCreate");
+
+app.MapPost("/api/exchange-groups/{id}/approve", async (int id, HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var db = scope.ServiceProvider.GetService<AbroadQs.Bot.Data.ApplicationDbContext>();
+        if (db == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+        var g = await db.ExchangeGroups.FindAsync(new object[] { id }, ctx.RequestAborted).ConfigureAwait(false);
+        if (g == null) return Results.NotFound();
+        g.Status = "approved"; g.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ctx.RequestAborted).ConfigureAwait(false);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("ExchangeGroupsApprove");
+
+app.MapPost("/api/exchange-groups/{id}/reject", async (int id, HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var db = scope.ServiceProvider.GetService<AbroadQs.Bot.Data.ApplicationDbContext>();
+        if (db == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+        var g = await db.ExchangeGroups.FindAsync(new object[] { id }, ctx.RequestAborted).ConfigureAwait(false);
+        if (g == null) return Results.NotFound();
+        g.Status = "rejected"; g.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ctx.RequestAborted).ConfigureAwait(false);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("ExchangeGroupsReject");
+
+app.MapDelete("/api/exchange-groups/{id}", async (int id, HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var db = scope.ServiceProvider.GetService<AbroadQs.Bot.Data.ApplicationDbContext>();
+        if (db == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+        var g = await db.ExchangeGroups.FindAsync(new object[] { id }, ctx.RequestAborted).ConfigureAwait(false);
+        if (g == null) return Results.NotFound();
+        db.ExchangeGroups.Remove(g);
+        await db.SaveChangesAsync(ctx.RequestAborted).ConfigureAwait(false);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("ExchangeGroupsDelete");
+
+// ===== Bids API =====
+app.MapGet("/api/bids/{requestId}", async (int requestId, HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var bidRepo = scope.ServiceProvider.GetService<IBidRepository>();
+        if (bidRepo == null) return Results.Json(Array.Empty<object>());
+        var bids = await bidRepo.GetBidsForRequestAsync(requestId, ctx.RequestAborted).ConfigureAwait(false);
+        return Results.Json(bids);
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("BidsList");
+
+app.MapPost("/api/bids/{bidId}/accept", async (int bidId, HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var bidRepo = scope.ServiceProvider.GetService<IBidRepository>();
+        if (bidRepo == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+        var bid = await bidRepo.GetBidAsync(bidId, ctx.RequestAborted).ConfigureAwait(false);
+        if (bid == null) return Results.NotFound();
+        await bidRepo.UpdateBidStatusAsync(bidId, "accepted", ctx.RequestAborted).ConfigureAwait(false);
+        // Reject all other pending bids for same request
+        var allBids = await bidRepo.GetBidsForRequestAsync(bid.ExchangeRequestId, ctx.RequestAborted).ConfigureAwait(false);
+        foreach (var other in allBids.Where(b => b.Id != bidId && b.Status == "pending"))
+            await bidRepo.UpdateBidStatusAsync(other.Id, "rejected", ctx.RequestAborted).ConfigureAwait(false);
+        // Update exchange request status to matched
+        var excRepo = scope.ServiceProvider.GetService<IExchangeRepository>();
+        if (excRepo != null)
+            await excRepo.UpdateStatusAsync(bid.ExchangeRequestId, "matched", null, null, ctx.RequestAborted).ConfigureAwait(false);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("BidAccept");
+
+app.MapPost("/api/bids/{bidId}/reject", async (int bidId, HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var bidRepo = scope.ServiceProvider.GetService<IBidRepository>();
+        if (bidRepo == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+        await bidRepo.UpdateBidStatusAsync(bidId, "rejected", ctx.RequestAborted).ConfigureAwait(false);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("BidReject");
+
+// ===== Payment Callback =====
+app.MapGet("/api/payment/callback", async (HttpContext ctx) =>
+{
+    try
+    {
+        var idGetStr = ctx.Request.Query["id_get"].ToString();
+        var transId = ctx.Request.Query["trans_id"].ToString();
+        if (!long.TryParse(idGetStr, out var idGet) || string.IsNullOrEmpty(transId))
+            return Results.BadRequest("Invalid parameters");
+
+        using var scope = ctx.RequestServices.CreateScope();
+        var walletRepo = scope.ServiceProvider.GetService<IWalletRepository>();
+        var bitpay = scope.ServiceProvider.GetService<AbroadQs.Bot.Host.Webhook.Services.BitPayService>();
+        if (walletRepo == null || bitpay == null)
+            return Results.Json(new { detail = "Service not configured" }, statusCode: 503);
+
+        var payment = await walletRepo.GetPaymentByIdGetAsync(idGet, ctx.RequestAborted).ConfigureAwait(false);
+        if (payment == null) return Results.NotFound("Payment not found");
+        if (payment.Status == "success") return Results.Redirect("/dashboard/?payment=already_verified");
+
+        var result = await bitpay.VerifyPaymentAsync(idGet, transId, ctx.RequestAborted).ConfigureAwait(false);
+        if (result.Success)
+        {
+            await walletRepo.UpdatePaymentStatusAsync(payment.Id, "success", transId, ctx.RequestAborted).ConfigureAwait(false);
+            // Credit wallet if purpose is wallet_charge
+            if (payment.Purpose == "wallet_charge")
+                await walletRepo.CreditAsync(payment.TelegramUserId, payment.Amount, "شارژ کیف پول", payment.Id.ToString(), ctx.RequestAborted).ConfigureAwait(false);
+            return Results.Redirect("/dashboard/?payment=success");
+        }
+        else
+        {
+            await walletRepo.UpdatePaymentStatusAsync(payment.Id, "failed", transId, ctx.RequestAborted).ConfigureAwait(false);
+            return Results.Redirect($"/dashboard/?payment=failed&error={Uri.EscapeDataString(result.Error ?? "")}");
+        }
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("PaymentCallback");
+
+// ===== Wallet API =====
+app.MapGet("/api/wallet/{telegramUserId}", async (long telegramUserId, HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var walletRepo = scope.ServiceProvider.GetService<IWalletRepository>();
+        if (walletRepo == null) return Results.Json(new { balance = 0 });
+        var wallet = await walletRepo.GetOrCreateWalletAsync(telegramUserId, ctx.RequestAborted).ConfigureAwait(false);
+        return Results.Json(new { wallet.Balance, wallet.TelegramUserId });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("WalletGet");
 
 // تست: اگر این 200 برگردونه، مسیرهای API درست ثبت شدن
 app.MapGet("/api/ping", () => Results.Json(new { ok = true })).WithName("Ping");

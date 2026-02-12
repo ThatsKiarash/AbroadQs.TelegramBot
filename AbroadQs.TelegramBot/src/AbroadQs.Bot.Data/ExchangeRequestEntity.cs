@@ -39,6 +39,21 @@ public sealed class ExchangeRequestEntity
     public string? AdminNote { get; set; }
     /// <summary>User's display name at submission time.</summary>
     public string? UserDisplayName { get; set; }
+
+    // ── New fields for differentiated flows ──
+    /// <summary>Destination currency for exchange/swap (e.g. "EUR" when swapping USD→EUR).</summary>
+    public string? DestinationCurrency { get; set; }
+    /// <summary>City for cash/in-person delivery.</summary>
+    public string? City { get; set; }
+    /// <summary>Free-text meeting preference for cash/exchange.</summary>
+    public string? MeetingPreference { get; set; }
+    /// <summary>PayPal email address (for PayPal delivery).</summary>
+    public string? PaypalEmail { get; set; }
+    /// <summary>IBAN for bank transfers (optional).</summary>
+    public string? Iban { get; set; }
+    /// <summary>Bank name for bank transfers (optional).</summary>
+    public string? BankName { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
 }

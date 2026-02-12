@@ -19,6 +19,11 @@ public sealed class ApplicationDbContext : DbContext
     public DbSet<UserPermissionEntity> UserPermissions => Set<UserPermissionEntity>();
     public DbSet<ExchangeRequestEntity> ExchangeRequests => Set<ExchangeRequestEntity>();
     public DbSet<ExchangeRateEntity> ExchangeRates => Set<ExchangeRateEntity>();
+    public DbSet<WalletEntity> Wallets => Set<WalletEntity>();
+    public DbSet<WalletTransactionEntity> WalletTransactions => Set<WalletTransactionEntity>();
+    public DbSet<PaymentEntity> Payments => Set<PaymentEntity>();
+    public DbSet<AdBidEntity> AdBids => Set<AdBidEntity>();
+    public DbSet<ExchangeGroupEntity> ExchangeGroups => Set<ExchangeGroupEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -165,6 +170,13 @@ public sealed class ApplicationDbContext : DbContext
             e.Property(x => x.Status).IsRequired().HasMaxLength(30);
             e.Property(x => x.AdminNote).HasMaxLength(1000);
             e.Property(x => x.UserDisplayName).HasMaxLength(256);
+            // New differentiated flow fields
+            e.Property(x => x.DestinationCurrency).HasMaxLength(20);
+            e.Property(x => x.City).HasMaxLength(100);
+            e.Property(x => x.MeetingPreference).HasMaxLength(500);
+            e.Property(x => x.PaypalEmail).HasMaxLength(256);
+            e.Property(x => x.Iban).HasMaxLength(50);
+            e.Property(x => x.BankName).HasMaxLength(100);
             e.HasIndex(x => x.TelegramUserId);
             e.HasIndex(x => x.Status);
             e.HasIndex(x => x.RequestNumber).IsUnique();
@@ -181,6 +193,73 @@ public sealed class ApplicationDbContext : DbContext
             e.Property(x => x.Rate).HasColumnType("decimal(18,2)");
             e.Property(x => x.Change).HasColumnType("decimal(18,2)");
             e.Property(x => x.Source).IsRequired().HasMaxLength(20);
+        });
+
+        modelBuilder.Entity<WalletEntity>(e =>
+        {
+            e.ToTable("Wallets");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.TelegramUserId).IsRequired();
+            e.HasIndex(x => x.TelegramUserId).IsUnique();
+            e.Property(x => x.Balance).HasColumnType("decimal(18,2)");
+        });
+
+        modelBuilder.Entity<WalletTransactionEntity>(e =>
+        {
+            e.ToTable("WalletTransactions");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Amount).HasColumnType("decimal(18,2)");
+            e.Property(x => x.Type).IsRequired().HasMaxLength(20);
+            e.Property(x => x.Description).HasMaxLength(500);
+            e.Property(x => x.ReferenceId).HasMaxLength(100);
+            e.HasOne(x => x.Wallet).WithMany().HasForeignKey(x => x.WalletId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.WalletId);
+        });
+
+        modelBuilder.Entity<PaymentEntity>(e =>
+        {
+            e.ToTable("Payments");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.TelegramUserId).IsRequired();
+            e.Property(x => x.Amount).HasColumnType("decimal(18,2)");
+            e.Property(x => x.GatewayName).IsRequired().HasMaxLength(50);
+            e.Property(x => x.GatewayTransactionId).HasMaxLength(100);
+            e.Property(x => x.Status).IsRequired().HasMaxLength(30);
+            e.Property(x => x.Purpose).HasMaxLength(50);
+            e.Property(x => x.ReferenceId).HasMaxLength(100);
+            e.HasIndex(x => x.TelegramUserId);
+            e.HasIndex(x => x.GatewayIdGet);
+            e.HasIndex(x => x.Status);
+        });
+
+        modelBuilder.Entity<AdBidEntity>(e =>
+        {
+            e.ToTable("AdBids");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.BidderTelegramUserId).IsRequired();
+            e.Property(x => x.BidderDisplayName).HasMaxLength(256);
+            e.Property(x => x.BidAmount).HasColumnType("decimal(18,2)");
+            e.Property(x => x.BidRate).HasColumnType("decimal(18,2)");
+            e.Property(x => x.Message).HasMaxLength(500);
+            e.Property(x => x.Status).IsRequired().HasMaxLength(20);
+            e.HasOne(x => x.ExchangeRequest).WithMany().HasForeignKey(x => x.ExchangeRequestId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.ExchangeRequestId);
+            e.HasIndex(x => x.BidderTelegramUserId);
+        });
+
+        modelBuilder.Entity<ExchangeGroupEntity>(e =>
+        {
+            e.ToTable("ExchangeGroups");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Name).IsRequired().HasMaxLength(256);
+            e.Property(x => x.TelegramGroupLink).IsRequired().HasMaxLength(512);
+            e.Property(x => x.GroupType).IsRequired().HasMaxLength(20);
+            e.Property(x => x.CurrencyCode).HasMaxLength(20);
+            e.Property(x => x.CountryCode).HasMaxLength(10);
+            e.Property(x => x.Description).HasMaxLength(1000);
+            e.Property(x => x.Status).IsRequired().HasMaxLength(20);
+            e.HasIndex(x => x.Status);
+            e.HasIndex(x => x.GroupType);
         });
     }
 }

@@ -24,6 +24,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
     private readonly IUserMessageStateRepository? _msgStateRepo;
     private readonly ExchangeStateHandler? _exchangeHandler;
     private readonly IExchangeRepository? _exchangeRepo;
+    private readonly IGroupRepository? _groupRepo;
 
     private const int TradesPageSize = 5;
 
@@ -35,7 +36,8 @@ public sealed class DynamicStageHandler : IUpdateHandler
         IUserConversationStateStore stateStore,
         IUserMessageStateRepository? msgStateRepo = null,
         ExchangeStateHandler? exchangeHandler = null,
-        IExchangeRepository? exchangeRepo = null)
+        IExchangeRepository? exchangeRepo = null,
+        IGroupRepository? groupRepo = null)
     {
         _sender = sender;
         _stageRepo = stageRepo;
@@ -45,6 +47,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
         _msgStateRepo = msgStateRepo;
         _exchangeHandler = exchangeHandler;
         _exchangeRepo = exchangeRepo;
+        _groupRepo = groupRepo;
     }
 
     public string? Command => null;
@@ -60,7 +63,9 @@ public sealed class DynamicStageHandler : IUpdateHandler
                 || data.StartsWith("toggle:", StringComparison.OrdinalIgnoreCase)
                 || data.StartsWith("exc_hist:", StringComparison.Ordinal)
                 || data.StartsWith("exc_rates:", StringComparison.Ordinal)
-                || data == "start_kyc";
+                || data == "start_kyc"
+                || data == "noop"
+                || data.StartsWith("exc_grp:", StringComparison.Ordinal);
         }
         var cmd = context.Command;
         if (string.Equals(cmd, "settings", StringComparison.OrdinalIgnoreCase)
@@ -88,6 +93,23 @@ public sealed class DynamicStageHandler : IUpdateHandler
         if (context.IsCallbackQuery && context.CallbackQueryId != null && !data.StartsWith("toggle:", StringComparison.OrdinalIgnoreCase))
             await _sender.AnswerCallbackQueryAsync(context.CallbackQueryId, null, cancellationToken).ConfigureAwait(false);
 
+        // ── Stale inline message cleanup ────────────────────────────────
+        // If user clicked an inline button but their active reply stage is main_menu,
+        // the inline message is stale (leftover). Delete it and stop.
+        if (context.IsCallbackQuery && editMessageId.HasValue
+            && (data == "noop" || data.StartsWith("exc_hist:", StringComparison.Ordinal) || data.StartsWith("exc_rates:", StringComparison.Ordinal) || data.StartsWith("exc_grp:", StringComparison.Ordinal)))
+        {
+            var replyStage = await _stateStore.GetReplyStageAsync(userId, cancellationToken).ConfigureAwait(false);
+            if (string.Equals(replyStage, "main_menu", StringComparison.OrdinalIgnoreCase))
+            {
+                await TryDeleteAsync(chatId, editMessageId, cancellationToken).ConfigureAwait(false);
+                return true;
+            }
+        }
+
+        // ── noop callback: no action needed ─────────────────────────────
+        if (data == "noop") return true;
+
         // ── exc_hist: callback (My Exchanges navigation) ───────────────
         if (data.StartsWith("exc_hist:", StringComparison.Ordinal))
         {
@@ -95,6 +117,12 @@ public sealed class DynamicStageHandler : IUpdateHandler
             return true;
         }
 
+        // exc_grp: callback (Exchange Groups navigation)
+        if (data.StartsWith("exc_grp:", StringComparison.Ordinal))
+        {
+            await HandleExcGrpCallback(chatId, userId, currentUser, data, editMessageId, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
         // ── exc_rates: callback (Exchange Rates actions) ───────────────
         if (data.StartsWith("exc_rates:", StringComparison.Ordinal))
         {
@@ -218,8 +246,8 @@ public sealed class DynamicStageHandler : IUpdateHandler
 
                 if (IsReplyKeyboardStage(stageKey))
                 {
-                    // Type change: inline → reply-kb
-                    if (cleanMode && editMessageId.HasValue)
+                    // Type change: inline → reply-kb — ALWAYS delete the inline message
+                    if (editMessageId.HasValue)
                         await _sender.DeleteMessageAsync(chatId, editMessageId.Value, cancellationToken).ConfigureAwait(false);
                     await ShowReplyKeyboardStageAsync(userId, stageKey, null, null, cancellationToken).ConfigureAwait(false);
                     return true;
@@ -261,6 +289,12 @@ public sealed class DynamicStageHandler : IUpdateHandler
                     await ShowMyExchangesYears(chatId, currentUser, editMessageId, cancellationToken).ConfigureAwait(false);
                     return true;
                 }
+                // ── Exchange Groups: show group list ──────────────────
+                if (string.Equals(stageKey, "exchange_groups", StringComparison.OrdinalIgnoreCase))
+                {
+                    await ShowExchangeGroupsList(chatId, currentUser, editMessageId, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
 
                 // Same type: inline → inline: edit in place
                 await ShowStageInlineAsync(userId, stageKey, editMessageId, null, cancellationToken).ConfigureAwait(false);
@@ -294,69 +328,58 @@ public sealed class DynamicStageHandler : IUpdateHandler
         }
         catch { }
 
-        string text;
         var kb = new List<IReadOnlyList<InlineButton>>();
+        var nowIran = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(3.5));
 
         if (rates.Count == 0)
         {
-            text = isFa
-                ? "<b>💹 نرخ لحظه‌ای ارزها</b>\n" +
-                  "━━━━━━━━━━━━━━━━━━━\n\n" +
-                  "⚠️ در حال حاضر نرخی در سیستم ثبت نشده است.\n" +
-                  "لطفاً بعداً مراجعه کنید یا دکمه به‌روزرسانی را بزنید."
-                : "<b>💹 Live Exchange Rates</b>\n" +
-                  "━━━━━━━━━━━━━━━━━━━\n\n" +
-                  "⚠️ No rates available at the moment.\n" +
-                  "Please try again later or press Refresh.";
+            var text = isFa
+                ? $"<b>💹 نرخ ارزها</b>  •  {nowIran:HH:mm}\n\nنرخی ثبت نشده است."
+                : $"<b>💹 Rates</b>  •  {nowIran:HH:mm}\n\nNo rates available.";
+            kb.Add(new[] { new InlineButton(isFa ? "🔄 به‌روزرسانی" : "🔄 Refresh", "exc_rates:refresh") });
+            kb.Add(new[] { new InlineButton(isFa ? "🔙 بازگشت" : "🔙 Back", "stage:student_exchange") });
+            await EditOrSendInlineAsync(chatId, text, kb, editMessageId, ct).ConfigureAwait(false);
+            return;
         }
-        else
+
+        // Build compact text table instead of inline buttons
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine(isFa ? $"<b>💹 نرخ ارزها</b>  •  {nowIran:HH:mm}" : $"<b>💹 Rates</b>  •  {nowIran:HH:mm}");
+        sb.AppendLine("━━━━━━━━━━━━━━━━━");
+        foreach (var r in rates)
         {
-            // Build inline buttons per currency — 2 per row
-            for (int i = 0; i < rates.Count; i += 2)
-            {
-                var row = new List<InlineButton>();
-                for (int j = i; j < Math.Min(i + 2, rates.Count); j++)
-                {
-                    var r = rates[j];
-                    var flag = ExchangeStateHandler.GetCurrencyFlag(r.CurrencyCode);
-                    var changeIcon = r.Change > 0 ? "📈" : r.Change < 0 ? "📉" : "";
-                    var label = $"{flag} {r.CurrencyCode} {r.Rate:N0} T {changeIcon}";
-                    row.Add(new InlineButton(label, "noop"));
-                }
-                kb.Add(row);
-            }
-
-            // Show last updated time in the text
-            var latest = rates.OrderByDescending(r => r.LastUpdatedAt).FirstOrDefault();
-            var updatedStr = "";
-            if (latest != null)
-            {
-                var updatedLocal = latest.LastUpdatedAt.ToOffset(TimeSpan.FromHours(3.5));
-                updatedStr = isFa
-                    ? $"\n🕐 آخرین به‌روزرسانی: <b>{updatedLocal:HH:mm}</b> — {updatedLocal:yyyy/MM/dd}"
-                    : $"\n🕐 Last updated: <b>{updatedLocal:HH:mm}</b> — {updatedLocal:yyyy/MM/dd}";
-            }
-
-            text = isFa
-                ? "<b>💹 نرخ لحظه‌ای ارزها</b>\n" +
-                  "━━━━━━━━━━━━━━━━━━━\n\n" +
-                  "نرخ‌های زیر بر اساس آخرین داده‌های بازار آزاد هستند.\n" +
-                  "<i>نرخ‌ها ممکن است با نرخ نهایی معامله متفاوت باشند.</i>" + updatedStr
-                : "<b>💹 Live Exchange Rates</b>\n" +
-                  "━━━━━━━━━━━━━━━━━━━\n\n" +
-                  "Rates are based on the latest open market data.\n" +
-                  "<i>Rates may differ from the final transaction rate.</i>" + updatedStr;
+            var flag = ExchangeStateHandler.GetCurrencyFlag(r.CurrencyCode);
+            var arrow = r.Change > 0 ? " 📈" : r.Change < 0 ? " 📉" : "";
+            var code = r.CurrencyCode.PadRight(5);
+            sb.AppendLine($"{flag} <code>{code}</code> <b>{r.Rate:N0}</b> T{arrow}");
         }
 
-        kb.Add(new[] { new InlineButton(isFa ? "🔄 به‌روزرسانی نرخ‌ها" : "🔄 Refresh Rates", "exc_rates:refresh") });
+        kb.Add(new[] { new InlineButton(isFa ? "🔄 به‌روزرسانی" : "🔄 Refresh", "exc_rates:refresh") });
         kb.Add(new[] { new InlineButton(isFa ? "🔙 بازگشت" : "🔙 Back", "stage:student_exchange") });
 
-        await SendOrEditTextAsync(chatId, text, kb, editMessageId, ct).ConfigureAwait(false);
+        await EditOrSendInlineAsync(chatId, sb.ToString(), kb, editMessageId, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Edit an existing inline message if possible; only send new if no editMessageId.
+    /// Unlike SendOrEditTextAsync, this does NOT fall back to send if edit fails (avoids duplicate messages on refresh).
+    /// </summary>
+    private async Task EditOrSendInlineAsync(long chatId, string text, IReadOnlyList<IReadOnlyList<InlineButton>> keyboard, int? editMessageId, CancellationToken ct)
+    {
+        if (editMessageId.HasValue)
+        {
+            try
+            {
+                await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, editMessageId.Value, text, keyboard, ct).ConfigureAwait(false);
+            }
+            catch { /* edit failed (e.g. not modified) — just swallow, don't send new message */ }
+            return;
+        }
+        await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, text, keyboard, ct).ConfigureAwait(false);
     }
 
     private async Task HandleExcRatesCallback(long chatId, long userId, TelegramUserDto? user, string data, int? editMessageId, CancellationToken ct)
     {
-        // exc_rates:refresh
         if (data == "exc_rates:refresh")
         {
             await ShowExchangeRates(chatId, user, editMessageId, ct).ConfigureAwait(false);
@@ -364,6 +387,105 @@ public sealed class DynamicStageHandler : IUpdateHandler
     }
 
     // ═══════════════════════════════════════════════════════════════════
+
+    // ═════════════════════════════════════════════════════════════════════
+    //  Exchange Groups — browse, filter, submit
+    // ═════════════════════════════════════════════════════════════════════
+
+    private async Task ShowExchangeGroupsList(long chatId, TelegramUserDto? user, int? editMessageId, CancellationToken ct)
+    {
+        var isFa = (user?.PreferredLanguage ?? "fa") == "fa";
+        var kb = new List<IReadOnlyList<InlineButton>>();
+
+        IReadOnlyList<ExchangeGroupDto> groups = Array.Empty<ExchangeGroupDto>();
+        try
+        {
+            if (_groupRepo != null)
+                groups = await _groupRepo.ListGroupsAsync(status: "approved", ct: ct).ConfigureAwait(false);
+        }
+        catch { }
+
+        if (groups.Count == 0)
+        {
+            var emptyText = isFa
+                ? "<b>👥 گروه‌های تبادل</b>\n\nهنوز گروهی ثبت نشده است."
+                : "<b>👥 Exchange Groups</b>\n\nNo groups available yet.";
+            kb.Add(new[] { new InlineButton(isFa ? "📝 ثبت گروه جدید" : "📝 Submit Group", "exc_grp:submit") });
+            kb.Add(new[] { new InlineButton(isFa ? "🔙 بازگشت" : "🔙 Back", "stage:student_exchange") });
+            await EditOrSendInlineAsync(chatId, emptyText, kb, editMessageId, ct).ConfigureAwait(false);
+            return;
+        }
+
+        // Show groups as inline buttons
+        foreach (var g in groups.Take(20))
+        {
+            var flag = !string.IsNullOrEmpty(g.CurrencyCode) ? ExchangeStateHandler.GetCurrencyFlag(g.CurrencyCode) : "";
+            var label = string.IsNullOrEmpty(flag) ? g.Name : flag + " " + g.Name;
+            if (g.MemberCount > 0) label += $" ({g.MemberCount})";
+            kb.Add(new[] { new InlineButton(label, "exc_grp:join:" + g.Id) });
+        }
+
+        kb.Add(new[] { new InlineButton(isFa ? "📝 ثبت گروه جدید" : "📝 Submit Group", "exc_grp:submit") });
+        kb.Add(new[] { new InlineButton(isFa ? "🔙 بازگشت" : "🔙 Back", "stage:student_exchange") });
+
+        var text = isFa
+            ? "<b>👥 گروه‌های تبادل ارز</b>\n\nروی هر گروه کلیک کنید تا لینک عضویت آن را دریافت کنید:"
+            : "<b>👥 Exchange Groups</b>\n\nClick a group to get its join link:";
+
+        await EditOrSendInlineAsync(chatId, text, kb, editMessageId, ct).ConfigureAwait(false);
+    }
+
+    private async Task HandleExcGrpCallback(long chatId, long userId, TelegramUserDto? user, string data, int? editMessageId, CancellationToken ct)
+    {
+        var isFa = (user?.PreferredLanguage ?? "fa") == "fa";
+
+        if (data == "exc_grp:submit")
+        {
+            // Set state for group submission flow
+            await _stateStore.SetStateAsync(userId, "exc_grp_submit_name", ct).ConfigureAwait(false);
+            var msg = isFa
+                ? "<b>📝 ثبت گروه جدید</b>\n\nنام گروه تلگرام خود را وارد کنید:"
+                : "<b>📝 Submit New Group</b>\n\nEnter the name of your Telegram group:";
+            await EditOrSendInlineAsync(chatId, msg, new List<IReadOnlyList<InlineButton>>
+            {
+                new[] { new InlineButton(isFa ? "🔙 بازگشت" : "🔙 Back", "stage:exchange_groups") }
+            }, editMessageId, ct).ConfigureAwait(false);
+            return;
+        }
+
+        if (data.StartsWith("exc_grp:join:"))
+        {
+            var idStr = data["exc_grp:join:".Length..];
+            if (int.TryParse(idStr, out var groupId) && _groupRepo != null)
+            {
+                try
+                {
+                    var groups = await _groupRepo.ListGroupsAsync(status: "approved", ct: ct).ConfigureAwait(false);
+                    var group = groups.FirstOrDefault(g => g.Id == groupId);
+                    if (group != null)
+                    {
+                        var msg = isFa
+                            ? $"<b>👥 {group.Name}</b>\n\n" +
+                              (!string.IsNullOrEmpty(group.Description) ? group.Description + "\n\n" : "") +
+                              $"🔗 لینک عضویت:\n{group.TelegramGroupLink}"
+                            : $"<b>👥 {group.Name}</b>\n\n" +
+                              (!string.IsNullOrEmpty(group.Description) ? group.Description + "\n\n" : "") +
+                              $"🔗 Join link:\n{group.TelegramGroupLink}";
+
+                        await EditOrSendInlineAsync(chatId, msg, new List<IReadOnlyList<InlineButton>>
+                        {
+                            new[] { new InlineButton(isFa ? "🔙 بازگشت به لیست" : "🔙 Back to list", "stage:exchange_groups") }
+                        }, editMessageId, ct).ConfigureAwait(false);
+                        return;
+                    }
+                }
+                catch { }
+            }
+        }
+
+        // Default: show list
+        await ShowExchangeGroupsList(chatId, user, editMessageId, ct).ConfigureAwait(false);
+    }
     //  My Exchanges — year → month → paginated list
     // ═══════════════════════════════════════════════════════════════════
 
@@ -877,6 +999,16 @@ public sealed class DynamicStageHandler : IUpdateHandler
                     // Remove reply keyboard silently before sending inline
                     await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
                     await ShowMyExchangesYears(chatId, user, null, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+                // ── Exchange Groups (from reply-kb) ─────────────────
+                if (string.Equals(targetStage, "exchange_groups", StringComparison.OrdinalIgnoreCase))
+                {
+                    var user = await _userRepo.GetByTelegramUserIdAsync(userId, cancellationToken).ConfigureAwait(false);
+                    if (cleanMode)
+                        await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
+                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
+                    await ShowExchangeGroupsList(chatId, user, null, cancellationToken).ConfigureAwait(false);
                     return true;
                 }
 

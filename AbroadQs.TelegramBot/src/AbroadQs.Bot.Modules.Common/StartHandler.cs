@@ -10,6 +10,7 @@ public sealed class StartHandler : IUpdateHandler
     private readonly IPermissionRepository _permRepo;
     private readonly IUserMessageStateRepository? _msgStateRepo;
     private readonly IUserConversationStateStore _stateStore;
+    private readonly BidStateHandler? _bidHandler;
 
     public StartHandler(
         IResponseSender sender,
@@ -17,7 +18,8 @@ public sealed class StartHandler : IUpdateHandler
         IBotStageRepository stageRepo,
         IPermissionRepository permRepo,
         IUserConversationStateStore stateStore,
-        IUserMessageStateRepository? msgStateRepo = null)
+        IUserMessageStateRepository? msgStateRepo = null,
+        BidStateHandler? bidHandler = null)
     {
         _sender = sender;
         _userRepo = userRepo;
@@ -25,6 +27,7 @@ public sealed class StartHandler : IUpdateHandler
         _permRepo = permRepo;
         _stateStore = stateStore;
         _msgStateRepo = msgStateRepo;
+        _bidHandler = bidHandler;
     }
 
     public string? Command => "start";
@@ -36,6 +39,18 @@ public sealed class StartHandler : IUpdateHandler
     {
         if (context.UserId == null) return false;
         var userId = context.UserId.Value;
+
+        // ── Deep link: /start bid_{requestId} ──
+        var args = context.CommandArguments;
+        if (!string.IsNullOrEmpty(args) && args.StartsWith("bid_", StringComparison.Ordinal) && _bidHandler != null)
+        {
+            if (int.TryParse(args["bid_".Length..], out var bidRequestId))
+            {
+                try { if (context.IncomingMessageId.HasValue) await _sender.DeleteMessageAsync(context.ChatId, context.IncomingMessageId.Value, cancellationToken).ConfigureAwait(false); } catch { }
+                await _bidHandler.StartBidFlow(context.ChatId, userId, bidRequestId, cancellationToken).ConfigureAwait(false);
+                return true;
+            }
+        }
 
         // Load user
         var user = await _userRepo.GetByTelegramUserIdAsync(userId, cancellationToken).ConfigureAwait(false);

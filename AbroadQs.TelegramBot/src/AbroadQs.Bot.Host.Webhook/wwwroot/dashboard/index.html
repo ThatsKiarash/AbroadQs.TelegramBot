@@ -20,6 +20,7 @@
                 <a href="#" class="nav-link" data-tab="exchange-rates">Exchange Rates</a>
                 <a href="#" class="nav-link" data-tab="exchange-requests">Exchange Requests</a>
                 <a href="#" class="nav-link" data-tab="exchange-settings">Exchange Settings</a>
+                <a href="#" class="nav-link" data-tab="exchange-groups">Exchange Groups</a>
             </nav>
         </aside>
         <div class="sidebar-backdrop" id="sidebarBackdrop" aria-hidden="true"></div>
@@ -497,6 +498,94 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="col-12 col-md-6">
+                            <div class="card shadow-sm">
+                                <div class="card-body">
+                                    <h2 class="h5 mb-3">Ad Pricing</h2>
+                                    <form id="adPricingForm" class="vstack gap-3">
+                                        <div>
+                                            <label for="adPricingMode" class="form-label">Pricing Mode</label>
+                                            <select id="adPricingMode" class="form-select">
+                                                <option value="free">Free (no charge)</option>
+                                                <option value="paid_online">Paid - Online Payment</option>
+                                                <option value="paid_balance">Paid - Deduct from Balance</option>
+                                            </select>
+                                            <small class="form-text text-muted">Choose whether exchange ads are free or require payment.</small>
+                                        </div>
+                                        <div>
+                                            <label for="adPrice" class="form-label">Ad Price (Toman)</label>
+                                            <input type="number" step="1000" min="0" id="adPrice" class="form-control" placeholder="50000" />
+                                            <small class="form-text text-muted">Price per ad in Toman. Only applies if pricing mode is not free.</small>
+                                        </div>
+                                        <button type="submit" class="btn btn-primary">Save Ad Pricing</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Exchange Groups Section -->
+                <section class="dashboard-section" id="section-exchange-groups" style="display: none;">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <div>
+                            <h1 class="h4 mb-1">Exchange Groups</h1>
+                            <p class="text-muted mb-0">Manage Telegram groups for currency exchange communities.</p>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="btnRefreshGroups">Refresh</button>
+                    </div>
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover mb-0">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Name</th>
+                                            <th>Currency</th>
+                                            <th>Country</th>
+                                            <th>Link</th>
+                                            <th>Status</th>
+                                            <th>Members</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="groupsTableBody">
+                                        <tr><td colspan="8" class="text-center text-muted">Loading...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card shadow-sm">
+                        <div class="card-body">
+                            <h2 class="h5 mb-3">Add New Group</h2>
+                            <form id="addGroupForm" class="row g-3">
+                                <div class="col-md-4">
+                                    <label for="groupName" class="form-label">Group Name</label>
+                                    <input type="text" id="groupName" class="form-control" required />
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="groupLink" class="form-label">Telegram Link</label>
+                                    <input type="text" id="groupLink" class="form-control" placeholder="https://t.me/..." required />
+                                </div>
+                                <div class="col-md-2">
+                                    <label for="groupCurrency" class="form-label">Currency</label>
+                                    <input type="text" id="groupCurrency" class="form-control" placeholder="USD" />
+                                </div>
+                                <div class="col-md-2">
+                                    <label for="groupCountry" class="form-label">Country</label>
+                                    <input type="text" id="groupCountry" class="form-control" placeholder="nl" />
+                                </div>
+                                <div class="col-md-8">
+                                    <label for="groupDesc" class="form-label">Description</label>
+                                    <input type="text" id="groupDesc" class="form-control" />
+                                </div>
+                                <div class="col-md-4 d-flex align-items-end">
+                                    <button type="submit" class="btn btn-primary w-100">Add Group</button>
+                                </div>
+                            </form>
+                        </div>
                     </div>
                 </section>
 
@@ -605,6 +694,8 @@
                 if (tab === 'exchange-rates') { loadExchangeRates(); loadApiUsage(); }
                 if (tab === 'exchange-requests') loadExchangeRequests();
                 if (tab === 'exchange-settings') loadExchangeSettings();
+                if (tab === 'exchange-groups') loadExchangeGroups();
+                if (tab === 'exchange-groups') loadExchangeGroups();
             });
         });
 
@@ -873,7 +964,105 @@
                 if (!modeRes.ok) throw new Error(modeData.detail || 'Failed to save mode');
                 
                 Swal.fire({ icon: 'success', title: 'Saved.', text: 'Restart the application for changes to take effect.', timer: 5000, showConfirmButton: true });
-                loadTokenIntoInput();
+        
+        // ===== Ad Pricing =====
+        async function loadAdPricing() {
+            try {
+                const r = await fetch(base + '/api/settings/ad-pricing');
+                const data = await r.json().catch(() => ({}));
+                if (r.ok) {
+                    document.getElementById('adPricingMode').value = data.mode || 'free';
+                    document.getElementById('adPrice').value = data.price || '0';
+                }
+            } catch(_) {}
+        }
+
+        document.getElementById('adPricingForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            var mode = document.getElementById('adPricingMode').value;
+            var price = document.getElementById('adPrice').value || '0';
+            try {
+                const r = await fetch(base + '/api/settings/ad-pricing', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: mode, price: price })
+                });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok) throw new Error(data.detail || 'Error');
+                Swal.fire({ icon: 'success', title: 'Saved', text: 'Ad pricing updated.', timer: 2500, showConfirmButton: false });
+            } catch(e) {
+                Swal.fire({ icon: 'error', title: 'Error', text: e.message });
+            }
+        });
+
+        // ===== Exchange Groups =====
+        async function loadExchangeGroups() {
+            try {
+                const r = await fetch(base + '/api/exchange-groups');
+                const data = await r.json().catch(() => []);
+                var tbody = document.getElementById('groupsTableBody');
+                if (!r.ok || !data.length) { tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No groups found.</td></tr>'; return; }
+                tbody.innerHTML = data.map(function(g) {
+                    var statusBadge = g.status === 'approved' ? '<span class="badge bg-success">Approved</span>'
+                        : g.status === 'rejected' ? '<span class="badge bg-danger">Rejected</span>'
+                        : '<span class="badge bg-warning text-dark">Pending</span>';
+                    return '<tr><td>' + g.id + '</td><td>' + (g.name||'') + '</td><td>' + (g.currencyCode||'-') + '</td><td>' + (g.countryCode||'-') + '</td>'
+                        + '<td><a href="' + (g.telegramGroupLink||'#') + '" target="_blank">Link</a></td>'
+                        + '<td>' + statusBadge + '</td><td>' + (g.memberCount||0) + '</td>'
+                        + '<td>'
+                        + (g.status !== 'approved' ? '<button class="btn btn-sm btn-success me-1" onclick="approveGroup(' + g.id + ')">Approve</button>' : '')
+                        + (g.status !== 'rejected' ? '<button class="btn btn-sm btn-danger me-1" onclick="rejectGroup(' + g.id + ')">Reject</button>' : '')
+                        + '<button class="btn btn-sm btn-outline-danger" onclick="deleteGroup(' + g.id + ')">Delete</button>'
+                        + '</td></tr>';
+                }).join('');
+            } catch(_) {
+                document.getElementById('groupsTableBody').innerHTML = '<tr><td colspan="8" class="text-center text-danger">Error loading groups.</td></tr>';
+            }
+        }
+
+        async function approveGroup(id) {
+            if (!confirm('Approve this group?')) return;
+            await fetch(base + '/api/exchange-groups/' + id + '/approve', { method: 'POST' });
+            loadExchangeGroups();
+        }
+        async function rejectGroup(id) {
+            if (!confirm('Reject this group?')) return;
+            await fetch(base + '/api/exchange-groups/' + id + '/reject', { method: 'POST' });
+            loadExchangeGroups();
+        }
+        async function deleteGroup(id) {
+            if (!confirm('Delete this group permanently?')) return;
+            await fetch(base + '/api/exchange-groups/' + id, { method: 'DELETE' });
+            loadExchangeGroups();
+        }
+
+        document.getElementById('addGroupForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            var body = {
+                name: document.getElementById('groupName').value,
+                telegramGroupLink: document.getElementById('groupLink').value,
+                currencyCode: document.getElementById('groupCurrency').value || null,
+                countryCode: document.getElementById('groupCountry').value || null,
+                description: document.getElementById('groupDesc').value || null
+            };
+            try {
+                const r = await fetch(base + '/api/exchange-groups', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (!r.ok) { var d = await r.json().catch(() => ({})); throw new Error(d.detail || 'Error'); }
+                Swal.fire({ icon: 'success', title: 'Added', text: 'Group added.', timer: 2500, showConfirmButton: false });
+                document.getElementById('addGroupForm').reset();
+                loadExchangeGroups();
+            } catch(e) {
+                Swal.fire({ icon: 'error', title: 'Error', text: e.message });
+            }
+        });
+
+        document.getElementById('btnRefreshGroups').addEventListener('click', loadExchangeGroups);
+
+        loadTokenIntoInput();
                 loadUpdateMode();
                 loadWebhookInfo();
                 loadConnectionStatus();
@@ -1807,6 +1996,7 @@
 
         // ===== Exchange Settings =====
         async function loadExchangeSettings() {
+            loadAdPricing();
             try {
                 const r = await fetch(base + '/api/settings/exchange-channel');
                 const data = await r.json().catch(() => ({}));
@@ -1852,6 +2042,104 @@
                 Swal.fire({ icon: 'error', title: 'Error', text: e.message });
             }
         });
+
+
+        // ===== Ad Pricing =====
+        async function loadAdPricing() {
+            try {
+                const r = await fetch(base + '/api/settings/ad-pricing');
+                const data = await r.json().catch(() => ({}));
+                if (r.ok) {
+                    document.getElementById('adPricingMode').value = data.mode || 'free';
+                    document.getElementById('adPrice').value = data.price || '0';
+                }
+            } catch(_) {}
+        }
+
+        document.getElementById('adPricingForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            var mode = document.getElementById('adPricingMode').value;
+            var price = document.getElementById('adPrice').value || '0';
+            try {
+                const r = await fetch(base + '/api/settings/ad-pricing', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: mode, price: price })
+                });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok) throw new Error(data.detail || 'Error');
+                Swal.fire({ icon: 'success', title: 'Saved', text: 'Ad pricing updated.', timer: 2500, showConfirmButton: false });
+            } catch(e) {
+                Swal.fire({ icon: 'error', title: 'Error', text: e.message });
+            }
+        });
+
+        // ===== Exchange Groups =====
+        async function loadExchangeGroups() {
+            try {
+                const r = await fetch(base + '/api/exchange-groups');
+                const data = await r.json().catch(() => []);
+                var tbody = document.getElementById('groupsTableBody');
+                if (!r.ok || !data.length) { tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No groups found.</td></tr>'; return; }
+                tbody.innerHTML = data.map(function(g) {
+                    var statusBadge = g.status === 'approved' ? '<span class="badge bg-success">Approved</span>'
+                        : g.status === 'rejected' ? '<span class="badge bg-danger">Rejected</span>'
+                        : '<span class="badge bg-warning text-dark">Pending</span>';
+                    return '<tr><td>' + g.id + '</td><td>' + (g.name||'') + '</td><td>' + (g.currencyCode||'-') + '</td><td>' + (g.countryCode||'-') + '</td>'
+                        + '<td><a href="' + (g.telegramGroupLink||'#') + '" target="_blank">Link</a></td>'
+                        + '<td>' + statusBadge + '</td><td>' + (g.memberCount||0) + '</td>'
+                        + '<td>'
+                        + (g.status !== 'approved' ? '<button class="btn btn-sm btn-success me-1" onclick="approveGroup(' + g.id + ')">Approve</button>' : '')
+                        + (g.status !== 'rejected' ? '<button class="btn btn-sm btn-danger me-1" onclick="rejectGroup(' + g.id + ')">Reject</button>' : '')
+                        + '<button class="btn btn-sm btn-outline-danger" onclick="deleteGroup(' + g.id + ')">Delete</button>'
+                        + '</td></tr>';
+                }).join('');
+            } catch(_) {
+                document.getElementById('groupsTableBody').innerHTML = '<tr><td colspan="8" class="text-center text-danger">Error loading groups.</td></tr>';
+            }
+        }
+
+        async function approveGroup(id) {
+            if (!confirm('Approve this group?')) return;
+            await fetch(base + '/api/exchange-groups/' + id + '/approve', { method: 'POST' });
+            loadExchangeGroups();
+        }
+        async function rejectGroup(id) {
+            if (!confirm('Reject this group?')) return;
+            await fetch(base + '/api/exchange-groups/' + id + '/reject', { method: 'POST' });
+            loadExchangeGroups();
+        }
+        async function deleteGroup(id) {
+            if (!confirm('Delete this group permanently?')) return;
+            await fetch(base + '/api/exchange-groups/' + id, { method: 'DELETE' });
+            loadExchangeGroups();
+        }
+
+        document.getElementById('addGroupForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            var body = {
+                name: document.getElementById('groupName').value,
+                telegramGroupLink: document.getElementById('groupLink').value,
+                currencyCode: document.getElementById('groupCurrency').value || null,
+                countryCode: document.getElementById('groupCountry').value || null,
+                description: document.getElementById('groupDesc').value || null
+            };
+            try {
+                const r = await fetch(base + '/api/exchange-groups', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (!r.ok) { var d = await r.json().catch(() => ({})); throw new Error(d.detail || 'Error'); }
+                Swal.fire({ icon: 'success', title: 'Added', text: 'Group added.', timer: 2500, showConfirmButton: false });
+                document.getElementById('addGroupForm').reset();
+                loadExchangeGroups();
+            } catch(e) {
+                Swal.fire({ icon: 'error', title: 'Error', text: e.message });
+            }
+        });
+
+        document.getElementById('btnRefreshGroups').addEventListener('click', loadExchangeGroups);
 
         loadTokenIntoInput();
         loadUpdateMode();
