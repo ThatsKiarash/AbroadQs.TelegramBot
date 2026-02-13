@@ -67,6 +67,13 @@ public interface IResponseSender
     Task RemoveReplyKeyboardSilentAsync(long chatId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Sends a loading message ("⏳") with ReplyKeyboardRemove and returns the message ID.
+    /// The caller should EDIT this message with the actual content + inline keyboard.
+    /// This avoids dual keyboards (reply-kb + inline appearing simultaneously).
+    /// </summary>
+    Task<int?> SendLoadingWithRemoveReplyKbAsync(long chatId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Send a photo with an optional caption. Used to show sample verification images etc.
     /// </summary>
     Task SendPhotoAsync(long chatId, string photoPath, string? caption = null, CancellationToken cancellationToken = default);

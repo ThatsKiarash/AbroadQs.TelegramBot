@@ -370,6 +370,22 @@ public sealed class TelegramResponseSender : IResponseSender
         }
     }
 
+    public async Task<int?> SendLoadingWithRemoveReplyKbAsync(long chatId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var markup = new ReplyKeyboardRemove();
+            var result = await _client.SendMessage(
+                new ChatId(chatId), "⏳", replyMarkup: markup, cancellationToken: cancellationToken).ConfigureAwait(false);
+            return result?.MessageId;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send loading with ReplyKeyboardRemove in chat {ChatId}", chatId);
+            return null;
+        }
+    }
+
     public async Task SendPhotoAsync(long chatId, string photoPath, string? caption = null, CancellationToken cancellationToken = default)
     {
         try

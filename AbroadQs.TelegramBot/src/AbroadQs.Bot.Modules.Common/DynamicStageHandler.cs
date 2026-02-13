@@ -555,9 +555,12 @@ public sealed class DynamicStageHandler : IUpdateHandler
             catch { /* edit failed (e.g. not modified) — just swallow, don't send new message */ }
             return;
         }
-        // Remove the reply keyboard first so the phone soft keyboard closes
-        try { await _sender.RemoveReplyKeyboardSilentAsync(chatId, ct).ConfigureAwait(false); } catch { }
-        await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, text, keyboard, ct).ConfigureAwait(false);
+        // Send loading with ReplyKeyboardRemove, then edit it to the actual content
+        var loadId = await _sender.SendLoadingWithRemoveReplyKbAsync(chatId, ct).ConfigureAwait(false);
+        if (loadId.HasValue)
+            try { await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, loadId.Value, text, keyboard, ct).ConfigureAwait(false); } catch { await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, text, keyboard, ct).ConfigureAwait(false); }
+        else
+            await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, text, keyboard, ct).ConfigureAwait(false);
     }
 
     private async Task HandleExcRatesCallback(long chatId, long userId, TelegramUserDto? user, string data, int? editMessageId, CancellationToken ct)
@@ -1133,8 +1136,11 @@ public sealed class DynamicStageHandler : IUpdateHandler
                         };
                         if (cleanMode)
                             await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
-                        await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
-                        await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, msg, keyboard, cancellationToken).ConfigureAwait(false);
+                        var kycLoadId = await _sender.SendLoadingWithRemoveReplyKbAsync(chatId, cancellationToken).ConfigureAwait(false);
+                        if (kycLoadId.HasValue)
+                            try { await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, kycLoadId.Value, msg, keyboard, cancellationToken).ConfigureAwait(false); } catch { await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, msg, keyboard, cancellationToken).ConfigureAwait(false); }
+                        else
+                            await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, msg, keyboard, cancellationToken).ConfigureAwait(false);
                         return true;
                     }
 
@@ -1171,8 +1177,11 @@ public sealed class DynamicStageHandler : IUpdateHandler
                     var (profileText, profileKb) = ProfileStateHandler.BuildProfileView(user, isFa);
                     if (cleanMode)
                         await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
-                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
-                    await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, profileText, profileKb, cancellationToken).ConfigureAwait(false);
+                    var profileLoadId = await _sender.SendLoadingWithRemoveReplyKbAsync(chatId, cancellationToken).ConfigureAwait(false);
+                    if (profileLoadId.HasValue)
+                        try { await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, profileLoadId.Value, profileText, profileKb, cancellationToken).ConfigureAwait(false); } catch { await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, profileText, profileKb, cancellationToken).ConfigureAwait(false); }
+                    else
+                        await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, profileText, profileKb, cancellationToken).ConfigureAwait(false);
                     return true;
                 }
 
@@ -1182,9 +1191,8 @@ public sealed class DynamicStageHandler : IUpdateHandler
                     var user = await _userRepo.GetByTelegramUserIdAsync(userId, cancellationToken).ConfigureAwait(false);
                     if (cleanMode)
                         await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
-                    // Remove reply keyboard silently before sending inline
-                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
-                    await ShowExchangeRates(chatId, user, null, cancellationToken).ConfigureAwait(false);
+                    var ratesLoadId = await _sender.SendLoadingWithRemoveReplyKbAsync(chatId, cancellationToken).ConfigureAwait(false);
+                    await ShowExchangeRates(chatId, user, ratesLoadId, cancellationToken).ConfigureAwait(false);
                     return true;
                 }
 
@@ -1194,9 +1202,8 @@ public sealed class DynamicStageHandler : IUpdateHandler
                     var user = await _userRepo.GetByTelegramUserIdAsync(userId, cancellationToken).ConfigureAwait(false);
                     if (cleanMode)
                         await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
-                    // Remove reply keyboard silently before sending inline
-                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
-                    await ShowMyExchangesYears(chatId, user, null, cancellationToken).ConfigureAwait(false);
+                    var myExcLoadId = await _sender.SendLoadingWithRemoveReplyKbAsync(chatId, cancellationToken).ConfigureAwait(false);
+                    await ShowMyExchangesYears(chatId, user, myExcLoadId, cancellationToken).ConfigureAwait(false);
                     return true;
                 }
                 // ── Exchange Groups (from reply-kb) ─────────────────
@@ -1204,9 +1211,9 @@ public sealed class DynamicStageHandler : IUpdateHandler
                 {
                     if (cleanMode)
                         await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
-                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
+                    var grpLoadId = await _sender.SendLoadingWithRemoveReplyKbAsync(chatId, cancellationToken).ConfigureAwait(false);
                     if (_groupHandler != null)
-                        await _groupHandler.ShowGroupsMenu(chatId, null, cancellationToken).ConfigureAwait(false);
+                        await _groupHandler.ShowGroupsMenu(chatId, grpLoadId, cancellationToken).ConfigureAwait(false);
                     else
                     {
                         var user = await _userRepo.GetByTelegramUserIdAsync(userId, cancellationToken).ConfigureAwait(false);
@@ -1224,148 +1231,102 @@ public sealed class DynamicStageHandler : IUpdateHandler
                 if (string.Equals(targetStage, "my_messages", StringComparison.OrdinalIgnoreCase) && _myMessagesHandler != null)
                 {
                     if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
-                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
-                    await _myMessagesHandler.ShowMenu(chatId, userId, null, null, cancellationToken).ConfigureAwait(false);
+                    var msgLoadId = await _sender.SendLoadingWithRemoveReplyKbAsync(chatId, cancellationToken).ConfigureAwait(false);
+                    await _myMessagesHandler.ShowMenu(chatId, userId, null, msgLoadId, cancellationToken).ConfigureAwait(false);
                     return true;
                 }
                 // ── Phase 4: My Suggestions / Proposals (from reply-kb → inline)
                 if (string.Equals(targetStage, "my_suggestions", StringComparison.OrdinalIgnoreCase) && _myProposalsHandler != null)
                 {
                     if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
-                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
-                    await _myProposalsHandler.ShowMenu(chatId, userId, null, null, cancellationToken).ConfigureAwait(false);
+                    var propLoadId = await _sender.SendLoadingWithRemoveReplyKbAsync(chatId, cancellationToken).ConfigureAwait(false);
+                    await _myProposalsHandler.ShowMenu(chatId, userId, null, propLoadId, cancellationToken).ConfigureAwait(false);
                     return true;
                 }
 
-                // ── Finance sub-actions (from finance reply-kb) ────
-                if (string.Equals(targetStage, "fin_balance", StringComparison.OrdinalIgnoreCase) && _financeHandler != null)
+                // ══════ Module sub-actions (reply-kb → inline) ══════
+                // Pattern: send "⏳" with ReplyKeyboardRemove → get msgId → handler edits it to inline content
+                // This ensures reply keyboard is removed BEFORE inline keyboard appears (no dual keyboards)
+
+                // ── Finance sub-actions ────
+                if (targetStage.StartsWith("fin_", StringComparison.OrdinalIgnoreCase) && _financeHandler != null)
                 {
                     if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
-                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
-                    await _financeHandler.HandleCallbackAction(chatId, userId, "fin_balance", null, cancellationToken).ConfigureAwait(false);
-                    return true;
-                }
-                if (string.Equals(targetStage, "fin_charge", StringComparison.OrdinalIgnoreCase) && _financeHandler != null)
-                {
-                    if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
-                    await _financeHandler.HandleCallbackAction(chatId, userId, "fin_charge", null, cancellationToken).ConfigureAwait(false);
-                    return true;
-                }
-                if (string.Equals(targetStage, "fin_transfer", StringComparison.OrdinalIgnoreCase) && _financeHandler != null)
-                {
-                    if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
-                    await _financeHandler.HandleCallbackAction(chatId, userId, "fin_transfer", null, cancellationToken).ConfigureAwait(false);
-                    return true;
-                }
-                if (string.Equals(targetStage, "fin_history", StringComparison.OrdinalIgnoreCase) && _financeHandler != null)
-                {
-                    if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
-                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
-                    await _financeHandler.HandleCallbackAction(chatId, userId, "fin_history", null, cancellationToken).ConfigureAwait(false);
+                    // fin_charge/fin_transfer start interactive flows with their own reply-kb — no need to remove
+                    if (targetStage == "fin_charge" || targetStage == "fin_transfer")
+                    {
+                        await _financeHandler.HandleCallbackAction(chatId, userId, targetStage, null, cancellationToken).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        var loadingMsgId = await _sender.SendLoadingWithRemoveReplyKbAsync(chatId, cancellationToken).ConfigureAwait(false);
+                        await _financeHandler.HandleCallbackAction(chatId, userId, targetStage, loadingMsgId, cancellationToken).ConfigureAwait(false);
+                    }
                     return true;
                 }
 
                 // ── Ticket sub-actions ────
-                if (string.Equals(targetStage, "tkt_new", StringComparison.OrdinalIgnoreCase) && _ticketHandler != null)
+                if (targetStage.StartsWith("tkt_", StringComparison.OrdinalIgnoreCase) && _ticketHandler != null)
                 {
                     if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
-                    await _ticketHandler.HandleCallbackAction(chatId, userId, "tkt_new", null, cancellationToken).ConfigureAwait(false);
-                    return true;
-                }
-                if (string.Equals(targetStage, "tkt_list", StringComparison.OrdinalIgnoreCase) && _ticketHandler != null)
-                {
-                    if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
-                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
-                    await _ticketHandler.HandleCallbackAction(chatId, userId, "tkt_list", null, cancellationToken).ConfigureAwait(false);
+                    if (targetStage == "tkt_new")
+                    {
+                        await _ticketHandler.HandleCallbackAction(chatId, userId, "tkt_new", null, cancellationToken).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        var loadingMsgId = await _sender.SendLoadingWithRemoveReplyKbAsync(chatId, cancellationToken).ConfigureAwait(false);
+                        await _ticketHandler.HandleCallbackAction(chatId, userId, targetStage, loadingMsgId, cancellationToken).ConfigureAwait(false);
+                    }
                     return true;
                 }
 
                 // ── Project sub-actions ────
-                if (string.Equals(targetStage, "proj_post", StringComparison.OrdinalIgnoreCase) && _projectHandler != null)
+                if (targetStage.StartsWith("proj_", StringComparison.OrdinalIgnoreCase) && _projectHandler != null)
                 {
                     if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
-                    await _projectHandler.HandleCallbackAction(chatId, userId, "proj_post", null, cancellationToken).ConfigureAwait(false);
-                    return true;
-                }
-                if (string.Equals(targetStage, "proj_browse", StringComparison.OrdinalIgnoreCase) && _projectHandler != null)
-                {
-                    if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
-                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
-                    await _projectHandler.HandleCallbackAction(chatId, userId, "proj_browse", null, cancellationToken).ConfigureAwait(false);
-                    return true;
-                }
-                if (string.Equals(targetStage, "proj_my", StringComparison.OrdinalIgnoreCase) && _projectHandler != null)
-                {
-                    if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
-                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
-                    await _projectHandler.HandleCallbackAction(chatId, userId, "proj_my", null, cancellationToken).ConfigureAwait(false);
-                    return true;
-                }
-                if (string.Equals(targetStage, "proj_my_proposals", StringComparison.OrdinalIgnoreCase) && _projectHandler != null)
-                {
-                    if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
-                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
-                    await _projectHandler.HandleCallbackAction(chatId, userId, "proj_my_proposals", null, cancellationToken).ConfigureAwait(false);
+                    if (targetStage == "proj_post")
+                    {
+                        await _projectHandler.HandleCallbackAction(chatId, userId, "proj_post", null, cancellationToken).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        var loadingMsgId = await _sender.SendLoadingWithRemoveReplyKbAsync(chatId, cancellationToken).ConfigureAwait(false);
+                        await _projectHandler.HandleCallbackAction(chatId, userId, targetStage, loadingMsgId, cancellationToken).ConfigureAwait(false);
+                    }
                     return true;
                 }
 
                 // ── Intl Questions sub-actions ────
-                if (string.Equals(targetStage, "iq_post", StringComparison.OrdinalIgnoreCase) && _questionHandler != null)
+                if (targetStage.StartsWith("iq_", StringComparison.OrdinalIgnoreCase) && _questionHandler != null)
                 {
                     if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
-                    await _questionHandler.HandleCallbackAction(chatId, userId, "iq_post", null, cancellationToken).ConfigureAwait(false);
-                    return true;
-                }
-                if (string.Equals(targetStage, "iq_browse", StringComparison.OrdinalIgnoreCase) && _questionHandler != null)
-                {
-                    if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
-                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
-                    await _questionHandler.HandleCallbackAction(chatId, userId, "iq_browse", null, cancellationToken).ConfigureAwait(false);
-                    return true;
-                }
-                if (string.Equals(targetStage, "iq_my", StringComparison.OrdinalIgnoreCase) && _questionHandler != null)
-                {
-                    if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
-                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
-                    await _questionHandler.HandleCallbackAction(chatId, userId, "iq_my", null, cancellationToken).ConfigureAwait(false);
-                    return true;
-                }
-                if (string.Equals(targetStage, "iq_my_answers", StringComparison.OrdinalIgnoreCase) && _questionHandler != null)
-                {
-                    if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
-                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
-                    await _questionHandler.HandleCallbackAction(chatId, userId, "iq_my_answers", null, cancellationToken).ConfigureAwait(false);
+                    if (targetStage == "iq_post")
+                    {
+                        await _questionHandler.HandleCallbackAction(chatId, userId, "iq_post", null, cancellationToken).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        var loadingMsgId = await _sender.SendLoadingWithRemoveReplyKbAsync(chatId, cancellationToken).ConfigureAwait(false);
+                        await _questionHandler.HandleCallbackAction(chatId, userId, targetStage, loadingMsgId, cancellationToken).ConfigureAwait(false);
+                    }
                     return true;
                 }
 
                 // ── Sponsorship sub-actions ────
-                if (string.Equals(targetStage, "sp_request", StringComparison.OrdinalIgnoreCase) && _sponsorHandler != null)
+                if (targetStage.StartsWith("sp_", StringComparison.OrdinalIgnoreCase) && _sponsorHandler != null)
                 {
                     if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
-                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
-                    await _sponsorHandler.HandleCallbackAction(chatId, userId, "sp_request", null, cancellationToken).ConfigureAwait(false);
-                    return true;
-                }
-                if (string.Equals(targetStage, "sp_browse", StringComparison.OrdinalIgnoreCase) && _sponsorHandler != null)
-                {
-                    if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
-                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
-                    await _sponsorHandler.HandleCallbackAction(chatId, userId, "sp_browse", null, cancellationToken).ConfigureAwait(false);
-                    return true;
-                }
-                if (string.Equals(targetStage, "sp_my", StringComparison.OrdinalIgnoreCase) && _sponsorHandler != null)
-                {
-                    if (cleanMode) await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
-                    await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
-                    await _sponsorHandler.HandleCallbackAction(chatId, userId, "sp_my", null, cancellationToken).ConfigureAwait(false);
+                    var loadingMsgId = await _sender.SendLoadingWithRemoveReplyKbAsync(chatId, cancellationToken).ConfigureAwait(false);
+                    await _sponsorHandler.HandleCallbackAction(chatId, userId, targetStage, loadingMsgId, cancellationToken).ConfigureAwait(false);
                     return true;
                 }
 
+                // ── Fallback: any other reply-kb → inline transition ────
                 if (cleanMode)
                     await TryDeleteAsync(chatId, oldBotMsgId, cancellationToken).ConfigureAwait(false);
-                // Remove reply keyboard silently before showing inline stage
-                await _sender.RemoveReplyKeyboardSilentAsync(chatId, cancellationToken).ConfigureAwait(false);
-                await ShowStageInlineAsync(userId, targetStage, null, null, cancellationToken).ConfigureAwait(false);
+                var fallbackLoadingId = await _sender.SendLoadingWithRemoveReplyKbAsync(chatId, cancellationToken).ConfigureAwait(false);
+                await ShowStageInlineAsync(userId, targetStage, fallbackLoadingId, null, cancellationToken).ConfigureAwait(false);
                 return true;
             }
         }

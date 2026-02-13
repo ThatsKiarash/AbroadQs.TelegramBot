@@ -1,3 +1,4 @@
+using System.Linq;
 using AbroadQs.Bot.Contracts;
 using static AbroadQs.Bot.Contracts.BilingualHelper;
 
@@ -16,15 +17,17 @@ public sealed class FinanceHandler : IUpdateHandler
     private readonly IWalletRepository? _walletRepo;
     private readonly IPaymentGatewayService? _paymentGateway;
     private readonly IUserMessageStateRepository? _msgStateRepo;
+    private readonly ICryptoWalletRepository? _cryptoRepo;
 
     public FinanceHandler(
         IResponseSender sender, ITelegramUserRepository userRepo,
         IUserConversationStateStore stateStore,
         IWalletRepository? walletRepo = null, IPaymentGatewayService? paymentGateway = null,
-        IUserMessageStateRepository? msgStateRepo = null)
+        IUserMessageStateRepository? msgStateRepo = null, ICryptoWalletRepository? cryptoRepo = null)
     {
         _sender = sender; _userRepo = userRepo; _stateStore = stateStore;
         _walletRepo = walletRepo; _paymentGateway = paymentGateway; _msgStateRepo = msgStateRepo;
+        _cryptoRepo = cryptoRepo;
     }
 
     public string? Command => null;
@@ -98,28 +101,98 @@ public sealed class FinanceHandler : IUpdateHandler
     {
         var user = await SafeGetUser(userId, ct);
         var balance = _walletRepo != null ? await _walletRepo.GetBalanceAsync(userId, ct).ConfigureAwait(false) : 0;
-        var txCount = 0;
-        try { if (_walletRepo != null) { var txs = await _walletRepo.GetTransactionsAsync(userId, 0, 1, ct).ConfigureAwait(false); txCount = txs.Count; } } catch { }
+
+        // Last transaction info
+        string lastTxInfo = "";
+        int txCount = 0;
+        try
+        {
+            if (_walletRepo != null)
+            {
+                var txs = await _walletRepo.GetTransactionsAsync(userId, 0, 5, ct).ConfigureAwait(false);
+                txCount = txs.Count;
+                if (txs.Count > 0)
+                {
+                    var last = txs[0];
+                    var iranTime = last.CreatedAt.ToOffset(TimeSpan.FromHours(3.5));
+                    lastTxInfo = L(
+                        $"📅 آخرین تراکنش: {iranTime:yyyy/MM/dd HH:mm}\n",
+                        $"📅 Last Transaction: {iranTime:yyyy/MM/dd HH:mm}\n", lang);
+                }
+            }
+        }
+        catch { }
+
+        // Pending payments count
+        int pendingPayments = 0;
+        int successPayments = 0;
+        try
+        {
+            if (_walletRepo != null)
+            {
+                var payments = await _walletRepo.GetPaymentsAsync(userId, 0, 50, ct).ConfigureAwait(false);
+                pendingPayments = payments.Count(p => p.Status == "pending");
+                successPayments = payments.Count(p => p.Status == "success");
+            }
+        }
+        catch { }
+
+        // Crypto wallets
+        string cryptoInfo = "";
+        try
+        {
+            if (_cryptoRepo != null)
+            {
+                var wallets = await _cryptoRepo.ListWalletsAsync(userId, ct).ConfigureAwait(false);
+                if (wallets.Count > 0)
+                {
+                    var labels = wallets.Select(w => $"{w.CurrencySymbol} ({w.Network})").ToList();
+                    cryptoInfo = L(
+                        $"🪙 کیف پول رمزارز: {string.Join(" | ", labels)}\n",
+                        $"🪙 Crypto Wallets: {string.Join(" | ", labels)}\n", lang);
+                }
+            }
+        }
+        catch { }
 
         var name = user != null ? $"{user.FirstName} {user.LastName}".Trim() : "---";
+        var username = !string.IsNullOrEmpty(user?.Username) ? $"@{user.Username}" : "---";
         var kycStatus = user?.KycStatus ?? "not_started";
         var kycIcon = kycStatus switch { "approved" => "✅", "pending" => "⏳", _ => "❌" };
         var kycLabel = L(
             kycStatus switch { "approved" => "تایید شده", "pending" => "در انتظار تایید", _ => "تایید نشده" },
             kycStatus switch { "approved" => "Verified", "pending" => "Pending", _ => "Not Verified" }, lang);
 
+        var phoneInfo = !string.IsNullOrEmpty(user?.PhoneNumber)
+            ? L($"📱 شماره تماس: <code>{Esc(user.PhoneNumber)}</code> {(user.PhoneVerified ? "✅" : "")}\n",
+                $"📱 Phone: <code>{Esc(user.PhoneNumber)}</code> {(user.PhoneVerified ? "✅" : "")}\n", lang)
+            : "";
+
         var text = L(
             $"<b>💰 امور مالی</b>\n━━━━━━━━━━━━━━━━━━━\n\n" +
             $"👤 نام: <b>{Esc(name)}</b>\n" +
+            $"🆔 یوزرنیم: {Esc(username)}\n" +
+            phoneInfo +
             $"🔐 احراز هویت: {kycIcon} {kycLabel}\n" +
-            $"💳 موجودی: <b>{balance:N0}</b> تومان\n" +
-            (txCount > 0 ? $"📊 تراکنش‌ها: {txCount}+\n" : "") +
+            $"\n💳 <b>موجودی ریالی: {balance:N0} تومان</b>\n" +
+            cryptoInfo +
+            lastTxInfo +
+            (txCount > 0 ? L($"📊 تعداد تراکنش‌ها: {txCount}+\n", $"📊 Transactions: {txCount}+\n", lang) : "") +
+            (successPayments > 0 ? $"✅ پرداخت‌های موفق: {successPayments}\n" : "") +
+            (pendingPayments > 0 ? $"⏳ پرداخت‌های در انتظار: {pendingPayments}\n" : "") +
             $"\n<i>از دکمه‌های زیر استفاده کنید:</i>",
+
             $"<b>💰 Finance</b>\n━━━━━━━━━━━━━━━━━━━\n\n" +
             $"👤 Name: <b>{Esc(name)}</b>\n" +
+            $"🆔 Username: {Esc(username)}\n" +
+            phoneInfo +
             $"🔐 Verification: {kycIcon} {kycLabel}\n" +
-            $"💳 Balance: <b>{balance:N0}</b> Toman\n" +
-            (txCount > 0 ? $"📊 Transactions: {txCount}+\n" : "") +
+            $"\n💳 <b>Rial Balance: {balance:N0} Toman</b>\n" +
+            cryptoInfo +
+            lastTxInfo +
+            (txCount > 0 ? L($"📊 Transactions: {txCount}+\n", $"📊 Transactions: {txCount}+\n", lang) : "") +
+            (successPayments > 0 ? $"✅ Successful Payments: {successPayments}\n" : "") +
+            (pendingPayments > 0 ? $"⏳ Pending Payments: {pendingPayments}\n" : "") +
             $"\n<i>Use the buttons below:</i>", lang);
 
         var kb = new List<IReadOnlyList<InlineButton>>
@@ -199,8 +272,15 @@ public sealed class FinanceHandler : IUpdateHandler
             var result = await _paymentGateway.CreatePaymentAsync(userId, amountRials, "wallet_charge", null, "/api/payment/callback", ct).ConfigureAwait(false);
             if (result.Success && !string.IsNullOrEmpty(result.PaymentUrl))
             {
-                var msg = L($"<b>💳 پرداخت</b>\n━━━━━━━━━━━━━━━━━━━\n\n💰 مبلغ: <b>{amount:N0}</b> تومان\n\nلطفاً روی دکمه زیر کلیک کنید:",
-                            $"<b>💳 Payment</b>\n━━━━━━━━━━━━━━━━━━━\n\n💰 Amount: <b>{amount:N0}</b> Toman\n\nClick the button below:", lang);
+                var msg = L(
+                        $"<b>💳 پرداخت</b>\n━━━━━━━━━━━━━━━━━━━\n\n" +
+                        $"💰 مبلغ: <b>{amount:N0}</b> تومان\n\n" +
+                        $"⚠️ <b>توجه:</b> لطفاً قبل از کلیک روی دکمه پرداخت، <b>VPN خود را خاموش کنید</b> تا اتصال به درگاه بانکی بدون مشکل انجام شود.\n\n" +
+                        $"روی دکمه زیر کلیک کنید:",
+                        $"<b>💳 Payment</b>\n━━━━━━━━━━━━━━━━━━━\n\n" +
+                        $"💰 Amount: <b>{amount:N0}</b> Toman\n\n" +
+                        $"⚠️ <b>Note:</b> Please <b>turn off your VPN</b> before clicking the payment button to ensure a smooth connection to the banking gateway.\n\n" +
+                        $"Click the button below:", lang);
                 var kb = new List<IReadOnlyList<InlineButton>>
                 {
                     new[] { new InlineButton(L("💳 پرداخت آنلاین", "💳 Pay Online", lang), null, result.PaymentUrl) },

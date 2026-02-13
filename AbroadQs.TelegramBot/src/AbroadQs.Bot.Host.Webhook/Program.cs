@@ -1626,10 +1626,15 @@ app.MapGet("/api/payment/callback", async (HttpContext ctx) =>
                     {
                         if (sender != null)
                         {
+                            // Fetch updated balance
+                            decimal newBalance = 0;
+                            try { newBalance = await walletRepo.GetBalanceAsync(payment.TelegramUserId, ctx.RequestAborted).ConfigureAwait(false); } catch { }
+                            var chargedToman = payment.Amount / 10m;
                             var tgMsg = $"✅ <b>پرداخت موفق</b>\n━━━━━━━━━━━━━━━━━━━\n\n" +
-                                        $"💰 مبلغ: <b>{payment.Amount / 10m:N0}</b> تومان\n" +
+                                        $"💰 مبلغ واریزی: <b>{chargedToman:N0}</b> تومان\n" +
+                                        $"💳 موجودی جدید: <b>{newBalance:N0}</b> تومان\n" +
                                         $"🔢 شماره تراکنش: <code>{transId}</code>\n\n" +
-                                        $"مبلغ به کیف پول شما اضافه شد. ✨";
+                                        $"مبلغ با موفقیت به کیف پول شما اضافه شد. ✨";
                             await sender.SendTextMessageAsync(payment.TelegramUserId, tgMsg, ctx.RequestAborted).ConfigureAwait(false);
                         }
                     }
