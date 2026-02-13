@@ -1351,6 +1351,47 @@ app.MapPost("/api/settings/ad-pricing", async (HttpContext ctx) =>
     catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
 }).WithName("AdPricingSet");
 
+// ===== Payment Gateway Settings API =====
+app.MapGet("/api/settings/payment-gateway", async (HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var repo = scope.ServiceProvider.GetService<ISettingsRepository>();
+        if (repo == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+        var apiKey = await repo.GetValueAsync("bitpay_api_key", ctx.RequestAborted).ConfigureAwait(false);
+        var testMode = await repo.GetValueAsync("bitpay_test_mode", ctx.RequestAborted).ConfigureAwait(false);
+        var webhookUrlVal = await repo.GetValueAsync("webhook_url", ctx.RequestAborted).ConfigureAwait(false);
+        return Results.Json(new
+        {
+            bitpayApiKey = string.IsNullOrEmpty(apiKey) ? "" : apiKey[..Math.Min(6, apiKey.Length)] + "****",
+            bitpayTestMode = testMode == "true",
+            webhookUrl = webhookUrlVal ?? ""
+        });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("PaymentGatewayGet");
+
+app.MapPut("/api/settings/payment-gateway", async (HttpContext ctx) =>
+{
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var repo = scope.ServiceProvider.GetService<ISettingsRepository>();
+        if (repo == null) return Results.Json(new { detail = "DB not configured" }, statusCode: 503);
+        var body = await ctx.Request.ReadFromJsonAsync<Dictionary<string, string>>(ctx.RequestAborted).ConfigureAwait(false);
+        if (body != null)
+        {
+            if (body.ContainsKey("bitpayApiKey") && !string.IsNullOrWhiteSpace(body["bitpayApiKey"]))
+                await repo.SetValueAsync("bitpay_api_key", body["bitpayApiKey"].Trim(), ctx.RequestAborted).ConfigureAwait(false);
+            if (body.ContainsKey("bitpayTestMode"))
+                await repo.SetValueAsync("bitpay_test_mode", body["bitpayTestMode"].Trim(), ctx.RequestAborted).ConfigureAwait(false);
+        }
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+}).WithName("PaymentGatewaySet");
+
 // ===== Exchange Groups API =====
 app.MapGet("/api/exchange-groups", async (HttpContext ctx) =>
 {

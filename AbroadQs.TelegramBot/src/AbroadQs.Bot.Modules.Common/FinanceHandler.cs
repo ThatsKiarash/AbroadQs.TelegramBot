@@ -210,7 +210,15 @@ public sealed class FinanceHandler : IUpdateHandler
             }
             else
             {
-                await _sender.SendTextMessageAsync(chatId, L("⚠️ خطا در ایجاد لینک پرداخت", "⚠️ Error creating payment link", lang), ct).ConfigureAwait(false);
+                var errDetail = result.Error ?? "Unknown";
+                var errMsg = L(
+                    $"⚠️ خطا در ایجاد لینک پرداخت\n\nجزئیات: {Esc(errDetail)}\n\nلطفاً بعداً دوباره تلاش کنید یا با پشتیبانی تماس بگیرید.",
+                    $"⚠️ Error creating payment link\n\nDetails: {Esc(errDetail)}\n\nPlease try again later or contact support.", lang);
+                var kb = new List<IReadOnlyList<InlineButton>>
+                {
+                    new[] { new InlineButton(L("🔙 بازگشت", "🔙 Back", lang), "stage:finance") },
+                };
+                await SafeSendInline(chatId, errMsg, kb, ct);
             }
         }
         else
