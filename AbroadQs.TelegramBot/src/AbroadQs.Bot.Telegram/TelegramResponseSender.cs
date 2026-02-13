@@ -348,9 +348,9 @@ public sealed class TelegramResponseSender : IResponseSender
         try
         {
             var markup = new ReplyKeyboardRemove();
-            // Send a zero-width space phantom message with ReplyKeyboardRemove, then immediately delete it
+            // Send a short phantom message with ReplyKeyboardRemove, then immediately delete it
             var result = await _client.SendMessage(
-                new ChatId(chatId), "\u200B", replyMarkup: markup, cancellationToken: cancellationToken).ConfigureAwait(false);
+                new ChatId(chatId), "⏳", replyMarkup: markup, cancellationToken: cancellationToken).ConfigureAwait(false);
 
             if (result != null)
             {

@@ -31,10 +31,18 @@ public sealed class BitPayPaymentGatewayAdapter : IPaymentGatewayService
                 : null;
             if (string.IsNullOrEmpty(baseUrl))
             {
-                // Fallback: try webhook_url setting
-                baseUrl = _settingsRepo != null
+                // Fallback: try webhook_url setting and extract origin
+                var webhookUrl = _settingsRepo != null
                     ? await _settingsRepo.GetValueAsync("webhook_url", ct).ConfigureAwait(false)
                     : null;
+                if (!string.IsNullOrEmpty(webhookUrl))
+                {
+                    // Extract base: "https://webhook.abroadqs.com/webhook" → "https://webhook.abroadqs.com"
+                    if (Uri.TryCreate(webhookUrl, UriKind.Absolute, out var uri))
+                        baseUrl = $"{uri.Scheme}://{uri.Host}{(uri.Port != 80 && uri.Port != 443 ? $":{uri.Port}" : "")}";
+                    else
+                        baseUrl = webhookUrl.TrimEnd('/');
+                }
             }
             if (!string.IsNullOrEmpty(baseUrl))
             {

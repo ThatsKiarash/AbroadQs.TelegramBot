@@ -213,6 +213,14 @@ if (string.Equals(updateMode, "Webhook", StringComparison.OrdinalIgnoreCase) && 
             await client.SetWebhook(webhookUrl).ConfigureAwait(false);
             app.Logger.LogInformation("Webhook set to {WebhookUrl}", webhookUrl);
         }
+        // Persist webhook_url so payment adapter can resolve redirect URLs
+        var startupSettings = scope.ServiceProvider.GetService<ISettingsRepository>();
+        if (startupSettings != null)
+        {
+            var existing = await startupSettings.GetValueAsync("webhook_url").ConfigureAwait(false);
+            if (string.IsNullOrEmpty(existing))
+                await startupSettings.SetValueAsync("webhook_url", webhookUrl).ConfigureAwait(false);
+        }
     }
     catch (Exception ex) { app.Logger.LogWarning(ex, "SetWebhook at startup failed (token may not be set yet)."); }
 }
@@ -2139,6 +2147,22 @@ static async Task SeedDefaultDataAsync(ApplicationDbContext db)
             );
         }
 
+        await db.SaveChangesAsync().ConfigureAwait(false);
+
+        // Seed critical settings if missing
+        var settingsToSeed = new (string key, string value)[]
+        {
+            ("bitpay_api_key", "adxcv-zzadq-polkjsad-oaboremn"), // BitPay test API key — replace with production key
+            ("bitpay_test_mode", "true"),                          // Enable test mode for BitPay
+            ("webhook_url", Environment.GetEnvironmentVariable("PUBLIC_WEBHOOK_URL") ?? "https://webhook.abroadqs.com/webhook"),
+        };
+        foreach (var (key, value) in settingsToSeed)
+        {
+            if (!db.Settings.Any(s => s.Key == key))
+            {
+                db.Settings.Add(new SettingEntity { Key = key, Value = value });
+            }
+        }
         await db.SaveChangesAsync().ConfigureAwait(false);
     }
     catch (Exception ex)

@@ -96,9 +96,31 @@ public sealed class FinanceHandler : IUpdateHandler
     /// </summary>
     public async Task ShowFinanceMenu(long chatId, long userId, string? lang, int? editMsgId, CancellationToken ct)
     {
+        var user = await SafeGetUser(userId, ct);
         var balance = _walletRepo != null ? await _walletRepo.GetBalanceAsync(userId, ct).ConfigureAwait(false) : 0;
-        var text = L("<b>💰 امور مالی</b>\n━━━━━━━━━━━━━━━━━━━\n\n", "<b>💰 Finance</b>\n━━━━━━━━━━━━━━━━━━━\n\n", lang) +
-                   L($"💳 موجودی: <b>{balance:N0}</b> تومان", $"💳 Balance: <b>{balance:N0}</b> Toman", lang);
+        var txCount = 0;
+        try { if (_walletRepo != null) { var txs = await _walletRepo.GetTransactionsAsync(userId, 0, 1, ct).ConfigureAwait(false); txCount = txs.Count; } } catch { }
+
+        var name = user != null ? $"{user.FirstName} {user.LastName}".Trim() : "---";
+        var kycStatus = user?.KycStatus ?? "not_started";
+        var kycIcon = kycStatus switch { "approved" => "✅", "pending" => "⏳", _ => "❌" };
+        var kycLabel = L(
+            kycStatus switch { "approved" => "تایید شده", "pending" => "در انتظار تایید", _ => "تایید نشده" },
+            kycStatus switch { "approved" => "Verified", "pending" => "Pending", _ => "Not Verified" }, lang);
+
+        var text = L(
+            $"<b>💰 امور مالی</b>\n━━━━━━━━━━━━━━━━━━━\n\n" +
+            $"👤 نام: <b>{Esc(name)}</b>\n" +
+            $"🔐 احراز هویت: {kycIcon} {kycLabel}\n" +
+            $"💳 موجودی: <b>{balance:N0}</b> تومان\n" +
+            (txCount > 0 ? $"📊 تراکنش‌ها: {txCount}+\n" : "") +
+            $"\n<i>از دکمه‌های زیر استفاده کنید:</i>",
+            $"<b>💰 Finance</b>\n━━━━━━━━━━━━━━━━━━━\n\n" +
+            $"👤 Name: <b>{Esc(name)}</b>\n" +
+            $"🔐 Verification: {kycIcon} {kycLabel}\n" +
+            $"💳 Balance: <b>{balance:N0}</b> Toman\n" +
+            (txCount > 0 ? $"📊 Transactions: {txCount}+\n" : "") +
+            $"\n<i>Use the buttons below:</i>", lang);
 
         var kb = new List<IReadOnlyList<InlineButton>>
         {
@@ -109,6 +131,8 @@ public sealed class FinanceHandler : IUpdateHandler
         { try { await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, editMsgId.Value, text, kb, ct).ConfigureAwait(false); return; } catch { } }
         await SafeSendInline(chatId, text, kb, ct);
     }
+
+    private static string Esc(string s) => s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
 
     public async Task HandleCallbackAction(long chatId, long userId, string action, int? editMsgId, CancellationToken ct)
     {

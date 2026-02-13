@@ -434,22 +434,27 @@ public sealed class DynamicStageHandler : IUpdateHandler
         return false;
     }
 
-    /// <summary>Routes to module reply-kb stages (finance, tickets, etc.) — same type reply-kb → reply-kb.</summary>
+    /// <summary>Routes to module reply-kb stages (finance, tickets, etc.) — handles reply-kb → reply-kb transition.</summary>
     private async Task<bool> TryRouteModuleReplyKb(long chatId, long userId, string targetStage, int? oldBotMsgId, bool cleanMode, CancellationToken ct)
     {
-        // These are module stages that use reply keyboard sub-menus
-        switch (targetStage.ToLowerInvariant())
+        // Normalize stage key
+        var key = targetStage.ToLowerInvariant();
+        if (key == "student_projects") key = "student_project";
+        if (key == "intl_questions") key = "international_question";
+        if (key == "sponsorship") key = "financial_sponsor";
+
+        switch (key)
         {
             case "finance":
             case "tickets":
             case "student_project":
-            case "student_projects":
             case "international_question":
-            case "intl_questions":
             case "financial_sponsor":
-            case "sponsorship":
-                // Show the reply-kb stage from DB
-                await ShowReplyKeyboardStageAsync(userId, targetStage, null, cleanMode ? oldBotMsgId : null, ct).ConfigureAwait(false);
+                // Delete old bot message (inline or reply-kb) before showing new reply-kb
+                if (cleanMode && oldBotMsgId.HasValue)
+                    await TryDeleteAsync(chatId, oldBotMsgId, ct).ConfigureAwait(false);
+                // Show the reply-kb stage from DB (null editMessageId → always sends NEW message)
+                await ShowReplyKeyboardStageAsync(userId, key, null, null, ct).ConfigureAwait(false);
                 return true;
             default:
                 return false;
