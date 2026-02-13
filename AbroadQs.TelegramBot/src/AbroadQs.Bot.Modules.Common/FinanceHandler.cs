@@ -37,7 +37,8 @@ public sealed class FinanceHandler : IUpdateHandler
             var cb = context.MessageText?.Trim() ?? "";
             return cb.StartsWith("fin_", StringComparison.Ordinal);
         }
-        return !string.IsNullOrEmpty(context.MessageText);
+        // Text is handled via DynamicStageHandler state-based delegation
+        return false;
     }
 
     public async Task<bool> HandleAsync(BotUpdateContext context, CancellationToken ct)
@@ -89,24 +90,37 @@ public sealed class FinanceHandler : IUpdateHandler
         };
     }
 
+    /// <summary>
+    /// Shows a brief inline message with balance. Main menu buttons are now a reply keyboard (managed by DB seed).
+    /// Back button returns to the reply-kb finance menu (stage:finance).
+    /// </summary>
     public async Task ShowFinanceMenu(long chatId, long userId, string? lang, int? editMsgId, CancellationToken ct)
     {
         var balance = _walletRepo != null ? await _walletRepo.GetBalanceAsync(userId, ct).ConfigureAwait(false) : 0;
         var text = L("<b>💰 امور مالی</b>\n━━━━━━━━━━━━━━━━━━━\n\n", "<b>💰 Finance</b>\n━━━━━━━━━━━━━━━━━━━\n\n", lang) +
-                   L($"💳 موجودی: <b>{balance:N0}</b> تومان\n\n", $"💳 Balance: <b>{balance:N0}</b> Toman\n\n", lang) +
-                   L("یک گزینه را انتخاب کنید:", "Choose an option:", lang);
+                   L($"💳 موجودی: <b>{balance:N0}</b> تومان", $"💳 Balance: <b>{balance:N0}</b> Toman", lang);
 
         var kb = new List<IReadOnlyList<InlineButton>>
         {
-            new[] { new InlineButton(L("💳 موجودی", "💳 Balance", lang), "fin_balance"), new InlineButton(L("💵 شارژ", "💵 Charge", lang), "fin_charge") },
-            new[] { new InlineButton(L("🔄 انتقال", "🔄 Transfer", lang), "fin_transfer") },
-            new[] { new InlineButton(L("📜 تاریخچه شارژ", "📜 Charge History", lang), "fin_history"), new InlineButton(L("💳 پرداخت‌ها", "💳 Payments", lang), "fin_payments") },
-            new[] { new InlineButton(L("🔙 بازگشت", "🔙 Back", lang), "stage:main_menu") },
+            new[] { new InlineButton(L("🔙 بازگشت", "🔙 Back", lang), "stage:finance") },
         };
 
         if (editMsgId.HasValue)
         { try { await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, editMsgId.Value, text, kb, ct).ConfigureAwait(false); return; } catch { } }
         await SafeSendInline(chatId, text, kb, ct);
+    }
+
+    public async Task HandleCallbackAction(long chatId, long userId, string action, int? editMsgId, CancellationToken ct)
+    {
+        var user = await SafeGetUser(userId, ct);
+        var lang = user?.PreferredLanguage;
+        switch (action)
+        {
+            case "fin_balance": await ShowBalance(chatId, userId, lang, editMsgId, ct); break;
+            case "fin_charge": await StartCharge(chatId, userId, lang, editMsgId, ct); break;
+            case "fin_transfer": await StartTransfer(chatId, userId, lang, editMsgId, ct); break;
+            case "fin_history": await ShowHistory(chatId, userId, lang, 0, editMsgId, ct); break;
+        }
     }
 
     private async Task ShowBalance(long chatId, long userId, string? lang, int? editMsgId, CancellationToken ct)
@@ -141,7 +155,13 @@ public sealed class FinanceHandler : IUpdateHandler
             await CleanAndCancel(chatId, userId, userMsgId, lang, ct); return true;
         }
         if (!decimal.TryParse(text.Replace(",", "").Replace("٫", ""), out var amount) || amount < 1000)
-        { await SafeDelete(chatId, userMsgId, ct); return true; }
+        {
+            await SafeDelete(chatId, userMsgId, ct);
+            var errMsg = L("⚠️ حداقل مبلغ شارژ ۱,۰۰۰ تومان است. مبلغ را دوباره وارد کنید:",
+                           "⚠️ Minimum charge is 1,000 Toman. Please enter the amount again:", lang);
+            await _sender.SendTextMessageAsync(chatId, errMsg, ct).ConfigureAwait(false);
+            return true;
+        }
 
         await SafeDelete(chatId, userMsgId, ct);
         await DeletePrevBotMsg(chatId, userId, ct);
@@ -150,7 +170,9 @@ public sealed class FinanceHandler : IUpdateHandler
 
         if (_paymentGateway != null && _walletRepo != null)
         {
-            var result = await _paymentGateway.CreatePaymentAsync(userId, (long)amount, "wallet_charge", null, "/api/payment/callback", ct).ConfigureAwait(false);
+            // Amount is in Toman; BitPay expects Rials (1 Toman = 10 Rial)
+            var amountRials = (long)amount * 10L;
+            var result = await _paymentGateway.CreatePaymentAsync(userId, amountRials, "wallet_charge", null, "/api/payment/callback", ct).ConfigureAwait(false);
             if (result.Success && !string.IsNullOrEmpty(result.PaymentUrl))
             {
                 var msg = L($"<b>💳 پرداخت</b>\n━━━━━━━━━━━━━━━━━━━\n\n💰 مبلغ: <b>{amount:N0}</b> تومان\n\nلطفاً روی دکمه زیر کلیک کنید:",

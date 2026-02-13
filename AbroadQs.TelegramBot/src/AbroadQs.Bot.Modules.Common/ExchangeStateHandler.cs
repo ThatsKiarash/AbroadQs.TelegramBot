@@ -96,7 +96,8 @@ public sealed class ExchangeStateHandler : IUpdateHandler
             return cb == CbConfirm || cb == CbCancel
                 || cb.StartsWith("exc_del_msg:", StringComparison.Ordinal);
         }
-        return !string.IsNullOrEmpty(context.MessageText);
+        // Text is handled via DynamicStageHandler state-based delegation
+        return false;
     }
 
     public async Task<bool> HandleAsync(BotUpdateContext context, CancellationToken ct)

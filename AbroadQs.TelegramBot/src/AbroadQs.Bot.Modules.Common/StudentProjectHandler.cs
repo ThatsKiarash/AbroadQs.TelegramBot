@@ -4,7 +4,7 @@ using static AbroadQs.Bot.Contracts.BilingualHelper;
 namespace AbroadQs.Bot.Modules.Common;
 
 /// <summary>
-/// Phase 5: Student Projects Marketplace — post, browse, bid on projects.
+/// Phase 5: Student Projects Marketplace — Advertiser (post projects) and Executor (browse/bid).
 /// Callback prefix: proj_   States: proj_title, proj_desc, proj_category, proj_budget, proj_deadline, proj_skills, proj_preview
 /// Also: proj_bid_amount, proj_bid_duration, proj_bid_letter, proj_bid_preview
 /// </summary>
@@ -32,7 +32,8 @@ public sealed class StudentProjectHandler : IUpdateHandler
         if (context.UserId == null) return false;
         if (context.IsCallbackQuery)
             return (context.MessageText?.Trim() ?? "").StartsWith("proj_", StringComparison.Ordinal);
-        return !string.IsNullOrEmpty(context.MessageText);
+        // Text is handled via DynamicStageHandler state-based delegation
+        return false;
     }
 
     public async Task<bool> HandleAsync(BotUpdateContext context, CancellationToken ct)
@@ -53,12 +54,40 @@ public sealed class StudentProjectHandler : IUpdateHandler
             if (cb == "proj_post") { await StartPost(chatId, userId, lang, eid, ct); return true; }
             if (cb == "proj_browse") { await BrowseProjects(chatId, userId, lang, 0, eid, ct); return true; }
             if (cb == "proj_my") { await MyProjects(chatId, userId, lang, 0, eid, ct); return true; }
-            if (cb.StartsWith("proj_detail:")) { int.TryParse(cb["proj_detail:".Length..], out var pid); await ShowDetail(chatId, userId, pid, lang, eid, ct); return true; }
+            if (cb == "proj_my_proposals") { await MyProposals(chatId, userId, lang, 0, eid, ct); return true; }
+            if (cb.StartsWith("proj_detail:"))
+            {
+                var suffix = cb["proj_detail:".Length..];
+                var parts = suffix.Split(':');
+                int.TryParse(parts[0], out var pid);
+                var source = parts.Length > 1 ? parts[1] : "browse";
+                await ShowDetail(chatId, userId, pid, lang, eid, ct, source);
+                return true;
+            }
+            if (cb.StartsWith("proj_my_detail:"))
+            {
+                int.TryParse(cb["proj_my_detail:".Length..], out var pid);
+                await ShowDetail(chatId, userId, pid, lang, eid, ct, source: "my");
+                return true;
+            }
             if (cb.StartsWith("proj_browse_p:")) { int.TryParse(cb["proj_browse_p:".Length..], out var p); await BrowseProjects(chatId, userId, lang, p, eid, ct); return true; }
             if (cb.StartsWith("proj_my_p:")) { int.TryParse(cb["proj_my_p:".Length..], out var p); await MyProjects(chatId, userId, lang, p, eid, ct); return true; }
+            if (cb.StartsWith("proj_my_proposals_p:")) { int.TryParse(cb["proj_my_proposals_p:".Length..], out var p); await MyProposals(chatId, userId, lang, p, eid, ct); return true; }
             if (cb == "proj_confirm") { await DoSubmitProject(chatId, userId, lang, eid, ct); return true; }
             if (cb.StartsWith("proj_bid:")) { int.TryParse(cb["proj_bid:".Length..], out var pid2); await StartBid(chatId, userId, pid2, lang, eid, ct); return true; }
             if (cb == "proj_bid_confirm") { await DoSubmitBid(chatId, userId, lang, eid, ct); return true; }
+            if (cb.StartsWith("proj_accept_bid:"))
+            {
+                int.TryParse(cb["proj_accept_bid:".Length..], out var bidId);
+                await AcceptBid(chatId, userId, bidId, lang, eid, ct);
+                return true;
+            }
+            if (cb.StartsWith("proj_reject_bid:"))
+            {
+                int.TryParse(cb["proj_reject_bid:".Length..], out var bidId);
+                await RejectBid(chatId, userId, bidId, lang, eid, ct);
+                return true;
+            }
             if (cb == "proj_cancel" || cb == "proj_bid_cancel")
             { await CancelFlow(chatId, userId, lang, eid, ct); return true; }
             return false;
@@ -85,20 +114,37 @@ public sealed class StudentProjectHandler : IUpdateHandler
         };
     }
 
+    /// <summary>
+    /// Show inline keyboard menu. Called from DynamicStageHandler via HandleCallbackAction or when proj_menu is pressed.
+    /// Reply-kb is managed by stage system, so we only send inline buttons here.
+    /// </summary>
     public async Task ShowMenu(long chatId, long userId, string? lang, int? editMsgId, CancellationToken ct)
     {
-        var text = L("<b>📚 پروژه‌های دانشجویی</b>\n━━━━━━━━━━━━━━━━━━━\n\nپروژه ثبت کنید یا پروژه‌های دیگران را مشاهده کنید.",
-                     "<b>📚 Student Projects</b>\n━━━━━━━━━━━━━━━━━━━\n\nPost a project or browse existing ones.", lang);
+        var text = L("<b>📚 پروژه‌های دانشجویی</b>\n━━━━━━━━━━━━━━━━━━━\n\nآگهی‌دهنده: پروژه ثبت کنید.\nانجام‌دهنده: پروژه‌ها را مرور و پیشنهاد ارسال کنید.",
+                     "<b>📚 Student Projects</b>\n━━━━━━━━━━━━━━━━━━━\n\nAdvertiser: post a project.\nExecutor: browse projects and submit proposals.", lang);
         var kb = new List<IReadOnlyList<InlineButton>>
         {
-            new[] { new InlineButton(L("➕ ثبت پروژه", "➕ Post Project", lang), "proj_post") },
-            new[] { new InlineButton(L("📋 مرور پروژه‌ها", "📋 Browse Projects", lang), "proj_browse") },
-            new[] { new InlineButton(L("📁 پروژه‌های من", "📁 My Projects", lang), "proj_my") },
+            new[] { new InlineButton(L("📝 ثبت پروژه (آگهی‌دهنده)", "📝 Post Project (Advertiser)", lang), "proj_post") },
+            new[] { new InlineButton(L("🔍 جستجوی پروژه (انجام‌دهنده)", "🔍 Browse Projects (Executor)", lang), "proj_browse") },
+            new[] { new InlineButton(L("📁 پروژه‌های من", "📁 My Projects", lang), "proj_my"), new InlineButton(L("📋 پیشنهادات من", "📋 My Proposals", lang), "proj_my_proposals") },
             new[] { new InlineButton(L("🔙 بازگشت", "🔙 Back", lang), "stage:new_request") },
         };
         if (editMsgId.HasValue) { try { await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, editMsgId.Value, text, kb, ct).ConfigureAwait(false); return; } catch { } }
         try { await _sender.RemoveReplyKeyboardSilentAsync(chatId, ct).ConfigureAwait(false); } catch { }
         try { await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, text, kb, ct).ConfigureAwait(false); } catch { }
+    }
+
+    public async Task HandleCallbackAction(long chatId, long userId, string action, int? editMsgId, CancellationToken ct)
+    {
+        var user = await SafeGetUser(userId, ct);
+        var lang = user?.PreferredLanguage;
+        switch (action)
+        {
+            case "proj_post": await StartPost(chatId, userId, lang, editMsgId, ct); break;
+            case "proj_browse": await BrowseProjects(chatId, userId, lang, 0, editMsgId, ct); break;
+            case "proj_my": await MyProjects(chatId, userId, lang, 0, editMsgId, ct); break;
+            case "proj_my_proposals": await MyProposals(chatId, userId, lang, 0, editMsgId, ct); break;
+        }
     }
 
     private async Task StartPost(long chatId, long userId, string? lang, int? editMsgId, CancellationToken ct)
@@ -236,7 +282,7 @@ public sealed class StudentProjectHandler : IUpdateHandler
         if (projects.Count == 0) sb.AppendLine(L("📭 پروژه‌ای یافت نشد.", "📭 No projects found.", lang));
         var kb = new List<IReadOnlyList<InlineButton>>();
         foreach (var p in projects)
-            kb.Add(new[] { new InlineButton($"📌 {p.Title[..Math.Min(30, p.Title.Length)]} — {p.Budget:N0}T", $"proj_detail:{p.Id}") });
+            kb.Add(new[] { new InlineButton($"📌 {p.Title[..Math.Min(30, p.Title.Length)]} — {p.Budget:N0}T", $"proj_detail:{p.Id}:browse") });
         var nav = new List<InlineButton>();
         if (page > 0) nav.Add(new InlineButton("◀️", $"proj_browse_p:{page - 1}"));
         if (projects.Count == 10) nav.Add(new InlineButton("▶️", $"proj_browse_p:{page + 1}"));
@@ -250,29 +296,68 @@ public sealed class StudentProjectHandler : IUpdateHandler
 
     private async Task MyProjects(long chatId, long userId, string? lang, int page, int? editMsgId, CancellationToken ct)
     {
-        if (_projRepo == null) return;
+        if (_projRepo == null || _projBidRepo == null) return;
         var projects = await _projRepo.ListAsync(null, null, userId, page, 10, ct).ConfigureAwait(false);
         var sb = new System.Text.StringBuilder();
         sb.AppendLine(L("<b>📁 پروژه‌های من</b>", "<b>📁 My Projects</b>", lang));
+        sb.AppendLine(L("(آگهی‌دهنده — پروژه‌های ثبت‌شده با پیشنهادات دریافتی)", "(Advertiser — posted projects with received proposals)", lang));
         sb.AppendLine("━━━━━━━━━━━━━━━━━━━\n");
         if (projects.Count == 0) sb.AppendLine(L("📭 پروژه‌ای یافت نشد.", "📭 No projects found.", lang));
         var kb = new List<IReadOnlyList<InlineButton>>();
         foreach (var p in projects)
         {
+            var bids = await _projBidRepo.ListForProjectAsync(p.Id, ct).ConfigureAwait(false);
+            var bidCount = bids.Count;
             var statusIcon = p.Status == "approved" ? "🟢" : p.Status == "pending_approval" ? "🟡" : p.Status == "in_progress" ? "🔵" : "✅";
-            kb.Add(new[] { new InlineButton($"{statusIcon} {p.Title[..Math.Min(30, p.Title.Length)]}", $"proj_detail:{p.Id}") });
+            var titleShort = p.Title[..Math.Min(30, p.Title.Length)];
+            var label = $"{statusIcon} {titleShort} ({bidCount})";
+            kb.Add(new[] { new InlineButton(label, $"proj_my_detail:{p.Id}") });
         }
+        var nav = new List<InlineButton>();
+        if (page > 0) nav.Add(new InlineButton("◀️", $"proj_my_p:{page - 1}"));
+        if (projects.Count == 10) nav.Add(new InlineButton("▶️", $"proj_my_p:{page + 1}"));
+        if (nav.Count > 0) kb.Add(nav);
         kb.Add(new[] { new InlineButton(L("🔙 بازگشت", "🔙 Back", lang), "proj_menu") });
 
         if (editMsgId.HasValue) { try { await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, editMsgId.Value, sb.ToString(), kb, ct).ConfigureAwait(false); return; } catch { } }
         try { await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, sb.ToString(), kb, ct).ConfigureAwait(false); } catch { }
     }
 
-    private async Task ShowDetail(long chatId, long userId, int projectId, string? lang, int? editMsgId, CancellationToken ct)
+    private async Task MyProposals(long chatId, long userId, string? lang, int page, int? editMsgId, CancellationToken ct)
     {
-        if (_projRepo == null) return;
+        if (_projBidRepo == null || _projRepo == null) return;
+        var proposals = await _projBidRepo.ListByBidderAsync(userId, page, 10, ct).ConfigureAwait(false);
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine(L("<b>📋 پیشنهادات من</b>", "<b>📋 My Proposals</b>", lang));
+        sb.AppendLine(L("(انجام‌دهنده — پیشنهادات ارسالی و وضعیت آن‌ها)", "(Executor — submitted proposals and their status)", lang));
+        sb.AppendLine("━━━━━━━━━━━━━━━━━━━\n");
+        if (proposals.Count == 0) sb.AppendLine(L("📭 پیشنهادی یافت نشد.", "📭 No proposals found.", lang));
+        var kb = new List<IReadOnlyList<InlineButton>>();
+        foreach (var b in proposals)
+        {
+            var project = await _projRepo.GetAsync(b.ProjectId, ct).ConfigureAwait(false);
+            var projectTitle = project?.Title?[..Math.Min(25, project.Title.Length)] ?? $"#{b.ProjectId}";
+            var statusIcon = b.Status == "accepted" ? "✅" : b.Status == "rejected" ? "❌" : "🟡";
+            var statusText = b.Status == "accepted" ? L("پذیرفته", "Accepted", lang) : b.Status == "rejected" ? L("رد شده", "Rejected", lang) : L("در انتظار", "Pending", lang);
+            kb.Add(new[] { new InlineButton($"{statusIcon} {projectTitle} — {statusText} ({b.ProposedAmount:N0}T)", $"proj_detail:{b.ProjectId}:proposals") });
+        }
+        var nav = new List<InlineButton>();
+        if (page > 0) nav.Add(new InlineButton("◀️", $"proj_my_proposals_p:{page - 1}"));
+        if (proposals.Count == 10) nav.Add(new InlineButton("▶️", $"proj_my_proposals_p:{page + 1}"));
+        if (nav.Count > 0) kb.Add(nav);
+        kb.Add(new[] { new InlineButton(L("🔙 بازگشت", "🔙 Back", lang), "proj_menu") });
+
+        if (editMsgId.HasValue) { try { await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, editMsgId.Value, sb.ToString(), kb, ct).ConfigureAwait(false); return; } catch { } }
+        try { await _sender.RemoveReplyKeyboardSilentAsync(chatId, ct).ConfigureAwait(false); } catch { }
+        try { await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, sb.ToString(), kb, ct).ConfigureAwait(false); } catch { }
+    }
+
+    private async Task ShowDetail(long chatId, long userId, int projectId, string? lang, int? editMsgId, CancellationToken ct, string? source = null)
+    {
+        if (_projRepo == null || _projBidRepo == null) return;
         var p = await _projRepo.GetAsync(projectId, ct).ConfigureAwait(false);
         if (p == null) return;
+
         var sb = new System.Text.StringBuilder();
         sb.AppendLine(L($"<b>📌 {p.Title}</b>", $"<b>📌 {p.Title}</b>", lang));
         sb.AppendLine("━━━━━━━━━━━━━━━━━━━\n");
@@ -283,12 +368,75 @@ public sealed class StudentProjectHandler : IUpdateHandler
         sb.AppendLine(L($"👤 ارسال‌کننده: {p.UserDisplayName}", $"👤 Posted by: {p.UserDisplayName}", lang));
 
         var kb = new List<IReadOnlyList<InlineButton>>();
-        if (p.TelegramUserId != userId && p.Status == "approved")
-            kb.Add(new[] { new InlineButton(L("📩 ارسال پیشنهاد", "📩 Submit Proposal", lang), $"proj_bid:{p.Id}") });
-        kb.Add(new[] { new InlineButton(L("🔙 بازگشت", "🔙 Back", lang), "proj_browse") });
+        var backTarget = source == "my" ? "proj_my" : source == "proposals" ? "proj_my_proposals" : "proj_browse";
+
+        if (p.TelegramUserId == userId)
+        {
+            // Owner (Advertiser): show received proposals with accept/reject
+            var bids = await _projBidRepo.ListForProjectAsync(projectId, ct).ConfigureAwait(false);
+            if (bids.Count > 0)
+            {
+                sb.AppendLine("\n━━━━━━━━━━━━━━━━━━━");
+                sb.AppendLine(L($"<b>📩 پیشنهادات دریافتی ({bids.Count})</b>", $"<b>📩 Received Proposals ({bids.Count})</b>", lang));
+                foreach (var b in bids.Take(10))
+                {
+                    var st = b.Status == "accepted" ? "✅" : b.Status == "rejected" ? "❌" : "🟡";
+                    sb.AppendLine(L($"\n{st} {b.BidderDisplayName}: {b.ProposedAmount:N0}T — {b.ProposedDuration}", $"\n{st} {b.BidderDisplayName}: {b.ProposedAmount:N0}T — {b.ProposedDuration}", lang));
+                    if (b.Status == "pending")
+                        kb.Add(new[] { new InlineButton(L($"✅ قبول {b.BidderDisplayName}", $"Accept {b.BidderDisplayName}", lang), $"proj_accept_bid:{b.Id}"), new InlineButton(L("❌ رد", "Reject", lang), $"proj_reject_bid:{b.Id}") });
+                }
+            }
+        }
+        else
+        {
+            // Non-owner (Executor): show Submit Proposal
+            if (p.Status == "approved")
+                kb.Add(new[] { new InlineButton(L("📩 ارسال پیشنهاد", "📩 Submit Proposal", lang), $"proj_bid:{p.Id}") });
+        }
+
+        kb.Add(new[] { new InlineButton(L("🔙 بازگشت", "🔙 Back", lang), backTarget) });
 
         if (editMsgId.HasValue) { try { await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, editMsgId.Value, sb.ToString(), kb, ct).ConfigureAwait(false); return; } catch { } }
         try { await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, sb.ToString(), kb, ct).ConfigureAwait(false); } catch { }
+    }
+
+    private async Task AcceptBid(long chatId, long userId, int bidId, string? lang, int? editMsgId, CancellationToken ct)
+    {
+        if (_projBidRepo == null || _projRepo == null) return;
+        var bid = await _projBidRepo.GetAsync(bidId, ct).ConfigureAwait(false);
+        if (bid == null) return;
+        var project = await _projRepo.GetAsync(bid.ProjectId, ct).ConfigureAwait(false);
+        if (project == null || project.TelegramUserId != userId) return;
+        if (bid.Status != "pending") return;
+
+        await _projBidRepo.UpdateStatusAsync(bidId, "accepted", ct).ConfigureAwait(false);
+        await _projRepo.AssignAsync(bid.ProjectId, bid.BidderTelegramUserId, ct).ConfigureAwait(false);
+
+        // Reject other pending bids for this project
+        var allBids = await _projBidRepo.ListForProjectAsync(bid.ProjectId, ct).ConfigureAwait(false);
+        foreach (var b in allBids.Where(b => b.Id != bidId && b.Status == "pending"))
+            await _projBidRepo.UpdateStatusAsync(b.Id, "rejected", ct).ConfigureAwait(false);
+
+        await SafeDelete(chatId, editMsgId, ct);
+        var msg = L($"<b>✅ پیشنهاد {bid.BidderDisplayName} قبول شد</b>", $"<b>✅ Proposal from {bid.BidderDisplayName} accepted</b>", lang);
+        var kb = new List<IReadOnlyList<InlineButton>> { new[] { new InlineButton(L("🔙 بازگشت", "🔙 Back", lang), $"proj_my_detail:{bid.ProjectId}") } };
+        try { await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, msg, kb, ct).ConfigureAwait(false); } catch { }
+    }
+
+    private async Task RejectBid(long chatId, long userId, int bidId, string? lang, int? editMsgId, CancellationToken ct)
+    {
+        if (_projBidRepo == null || _projRepo == null) return;
+        var bid = await _projBidRepo.GetAsync(bidId, ct).ConfigureAwait(false);
+        if (bid == null) return;
+        var project = await _projRepo.GetAsync(bid.ProjectId, ct).ConfigureAwait(false);
+        if (project == null || project.TelegramUserId != userId) return;
+        if (bid.Status != "pending") return;
+
+        await _projBidRepo.UpdateStatusAsync(bidId, "rejected", ct).ConfigureAwait(false);
+        await SafeDelete(chatId, editMsgId, ct);
+        var msg = L($"<b>❌ پیشنهاد {bid.BidderDisplayName} رد شد</b>", $"<b>❌ Proposal from {bid.BidderDisplayName} rejected</b>", lang);
+        var kb = new List<IReadOnlyList<InlineButton>> { new[] { new InlineButton(L("🔙 بازگشت", "🔙 Back", lang), $"proj_my_detail:{bid.ProjectId}") } };
+        try { await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, msg, kb, ct).ConfigureAwait(false); } catch { }
     }
 
     private async Task StartBid(long chatId, long userId, int projectId, string? lang, int? editMsgId, CancellationToken ct)

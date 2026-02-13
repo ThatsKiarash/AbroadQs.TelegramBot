@@ -30,7 +30,8 @@ public sealed class TicketHandler : IUpdateHandler
         if (context.UserId == null) return false;
         if (context.IsCallbackQuery)
             return (context.MessageText?.Trim() ?? "").StartsWith("tkt_", StringComparison.Ordinal);
-        return !string.IsNullOrEmpty(context.MessageText);
+        // Text is handled via DynamicStageHandler state-based delegation
+        return false;
     }
 
     public async Task<bool> HandleAsync(BotUpdateContext context, CancellationToken ct)
@@ -87,6 +88,17 @@ public sealed class TicketHandler : IUpdateHandler
         { try { await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, editMsgId.Value, text, kb, ct).ConfigureAwait(false); return; } catch { } }
         try { await _sender.RemoveReplyKeyboardSilentAsync(chatId, ct).ConfigureAwait(false); } catch { }
         try { await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, text, kb, ct).ConfigureAwait(false); } catch { }
+    }
+
+    public async Task HandleCallbackAction(long chatId, long userId, string action, int? editMsgId, CancellationToken ct)
+    {
+        var user = await SafeGetUser(userId, ct);
+        var lang = user?.PreferredLanguage;
+        switch (action)
+        {
+            case "tkt_new": await StartNewTicket(chatId, userId, lang, editMsgId, ct); break;
+            case "tkt_list": await ShowMyTickets(chatId, userId, lang, 0, editMsgId, ct); break;
+        }
     }
 
     private async Task StartNewTicket(long chatId, long userId, string? lang, int? editMsgId, CancellationToken ct)

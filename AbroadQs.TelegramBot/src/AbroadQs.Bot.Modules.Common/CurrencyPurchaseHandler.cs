@@ -31,7 +31,8 @@ public sealed class CurrencyPurchaseHandler : IUpdateHandler
         if (context.UserId == null) return false;
         if (context.IsCallbackQuery)
             return (context.MessageText?.Trim() ?? "").StartsWith("cp_", StringComparison.Ordinal);
-        return !string.IsNullOrEmpty(context.MessageText);
+        // Text is handled via DynamicStageHandler state-based delegation
+        return false;
     }
 
     public async Task<bool> HandleAsync(BotUpdateContext context, CancellationToken ct)

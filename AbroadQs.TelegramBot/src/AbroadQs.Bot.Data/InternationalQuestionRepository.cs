@@ -68,6 +68,41 @@ public sealed class InternationalQuestionRepository : IInternationalQuestionRepo
         if (e != null) { e.Status = status; await _db.SaveChangesAsync(ct).ConfigureAwait(false); }
     }
 
+    public async Task<IReadOnlyList<IntlQuestionWithAnswerCountDto>> ListByUserWithAnswerCountAsync(long userId, int page, int pageSize, CancellationToken ct = default)
+    {
+        var questions = await _db.InternationalQuestions
+            .Where(x => x.TelegramUserId == userId)
+            .OrderByDescending(x => x.CreatedAt)
+            .Skip(page * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct).ConfigureAwait(false);
+        if (questions.Count == 0) return Array.Empty<IntlQuestionWithAnswerCountDto>();
+
+        var ids = questions.Select(q => q.Id).ToList();
+        var counts = await _db.QuestionAnswers
+            .Where(a => ids.Contains(a.QuestionId))
+            .GroupBy(a => a.QuestionId)
+            .Select(g => new { QuestionId = g.Key, Count = g.Count() })
+            .ToListAsync(ct).ConfigureAwait(false);
+        var countDict = counts.ToDictionary(x => x.QuestionId, x => x.Count);
+
+        return questions.Select(q => new IntlQuestionWithAnswerCountDto(
+            q.Id, q.TelegramUserId, q.QuestionText, q.TargetCountry, q.BountyAmount, q.Status,
+            q.UserDisplayName, q.CreatedAt, countDict.GetValueOrDefault(q.Id, 0))).ToList();
+    }
+
+    public async Task<IReadOnlyList<UserAnswerWithQuestionDto>> ListAnswersByUserAsync(long userId, int page, int pageSize, CancellationToken ct = default)
+    {
+        var items = await _db.QuestionAnswers
+            .Where(a => a.AnswererTelegramUserId == userId)
+            .OrderByDescending(a => a.CreatedAt)
+            .Skip(page * pageSize)
+            .Take(pageSize)
+            .Join(_db.InternationalQuestions, a => a.QuestionId, q => q.Id, (a, q) => new UserAnswerWithQuestionDto(a.Id, a.QuestionId, q.QuestionText, a.AnswerText, a.Status, a.CreatedAt))
+            .ToListAsync(ct).ConfigureAwait(false);
+        return items;
+    }
+
     private static IntlQuestionDto ToDto(InternationalQuestionEntity e) => new(e.Id, e.TelegramUserId, e.QuestionText, e.TargetCountry, e.BountyAmount, e.Status, e.ChannelMessageId, e.UserDisplayName, e.CreatedAt, e.UpdatedAt);
     private static QuestionAnswerDto ToAnswerDto(QuestionAnswerEntity e) => new(e.Id, e.QuestionId, e.AnswererTelegramUserId, e.AnswerText, e.Status, e.CreatedAt);
 }

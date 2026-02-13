@@ -53,27 +53,45 @@ public sealed class UpdateDispatcher
                     }
                     await lastCmdStore.SetLastCommandAsync(context.UserId.Value + 9_000_000_000L, update.Id.ToString(), cancellationToken).ConfigureAwait(false);
 
-                    // Callback query dedup: lock per user+callback for 3s
+                    // Callback query dedup: only lock ACTION callbacks (bid, submit, pay, confirm) for 500ms
+                    // Navigation callbacks (stage:, lang:, toggle:, back) are NEVER locked
                     if (context.IsCallbackQuery && !string.IsNullOrEmpty(context.MessageText))
                     {
-                        var cbKey = $"cb_lock:{context.UserId.Value}:{context.MessageText}";
-                        var cbLock = await lastCmdStore.GetLastCommandAsync(context.UserId.Value + 8_000_000_000L, cancellationToken).ConfigureAwait(false);
-                        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                        if (cbLock != null && long.TryParse(cbLock, out var lockTs) && now - lockTs < 3000)
+                        var cbData = context.MessageText.Trim();
+                        var isNavigation = cbData.StartsWith("stage:", StringComparison.Ordinal)
+                            || cbData.StartsWith("lang:", StringComparison.Ordinal)
+                            || cbData.StartsWith("toggle:", StringComparison.Ordinal)
+                            || cbData.StartsWith("fin_menu", StringComparison.Ordinal)
+                            || cbData.StartsWith("fin_balance", StringComparison.Ordinal)
+                            || cbData.StartsWith("fin_history", StringComparison.Ordinal)
+                            || cbData.StartsWith("fin_hist_p:", StringComparison.Ordinal)
+                            || cbData.StartsWith("fin_pay_p:", StringComparison.Ordinal)
+                            || cbData.StartsWith("grp_list", StringComparison.Ordinal)
+                            || cbData.StartsWith("grp_filter", StringComparison.Ordinal)
+                            || cbData.StartsWith("msg_", StringComparison.Ordinal)
+                            || cbData.StartsWith("myprop_", StringComparison.Ordinal)
+                            || cbData.StartsWith("profile_edit:", StringComparison.Ordinal)
+                            || cbData.StartsWith("view_profile:", StringComparison.Ordinal);
+
+                        if (!isNavigation)
                         {
-                            _logger.LogDebug("Anti-spam: callback {Cb} blocked for user {UserId}", context.MessageText, context.UserId);
-                            // Answer callback to remove loading spinner
-                            try
+                            var cbLock = await lastCmdStore.GetLastCommandAsync(context.UserId.Value + 8_000_000_000L, cancellationToken).ConfigureAwait(false);
+                            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                            if (cbLock != null && long.TryParse(cbLock, out var lockTs) && now - lockTs < 500)
                             {
-                                using var ansScope = _scopeFactory.CreateScope();
-                                var sender = ansScope.ServiceProvider.GetService<IResponseSender>();
-                                if (sender != null && context.CallbackQueryId != null)
-                                    await sender.AnswerCallbackQueryAsync(context.CallbackQueryId, "لطفا صبر کنید...", cancellationToken).ConfigureAwait(false);
+                                _logger.LogDebug("Anti-spam: action callback {Cb} blocked for user {UserId}", cbData, context.UserId);
+                                try
+                                {
+                                    using var ansScope = _scopeFactory.CreateScope();
+                                    var sender = ansScope.ServiceProvider.GetService<IResponseSender>();
+                                    if (sender != null && context.CallbackQueryId != null)
+                                        await sender.AnswerCallbackQueryAsync(context.CallbackQueryId, null, cancellationToken).ConfigureAwait(false);
+                                }
+                                catch { }
+                                return;
                             }
-                            catch { }
-                            return;
+                            await lastCmdStore.SetLastCommandAsync(context.UserId.Value + 8_000_000_000L, now.ToString(), cancellationToken).ConfigureAwait(false);
                         }
-                        await lastCmdStore.SetLastCommandAsync(context.UserId.Value + 8_000_000_000L, now.ToString(), cancellationToken).ConfigureAwait(false);
                     }
                 }
             }

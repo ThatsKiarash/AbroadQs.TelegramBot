@@ -9,6 +9,7 @@ public interface ISponsorshipRepository
 
     Task<SponsorshipDto> CreateSponsorshipAsync(SponsorshipDto dto, CancellationToken ct = default);
     Task<IReadOnlyList<SponsorshipDto>> ListForRequestAsync(int requestId, CancellationToken ct = default);
+    Task<IReadOnlyList<SponsorshipDto>> ListBySponsorAsync(long sponsorUserId, int page = 0, int pageSize = 10, CancellationToken ct = default);
     Task UpdateSponsorshipStatusAsync(int id, string status, CancellationToken ct = default);
 }
 

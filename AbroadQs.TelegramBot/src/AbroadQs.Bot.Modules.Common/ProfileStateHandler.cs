@@ -31,9 +31,8 @@ public sealed class ProfileStateHandler : IUpdateHandler
             return cb.StartsWith("profile_edit:", StringComparison.Ordinal)
                 || cb.StartsWith("view_profile:", StringComparison.Ordinal);
         }
-        if (string.IsNullOrWhiteSpace(context.MessageText)) return false;
-        if (context.Command != null) return false;
-        return true;
+        // Text is handled via DynamicStageHandler state-based delegation
+        return false;
     }
 
     public async Task<bool> HandleAsync(BotUpdateContext context, CancellationToken cancellationToken)

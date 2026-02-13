@@ -10,7 +10,21 @@ public interface IInternationalQuestionRepository
     Task<QuestionAnswerDto> CreateAnswerAsync(QuestionAnswerDto dto, CancellationToken ct = default);
     Task<IReadOnlyList<QuestionAnswerDto>> ListAnswersAsync(int questionId, CancellationToken ct = default);
     Task UpdateAnswerStatusAsync(int id, string status, CancellationToken ct = default);
+
+    /// <summary>Lists questions posted by the user with answer counts.</summary>
+    Task<IReadOnlyList<IntlQuestionWithAnswerCountDto>> ListByUserWithAnswerCountAsync(long userId, int page, int pageSize, CancellationToken ct = default);
+
+    /// <summary>Lists answers submitted by the user with question text.</summary>
+    Task<IReadOnlyList<UserAnswerWithQuestionDto>> ListAnswersByUserAsync(long userId, int page, int pageSize, CancellationToken ct = default);
 }
+
+public sealed record IntlQuestionWithAnswerCountDto(
+    int Id, long TelegramUserId, string QuestionText, string? TargetCountry,
+    decimal BountyAmount, string Status, string? UserDisplayName, DateTimeOffset CreatedAt, int AnswerCount);
+
+public sealed record UserAnswerWithQuestionDto(
+    int AnswerId, int QuestionId, string QuestionText, string AnswerText,
+    string Status, DateTimeOffset CreatedAt);
 
 public sealed record IntlQuestionDto(
     int Id, long TelegramUserId, string QuestionText, string? TargetCountry,

@@ -61,6 +61,17 @@ public sealed class SponsorshipRepository : ISponsorshipRepository
         return items.Select(ToDto).ToList();
     }
 
+    public async Task<IReadOnlyList<SponsorshipDto>> ListBySponsorAsync(long sponsorUserId, int page = 0, int pageSize = 10, CancellationToken ct = default)
+    {
+        var items = await _db.Sponsorships
+            .Where(s => s.SponsorTelegramUserId == sponsorUserId)
+            .OrderByDescending(s => s.CreatedAt)
+            .Skip(page * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct).ConfigureAwait(false);
+        return items.Select(ToDto).ToList();
+    }
+
     public async Task UpdateSponsorshipStatusAsync(int id, string status, CancellationToken ct = default)
     {
         var e = await _db.Sponsorships.FindAsync(new object[] { id }, ct).ConfigureAwait(false);

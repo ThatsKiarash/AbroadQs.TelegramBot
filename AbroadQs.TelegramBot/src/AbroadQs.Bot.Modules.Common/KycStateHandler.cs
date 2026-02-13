@@ -56,7 +56,8 @@ public sealed class KycStateHandler : IUpdateHandler
                 || cb == CbSkipCountry || cb == CbStartKycFix
                 || cb == CbPhoneManualContinue;
         }
-        return !string.IsNullOrEmpty(context.MessageText) || context.HasContact || context.HasPhoto;
+        // Text/contact/photo is handled via DynamicStageHandler state-based delegation
+        return false;
     }
 
     // ═══════════════════════════════════════════════════════════════════

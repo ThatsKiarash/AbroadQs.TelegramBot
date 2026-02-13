@@ -54,7 +54,8 @@ public sealed class BidStateHandler : IUpdateHandler
                 || cb == "bid_confirm"
                 || cb == "bid_cancel";
         }
-        return !string.IsNullOrEmpty(context.MessageText);
+        // Text is handled via DynamicStageHandler state-based delegation
+        return false;
     }
 
     public async Task<bool> HandleAsync(BotUpdateContext context, CancellationToken ct)

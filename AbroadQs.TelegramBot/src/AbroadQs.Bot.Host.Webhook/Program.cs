@@ -147,7 +147,8 @@ if (!string.IsNullOrWhiteSpace(connStr))
     builder.Services.AddScoped<IPaymentGatewayService>(sp =>
         new BitPayPaymentGatewayAdapter(
             sp.GetRequiredService<AbroadQs.Bot.Host.Webhook.Services.BitPayService>(),
-            sp.GetRequiredService<IWalletRepository>()));
+            sp.GetRequiredService<IWalletRepository>(),
+            sp.GetService<ISettingsRepository>()));
 
     // Phase 8: Crypto wallet service (TRX/ETH address generation, monitoring)
     builder.Services.AddSingleton(sp =>
@@ -2063,6 +2064,78 @@ static async Task SeedDefaultDataAsync(ApplicationDbContext db)
             db.BotStageButtons.AddRange(
                 new BotStageButtonEntity { StageId = langSelectStage.Id, TextFa = "فارسی", TextEn = "فارسی", ButtonType = "callback", CallbackData = "lang:fa", Row = 0, Column = 0, IsEnabled = true },
                 new BotStageButtonEntity { StageId = langSelectStage.Id, TextFa = "English", TextEn = "English", ButtonType = "callback", CallbackData = "lang:en", Row = 0, Column = 1, IsEnabled = true }
+            );
+        }
+
+        // ── Finance reply-kb stage buttons ────
+        var financeStage = db.BotStages.FirstOrDefault(s => s.StageKey == "finance");
+        if (financeStage != null)
+        {
+            var oldFinBtns = db.BotStageButtons.Where(b => b.StageId == financeStage.Id).ToList();
+            if (oldFinBtns.Count > 0) db.BotStageButtons.RemoveRange(oldFinBtns);
+            db.BotStageButtons.AddRange(
+                new BotStageButtonEntity { StageId = financeStage.Id, TextFa = "💰 موجودی", TextEn = "💰 Balance", ButtonType = "callback", TargetStageKey = "fin_balance", Row = 0, Column = 0, IsEnabled = true },
+                new BotStageButtonEntity { StageId = financeStage.Id, TextFa = "💳 شارژ حساب", TextEn = "💳 Charge", ButtonType = "callback", TargetStageKey = "fin_charge", Row = 0, Column = 1, IsEnabled = true },
+                new BotStageButtonEntity { StageId = financeStage.Id, TextFa = "📤 انتقال وجه", TextEn = "📤 Transfer", ButtonType = "callback", TargetStageKey = "fin_transfer", Row = 1, Column = 0, IsEnabled = true },
+                new BotStageButtonEntity { StageId = financeStage.Id, TextFa = "📊 تاریخچه", TextEn = "📊 History", ButtonType = "callback", TargetStageKey = "fin_history", Row = 1, Column = 1, IsEnabled = true },
+                new BotStageButtonEntity { StageId = financeStage.Id, TextFa = "🔙 بازگشت", TextEn = "🔙 Back", ButtonType = "callback", CallbackData = "stage:main_menu", Row = 2, Column = 0, IsEnabled = true }
+            );
+        }
+
+        // ── Tickets reply-kb stage buttons ────
+        var ticketsStage = db.BotStages.FirstOrDefault(s => s.StageKey == "tickets");
+        if (ticketsStage != null)
+        {
+            var oldTktBtns = db.BotStageButtons.Where(b => b.StageId == ticketsStage.Id).ToList();
+            if (oldTktBtns.Count > 0) db.BotStageButtons.RemoveRange(oldTktBtns);
+            db.BotStageButtons.AddRange(
+                new BotStageButtonEntity { StageId = ticketsStage.Id, TextFa = "📝 تیکت جدید", TextEn = "📝 New Ticket", ButtonType = "callback", TargetStageKey = "tkt_new", Row = 0, Column = 0, IsEnabled = true },
+                new BotStageButtonEntity { StageId = ticketsStage.Id, TextFa = "📋 تیکت‌های من", TextEn = "📋 My Tickets", ButtonType = "callback", TargetStageKey = "tkt_list", Row = 0, Column = 1, IsEnabled = true },
+                new BotStageButtonEntity { StageId = ticketsStage.Id, TextFa = "🔙 بازگشت", TextEn = "🔙 Back", ButtonType = "callback", CallbackData = "stage:main_menu", Row = 1, Column = 0, IsEnabled = true }
+            );
+        }
+
+        // ── Student Project reply-kb stage buttons ────
+        var projStage = db.BotStages.FirstOrDefault(s => s.StageKey == "student_project");
+        if (projStage != null)
+        {
+            var oldProjBtns = db.BotStageButtons.Where(b => b.StageId == projStage.Id).ToList();
+            if (oldProjBtns.Count > 0) db.BotStageButtons.RemoveRange(oldProjBtns);
+            db.BotStageButtons.AddRange(
+                new BotStageButtonEntity { StageId = projStage.Id, TextFa = "📝 ثبت پروژه", TextEn = "📝 Post Project", ButtonType = "callback", TargetStageKey = "proj_post", Row = 0, Column = 0, IsEnabled = true },
+                new BotStageButtonEntity { StageId = projStage.Id, TextFa = "🔍 جستجوی پروژه", TextEn = "🔍 Browse Projects", ButtonType = "callback", TargetStageKey = "proj_browse", Row = 0, Column = 1, IsEnabled = true },
+                new BotStageButtonEntity { StageId = projStage.Id, TextFa = "📁 پروژه‌های من", TextEn = "📁 My Projects", ButtonType = "callback", TargetStageKey = "proj_my", Row = 1, Column = 0, IsEnabled = true },
+                new BotStageButtonEntity { StageId = projStage.Id, TextFa = "📋 پیشنهادات من", TextEn = "📋 My Proposals", ButtonType = "callback", TargetStageKey = "proj_my_proposals", Row = 1, Column = 1, IsEnabled = true },
+                new BotStageButtonEntity { StageId = projStage.Id, TextFa = "🔙 بازگشت", TextEn = "🔙 Back", ButtonType = "callback", CallbackData = "stage:new_request", Row = 2, Column = 0, IsEnabled = true }
+            );
+        }
+
+        // ── International Question reply-kb stage buttons ────
+        var iqStage = db.BotStages.FirstOrDefault(s => s.StageKey == "international_question");
+        if (iqStage != null)
+        {
+            var oldIqBtns = db.BotStageButtons.Where(b => b.StageId == iqStage.Id).ToList();
+            if (oldIqBtns.Count > 0) db.BotStageButtons.RemoveRange(oldIqBtns);
+            db.BotStageButtons.AddRange(
+                new BotStageButtonEntity { StageId = iqStage.Id, TextFa = "❓ ثبت سوال", TextEn = "❓ Post Question", ButtonType = "callback", TargetStageKey = "iq_post", Row = 0, Column = 0, IsEnabled = true },
+                new BotStageButtonEntity { StageId = iqStage.Id, TextFa = "🌍 مرور سوالات", TextEn = "🌍 Browse Questions", ButtonType = "callback", TargetStageKey = "iq_browse", Row = 0, Column = 1, IsEnabled = true },
+                new BotStageButtonEntity { StageId = iqStage.Id, TextFa = "📝 سوالات من", TextEn = "📝 My Questions", ButtonType = "callback", TargetStageKey = "iq_my", Row = 1, Column = 0, IsEnabled = true },
+                new BotStageButtonEntity { StageId = iqStage.Id, TextFa = "💬 پاسخ‌های من", TextEn = "💬 My Answers", ButtonType = "callback", TargetStageKey = "iq_my_answers", Row = 1, Column = 1, IsEnabled = true },
+                new BotStageButtonEntity { StageId = iqStage.Id, TextFa = "🔙 بازگشت", TextEn = "🔙 Back", ButtonType = "callback", CallbackData = "stage:new_request", Row = 2, Column = 0, IsEnabled = true }
+            );
+        }
+
+        // ── Financial Sponsor reply-kb stage buttons ────
+        var spStage = db.BotStages.FirstOrDefault(s => s.StageKey == "financial_sponsor");
+        if (spStage != null)
+        {
+            var oldSpBtns = db.BotStageButtons.Where(b => b.StageId == spStage.Id).ToList();
+            if (oldSpBtns.Count > 0) db.BotStageButtons.RemoveRange(oldSpBtns);
+            db.BotStageButtons.AddRange(
+                new BotStageButtonEntity { StageId = spStage.Id, TextFa = "📝 درخواست حمایت", TextEn = "📝 Request Sponsorship", ButtonType = "callback", TargetStageKey = "sp_request", Row = 0, Column = 0, IsEnabled = true },
+                new BotStageButtonEntity { StageId = spStage.Id, TextFa = "💰 حمایت از پروژه", TextEn = "💰 Fund a Project", ButtonType = "callback", TargetStageKey = "sp_browse", Row = 0, Column = 1, IsEnabled = true },
+                new BotStageButtonEntity { StageId = spStage.Id, TextFa = "📊 حمایت‌های من", TextEn = "📊 My Sponsorships", ButtonType = "callback", TargetStageKey = "sp_my", Row = 1, Column = 0, IsEnabled = true },
+                new BotStageButtonEntity { StageId = spStage.Id, TextFa = "🔙 بازگشت", TextEn = "🔙 Back", ButtonType = "callback", CallbackData = "stage:new_request", Row = 2, Column = 0, IsEnabled = true }
             );
         }
 

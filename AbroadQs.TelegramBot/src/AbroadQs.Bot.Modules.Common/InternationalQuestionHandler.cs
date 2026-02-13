@@ -31,7 +31,8 @@ public sealed class InternationalQuestionHandler : IUpdateHandler
         if (context.UserId == null) return false;
         if (context.IsCallbackQuery)
             return (context.MessageText?.Trim() ?? "").StartsWith("iq_", StringComparison.Ordinal);
-        return !string.IsNullOrEmpty(context.MessageText);
+        // Text is handled via DynamicStageHandler state-based delegation
+        return false;
     }
 
     public async Task<bool> HandleAsync(BotUpdateContext context, CancellationToken ct)
@@ -52,6 +53,10 @@ public sealed class InternationalQuestionHandler : IUpdateHandler
             if (cb == "iq_post") { await StartPost(chatId, userId, lang, eid, ct); return true; }
             if (cb == "iq_browse") { await BrowseQuestions(chatId, userId, lang, 0, eid, ct); return true; }
             if (cb.StartsWith("iq_browse_p:")) { int.TryParse(cb["iq_browse_p:".Length..], out var p); await BrowseQuestions(chatId, userId, lang, p, eid, ct); return true; }
+            if (cb == "iq_my") { await ShowMyQuestions(chatId, userId, lang, 0, eid, ct); return true; }
+            if (cb.StartsWith("iq_my_p:")) { int.TryParse(cb["iq_my_p:".Length..], out var p1); await ShowMyQuestions(chatId, userId, lang, p1, eid, ct); return true; }
+            if (cb == "iq_my_answers") { await ShowMyAnswers(chatId, userId, lang, 0, eid, ct); return true; }
+            if (cb.StartsWith("iq_my_answers_p:")) { int.TryParse(cb["iq_my_answers_p:".Length..], out var p2); await ShowMyAnswers(chatId, userId, lang, p2, eid, ct); return true; }
             if (cb.StartsWith("iq_detail:")) { int.TryParse(cb["iq_detail:".Length..], out var qid); await ShowDetail(chatId, userId, qid, lang, eid, ct); return true; }
             if (cb.StartsWith("iq_answer:")) { int.TryParse(cb["iq_answer:".Length..], out var qid2); await StartAnswer(chatId, userId, qid2, lang, eid, ct); return true; }
             if (cb.StartsWith("iq_accept_ans:")) { int.TryParse(cb["iq_accept_ans:".Length..], out var aid); await AcceptAnswer(chatId, userId, aid, lang, eid, ct); return true; }
@@ -82,13 +87,28 @@ public sealed class InternationalQuestionHandler : IUpdateHandler
                      "<b>❓ International Questions</b>\n━━━━━━━━━━━━━━━━━━━\n\nAsk a question or answer others' questions.", lang);
         var kb = new List<IReadOnlyList<InlineButton>>
         {
-            new[] { new InlineButton(L("➕ ثبت سوال", "➕ Ask Question", lang), "iq_post") },
-            new[] { new InlineButton(L("📋 مرور سوالات", "📋 Browse Questions", lang), "iq_browse") },
+            new[] { new InlineButton(L("❓ ثبت سوال", "❓ Post Question", lang), "iq_post") },
+            new[] { new InlineButton(L("🌍 مرور سوالات", "🌍 Browse Questions", lang), "iq_browse") },
+            new[] { new InlineButton(L("📝 سوالات من", "📝 My Questions", lang), "iq_my") },
+            new[] { new InlineButton(L("💬 پاسخ‌های من", "💬 My Answers", lang), "iq_my_answers") },
             new[] { new InlineButton(L("🔙 بازگشت", "🔙 Back", lang), "stage:new_request") },
         };
         if (editMsgId.HasValue) { try { await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, editMsgId.Value, text, kb, ct).ConfigureAwait(false); return; } catch { } }
         try { await _sender.RemoveReplyKeyboardSilentAsync(chatId, ct).ConfigureAwait(false); } catch { }
         try { await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, text, kb, ct).ConfigureAwait(false); } catch { }
+    }
+
+    public async Task HandleCallbackAction(long chatId, long userId, string action, int? editMsgId, CancellationToken ct)
+    {
+        var user = await SafeGetUser(userId, ct);
+        var lang = user?.PreferredLanguage;
+        switch (action)
+        {
+            case "iq_post": await StartPost(chatId, userId, lang, editMsgId, ct); break;
+            case "iq_browse": await BrowseQuestions(chatId, userId, lang, 0, editMsgId, ct); break;
+            case "iq_my": await ShowMyQuestions(chatId, userId, lang, 0, editMsgId, ct); break;
+            case "iq_my_answers": await ShowMyAnswers(chatId, userId, lang, 0, editMsgId, ct); break;
+        }
     }
 
     private async Task StartPost(long chatId, long userId, string? lang, int? editMsgId, CancellationToken ct)
@@ -190,6 +210,61 @@ public sealed class InternationalQuestionHandler : IUpdateHandler
         var nav = new List<InlineButton>();
         if (page > 0) nav.Add(new InlineButton("◀️", $"iq_browse_p:{page - 1}"));
         if (questions.Count == 10) nav.Add(new InlineButton("▶️", $"iq_browse_p:{page + 1}"));
+        if (nav.Count > 0) kb.Add(nav);
+        kb.Add(new[] { new InlineButton(L("🔙 بازگشت", "🔙 Back", lang), "iq_menu") });
+
+        if (editMsgId.HasValue) { try { await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, editMsgId.Value, sb.ToString(), kb, ct).ConfigureAwait(false); return; } catch { } }
+        try { await _sender.RemoveReplyKeyboardSilentAsync(chatId, ct).ConfigureAwait(false); } catch { }
+        try { await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, sb.ToString(), kb, ct).ConfigureAwait(false); } catch { }
+    }
+
+    private async Task ShowMyQuestions(long chatId, long userId, string? lang, int page, int? editMsgId, CancellationToken ct)
+    {
+        if (_questionRepo == null) return;
+        var questions = await _questionRepo.ListByUserWithAnswerCountAsync(userId, page, 10, ct).ConfigureAwait(false);
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine(L("<b>📝 سوالات من</b>", "<b>📝 My Questions</b>", lang));
+        sb.AppendLine("━━━━━━━━━━━━━━━━━━━\n");
+        if (questions.Count == 0) sb.AppendLine(L("📭 سوالی ثبت نکرده‌اید.", "📭 You have not posted any questions.", lang));
+        var kb = new List<IReadOnlyList<InlineButton>>();
+        foreach (var q in questions)
+        {
+            var label = q.QuestionText.Length > 35 ? q.QuestionText[..35] + "…" : q.QuestionText;
+            var bountyBadge = q.BountyAmount > 0 ? $" 💰{q.BountyAmount:N0}" : "";
+            var ansCount = L($" ({q.AnswerCount} پاسخ)", $" ({q.AnswerCount} answers)", lang);
+            kb.Add(new[] { new InlineButton($"❓ {label} | {q.TargetCountry}{bountyBadge}{ansCount}", $"iq_detail:{q.Id}") });
+        }
+        var nav = new List<InlineButton>();
+        if (page > 0) nav.Add(new InlineButton("◀️", $"iq_my_p:{page - 1}"));
+        if (questions.Count == 10) nav.Add(new InlineButton("▶️", $"iq_my_p:{page + 1}"));
+        if (nav.Count > 0) kb.Add(nav);
+        kb.Add(new[] { new InlineButton(L("🔙 بازگشت", "🔙 Back", lang), "iq_menu") });
+
+        if (editMsgId.HasValue) { try { await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, editMsgId.Value, sb.ToString(), kb, ct).ConfigureAwait(false); return; } catch { } }
+        try { await _sender.RemoveReplyKeyboardSilentAsync(chatId, ct).ConfigureAwait(false); } catch { }
+        try { await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, sb.ToString(), kb, ct).ConfigureAwait(false); } catch { }
+    }
+
+    private async Task ShowMyAnswers(long chatId, long userId, string? lang, int page, int? editMsgId, CancellationToken ct)
+    {
+        if (_questionRepo == null) return;
+        var answers = await _questionRepo.ListAnswersByUserAsync(userId, page, 10, ct).ConfigureAwait(false);
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine(L("<b>💬 پاسخ‌های من</b>", "<b>💬 My Answers</b>", lang));
+        sb.AppendLine("━━━━━━━━━━━━━━━━━━━\n");
+        if (answers.Count == 0) sb.AppendLine(L("📭 پاسخی ثبت نکرده‌اید.", "📭 You have not submitted any answers.", lang));
+        var kb = new List<IReadOnlyList<InlineButton>>();
+        foreach (var a in answers)
+        {
+            var statusIcon = a.Status == "accepted" ? "✅" : a.Status == "rejected" ? "❌" : "🟡";
+            var statusText = a.Status == "accepted" ? L("پذیرفته", "accepted", lang) : a.Status == "rejected" ? L("رد شده", "rejected", lang) : L("در انتظار", "pending", lang);
+            var qLabel = a.QuestionText.Length > 25 ? a.QuestionText[..25] + "…" : a.QuestionText;
+            var aLabel = a.AnswerText.Length > 30 ? a.AnswerText[..30] + "…" : a.AnswerText;
+            kb.Add(new[] { new InlineButton($"{statusIcon} {qLabel} | {aLabel} ({statusText})", $"iq_detail:{a.QuestionId}") });
+        }
+        var nav = new List<InlineButton>();
+        if (page > 0) nav.Add(new InlineButton("◀️", $"iq_my_answers_p:{page - 1}"));
+        if (answers.Count == 10) nav.Add(new InlineButton("▶️", $"iq_my_answers_p:{page + 1}"));
         if (nav.Count > 0) kb.Add(nav);
         kb.Add(new[] { new InlineButton(L("🔙 بازگشت", "🔙 Back", lang), "iq_menu") });
 
