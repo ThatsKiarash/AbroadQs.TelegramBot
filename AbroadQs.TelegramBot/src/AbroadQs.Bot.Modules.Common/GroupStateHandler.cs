@@ -168,7 +168,15 @@ public sealed class GroupStateHandler : IUpdateHandler
             var label = $"{badge}{g.Name}";
             if (!string.IsNullOrEmpty(g.CurrencyCode))
                 label += $" ({ExchangeStateHandler.GetCurrencyFlag(g.CurrencyCode)} {g.CurrencyCode})";
-            kb.Add(new[] { new InlineButton(label, null, g.TelegramGroupLink) });
+
+            // Normalize group link: @username → https://t.me/username
+            var link = (g.TelegramGroupLink ?? "").Trim();
+            if (link.StartsWith("@"))
+                link = $"https://t.me/{link[1..]}";
+            else if (!link.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                link = $"https://t.me/{link}";
+
+            kb.Add(new[] { new InlineButton(label, null, link) });
         }
 
         kb.Add(new[] { new InlineButton("🔙 بازگشت", "grp_menu") });
