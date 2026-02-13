@@ -1566,39 +1566,217 @@ app.MapPost("/api/bids/{bidId}/reject", async (int bidId, HttpContext ctx) =>
 // ===== Payment Callback =====
 app.MapGet("/api/payment/callback", async (HttpContext ctx) =>
 {
+    string status = "error";
+    string title = "خطا";
+    string message = "پارامترها نامعتبر هستند.";
+    string amountText = "";
+    string botUsername = "AbroadQsBot";
+
     try
     {
-        var idGetStr = ctx.Request.Query["id_get"].ToString();
-        var transId = ctx.Request.Query["trans_id"].ToString();
-        if (!long.TryParse(idGetStr, out var idGet) || string.IsNullOrEmpty(transId))
-            return Results.BadRequest("Invalid parameters");
-
         using var scope = ctx.RequestServices.CreateScope();
         var walletRepo = scope.ServiceProvider.GetService<IWalletRepository>();
         var bitpay = scope.ServiceProvider.GetService<AbroadQs.Bot.Host.Webhook.Services.BitPayService>();
-        if (walletRepo == null || bitpay == null)
-            return Results.Json(new { detail = "Service not configured" }, statusCode: 503);
+        var settingsRepo = scope.ServiceProvider.GetService<ISettingsRepository>();
+        var sender = scope.ServiceProvider.GetService<IResponseSender>();
+        botUsername = settingsRepo != null
+            ? await settingsRepo.GetValueAsync("bot_username", ctx.RequestAborted).ConfigureAwait(false) ?? "AbroadQsBot"
+            : "AbroadQsBot";
 
-        var payment = await walletRepo.GetPaymentByIdGetAsync(idGet, ctx.RequestAborted).ConfigureAwait(false);
-        if (payment == null) return Results.NotFound("Payment not found");
-        if (payment.Status == "success") return Results.Redirect("/dashboard/?payment=already_verified");
+        var idGetStr = ctx.Request.Query["id_get"].ToString();
+        var transId = ctx.Request.Query["trans_id"].ToString();
 
-        var result = await bitpay.VerifyPaymentAsync(idGet, transId, ctx.RequestAborted).ConfigureAwait(false);
-        if (result.Success)
+        if (!long.TryParse(idGetStr, out var idGet) || string.IsNullOrEmpty(transId))
         {
-            await walletRepo.UpdatePaymentStatusAsync(payment.Id, "success", transId, ctx.RequestAborted).ConfigureAwait(false);
-            // Credit wallet if purpose is wallet_charge
-            if (payment.Purpose == "wallet_charge")
-                await walletRepo.CreditAsync(payment.TelegramUserId, payment.Amount, "شارژ کیف پول", payment.Id.ToString(), ctx.RequestAborted).ConfigureAwait(false);
-            return Results.Redirect("/dashboard/?payment=success");
+            status = "error"; title = "خطا"; message = "پارامترهای بازگشتی نامعتبر هستند.";
+        }
+        else if (walletRepo == null || bitpay == null)
+        {
+            status = "error"; title = "خطا"; message = "سرویس پرداخت در دسترس نیست.";
         }
         else
         {
-            await walletRepo.UpdatePaymentStatusAsync(payment.Id, "failed", transId, ctx.RequestAborted).ConfigureAwait(false);
-            return Results.Redirect($"/dashboard/?payment=failed&error={Uri.EscapeDataString(result.Error ?? "")}");
+            var payment = await walletRepo.GetPaymentByIdGetAsync(idGet, ctx.RequestAborted).ConfigureAwait(false);
+            if (payment == null)
+            {
+                status = "error"; title = "خطا"; message = "تراکنش یافت نشد.";
+            }
+            else if (payment.Status == "success")
+            {
+                status = "success"; title = "پرداخت قبلاً تأیید شده";
+                amountText = $"{payment.Amount / 10m:N0} تومان";
+                message = $"این پرداخت قبلاً با موفقیت تأیید و اعمال شده است.";
+            }
+            else
+            {
+                var result = await bitpay.VerifyPaymentAsync(idGet, transId, ctx.RequestAborted).ConfigureAwait(false);
+                amountText = $"{payment.Amount / 10m:N0} تومان";
+
+                if (result.Success)
+                {
+                    await walletRepo.UpdatePaymentStatusAsync(payment.Id, "success", transId, ctx.RequestAborted).ConfigureAwait(false);
+                    if (payment.Purpose == "wallet_charge")
+                        await walletRepo.CreditAsync(payment.TelegramUserId, payment.Amount, "شارژ کیف پول", payment.Id.ToString(), ctx.RequestAborted).ConfigureAwait(false);
+
+                    status = "success"; title = "پرداخت موفق";
+                    message = "مبلغ با موفقیت به کیف پول شما اضافه شد.";
+
+                    // Send Telegram notification to user
+                    try
+                    {
+                        if (sender != null)
+                        {
+                            var tgMsg = $"✅ <b>پرداخت موفق</b>\n━━━━━━━━━━━━━━━━━━━\n\n" +
+                                        $"💰 مبلغ: <b>{payment.Amount / 10m:N0}</b> تومان\n" +
+                                        $"🔢 شماره تراکنش: <code>{transId}</code>\n\n" +
+                                        $"مبلغ به کیف پول شما اضافه شد. ✨";
+                            await sender.SendTextMessageAsync(payment.TelegramUserId, tgMsg, ctx.RequestAborted).ConfigureAwait(false);
+                        }
+                    }
+                    catch { /* notification failure is non-critical */ }
+                }
+                else
+                {
+                    await walletRepo.UpdatePaymentStatusAsync(payment.Id, "failed", transId, ctx.RequestAborted).ConfigureAwait(false);
+                    status = "failed"; title = "پرداخت ناموفق";
+                    message = "پرداخت تأیید نشد. در صورتی که مبلغ از حساب شما کسر شده، طی ۷۲ ساعت به حساب شما بازگردانده می‌شود.";
+
+                    // Send Telegram notification for failure
+                    try
+                    {
+                        if (sender != null)
+                        {
+                            var tgMsg = $"❌ <b>پرداخت ناموفق</b>\n━━━━━━━━━━━━━━━━━━━\n\n" +
+                                        $"💰 مبلغ: <b>{payment.Amount / 10m:N0}</b> تومان\n\n" +
+                                        $"پرداخت تأیید نشد. در صورت کسر مبلغ، طی ۷۲ ساعت بازگردانده می‌شود.";
+                            await sender.SendTextMessageAsync(payment.TelegramUserId, tgMsg, ctx.RequestAborted).ConfigureAwait(false);
+                        }
+                    }
+                    catch { /* notification failure is non-critical */ }
+                }
+            }
         }
     }
-    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
+    catch
+    {
+        status = "error"; title = "خطای سیستمی"; message = "خطایی رخ داد. لطفاً دوباره تلاش کنید.";
+    }
+
+    // Build the HTML response page
+    var icon = status switch { "success" => "✅", "failed" => "❌", _ => "⚠️" };
+    var color = status switch { "success" => "#22c55e", "failed" => "#ef4444", _ => "#f59e0b" };
+    var bgColor = status switch { "success" => "#f0fdf4", "failed" => "#fef2f2", _ => "#fffbeb" };
+
+    var html = $@"<!DOCTYPE html>
+<html lang=""fa"" dir=""rtl"">
+<head>
+    <meta charset=""UTF-8"">
+    <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"">
+    <title>{title} - AbroadQs</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Tahoma, Arial, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }}
+        .card {{
+            background: #fff;
+            border-radius: 20px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.25);
+            max-width: 420px;
+            width: 100%;
+            overflow: hidden;
+            animation: slideUp 0.5s ease-out;
+        }}
+        @keyframes slideUp {{
+            from {{ opacity: 0; transform: translateY(30px); }}
+            to {{ opacity: 1; transform: translateY(0); }}
+        }}
+        .card-header {{
+            background: {bgColor};
+            padding: 40px 30px 30px;
+            text-align: center;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }}
+        .icon {{ font-size: 64px; margin-bottom: 16px; }}
+        .card-header h1 {{
+            font-size: 24px;
+            color: {color};
+            margin-bottom: 8px;
+        }}
+        .amount {{
+            font-size: 28px;
+            font-weight: 700;
+            color: #1e293b;
+            margin: 12px 0;
+        }}
+        .card-body {{
+            padding: 30px;
+            text-align: center;
+        }}
+        .card-body p {{
+            color: #64748b;
+            font-size: 15px;
+            line-height: 1.7;
+            margin-bottom: 24px;
+        }}
+        .btn {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+            padding: 16px 24px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s;
+            cursor: pointer;
+            border: none;
+        }}
+        .btn-primary {{
+            background: linear-gradient(135deg, #2563eb, #3b82f6);
+            color: #fff;
+            box-shadow: 0 4px 15px rgba(37,99,235,0.4);
+        }}
+        .btn-primary:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(37,99,235,0.5);
+        }}
+        .logo {{
+            margin-top: 20px;
+            font-size: 13px;
+            color: #94a3b8;
+        }}
+    </style>
+</head>
+<body>
+    <div class=""card"">
+        <div class=""card-header"">
+            <div class=""icon"">{icon}</div>
+            <h1>{title}</h1>
+            {(string.IsNullOrEmpty(amountText) ? "" : $@"<div class=""amount"">{amountText}</div>")}
+        </div>
+        <div class=""card-body"">
+            <p>{message}</p>
+            <a href=""https://t.me/{botUsername}"" class=""btn btn-primary"">
+                🤖 بازگشت به ربات
+            </a>
+            <div class=""logo"">AbroadQs © 2026</div>
+        </div>
+    </div>
+</body>
+</html>";
+
+    ctx.Response.ContentType = "text/html; charset=utf-8";
+    await ctx.Response.WriteAsync(html, ctx.RequestAborted);
+    return Results.Empty;
 }).WithName("PaymentCallback");
 
 // ===== Wallet API =====
