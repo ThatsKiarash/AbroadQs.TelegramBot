@@ -195,14 +195,18 @@ public sealed class FinanceHandler : IUpdateHandler
             (pendingPayments > 0 ? $"⏳ Pending Payments: {pendingPayments}\n" : "") +
             $"\n<i>Use the buttons below:</i>", lang);
 
-        var kb = new List<IReadOnlyList<InlineButton>>
+        var kbReply = new List<IReadOnlyList<string>>
         {
-            new[] { new InlineButton(L("🔙 بازگشت", "🔙 Back", lang), "stage:finance") },
+            new[] { L("💰 موجودی", "💰 Balance", lang), L("💳 شارژ حساب", "💳 Charge", lang) },
+            new[] { L("📤 انتقال وجه", "📤 Transfer", lang), L("📊 تاریخچه", "📊 History", lang) },
+            new[] { L("🔙 بازگشت", "🔙 Back", lang) }
         };
 
         if (editMsgId.HasValue)
-        { try { await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, editMsgId.Value, text, kb, ct).ConfigureAwait(false); return; } catch { } }
-        await SafeSendInline(chatId, text, kb, ct);
+        {
+            await SafeDelete(chatId, editMsgId, ct);
+        }
+        await SafeSendReplyKb(chatId, text, kbReply, ct);
     }
 
     private static string Esc(string s) => s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
