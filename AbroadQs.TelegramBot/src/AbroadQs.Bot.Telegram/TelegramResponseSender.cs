@@ -343,30 +343,29 @@ public sealed class TelegramResponseSender : IResponseSender
         }
     }
 
+    // Invisible placeholder character for phantom messages (Braille Pattern Blank — renders invisible but accepted by Telegram API)
+    private const string InvisibleChar = "\u2800";
+
     public async Task RemoveReplyKeyboardSilentAsync(long chatId, CancellationToken cancellationToken = default)
     {
         try
         {
             var markup = new ReplyKeyboardRemove();
-            // Send a short phantom message with ReplyKeyboardRemove, then immediately delete it
             var result = await _client.SendMessage(
-                new ChatId(chatId), "⏳", replyMarkup: markup, cancellationToken: cancellationToken).ConfigureAwait(false);
+                new ChatId(chatId), InvisibleChar, replyMarkup: markup, cancellationToken: cancellationToken).ConfigureAwait(false);
 
             if (result != null)
             {
-                // Immediately delete the phantom — user should never see it
                 try
                 {
                     await _client.DeleteMessage(new ChatId(chatId), result.MessageId, cancellationToken: cancellationToken).ConfigureAwait(false);
                 }
                 catch { /* swallow delete failure */ }
             }
-            // Do NOT save as outgoing message — this is a phantom
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to silently remove reply keyboard in chat {ChatId}", chatId);
-            // Swallow — non-critical
         }
     }
 
@@ -376,7 +375,7 @@ public sealed class TelegramResponseSender : IResponseSender
         {
             var markup = new ReplyKeyboardRemove();
             var result = await _client.SendMessage(
-                new ChatId(chatId), "⏳", replyMarkup: markup, cancellationToken: cancellationToken).ConfigureAwait(false);
+                new ChatId(chatId), InvisibleChar, replyMarkup: markup, cancellationToken: cancellationToken).ConfigureAwait(false);
             return result?.MessageId;
         }
         catch (Exception ex)

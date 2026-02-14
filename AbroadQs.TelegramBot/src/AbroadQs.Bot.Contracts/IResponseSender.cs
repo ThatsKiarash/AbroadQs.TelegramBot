@@ -67,7 +67,7 @@ public interface IResponseSender
     Task RemoveReplyKeyboardSilentAsync(long chatId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Sends a loading message ("⏳") with ReplyKeyboardRemove and returns the message ID.
+    /// Sends an invisible placeholder message with ReplyKeyboardRemove and returns the message ID.
     /// The caller should EDIT this message with the actual content + inline keyboard.
     /// This avoids dual keyboards (reply-kb + inline appearing simultaneously).
     /// </summary>
