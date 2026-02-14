@@ -340,7 +340,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
                 {
                     if (editMessageId.HasValue) await TryDeleteAsync(chatId, editMessageId, cancellationToken);
                     await _myProposalsHandler.ShowMenu(chatId, userId, currentUser?.PreferredLanguage, null, cancellationToken).ConfigureAwait(false);
-                    return true;
+            return true;
                 }
 
                 // ── Phase 2: Finance module ───────────────────────────
@@ -446,6 +446,18 @@ public sealed class DynamicStageHandler : IUpdateHandler
         switch (key)
         {
             case "finance":
+                if (cleanMode && oldBotMsgId.HasValue)
+                    await TryDeleteAsync(chatId, oldBotMsgId, ct).ConfigureAwait(false);
+                if (_financeHandler != null)
+                {
+                    await _stateStore.SetReplyStageAsync(userId, "finance", ct).ConfigureAwait(false);
+                    await _financeHandler.ShowFinanceMenu(chatId, userId, null, null, ct).ConfigureAwait(false);
+                }
+                else
+                {
+                    await ShowReplyKeyboardStageAsync(userId, key, null, null, ct).ConfigureAwait(false);
+                }
+                return true;
             case "tickets":
             case "student_project":
             case "international_question":
@@ -1516,7 +1528,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
         {
             try
             {
-                await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, editMessageId.Value, text, keyboard, cancellationToken).ConfigureAwait(false);
+            await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, editMessageId.Value, text, keyboard, cancellationToken).ConfigureAwait(false);
                 return;
             }
             catch
@@ -1524,6 +1536,6 @@ public sealed class DynamicStageHandler : IUpdateHandler
                 // Edit failed — fall back to sending new message
             }
         }
-        await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, text, keyboard, cancellationToken).ConfigureAwait(false);
+            await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, text, keyboard, cancellationToken).ConfigureAwait(false);
     }
 }
