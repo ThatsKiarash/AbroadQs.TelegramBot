@@ -1175,7 +1175,10 @@ public sealed class DynamicStageHandler : IUpdateHandler
 
                 if (IsReplyKeyboardStage(targetStage))
                 {
-                    // Same type (reply-kb → reply-kb): send new + delete old
+                    // Attempt module-specific routing first (ensures 'finance' shows full info in first message)
+                    if (await TryRouteModuleReplyKb(chatId, userId, targetStage, oldBotMsgId, cleanMode, cancellationToken).ConfigureAwait(false))
+                        return true;
+                    // Fallback: generic reply stage renderer
                     await ShowReplyKeyboardStageAsync(userId, targetStage, null, cleanMode ? oldBotMsgId : null, cancellationToken).ConfigureAwait(false);
                     return true;
                 }
@@ -1234,10 +1237,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
                     return true;
                 }
 
-                // ── Module routing: reply-kb → reply-kb (module menus are now reply-kb stages) ──
-                // Finance, Tickets, Student Project, Intl Questions, Sponsorship
-                if (IsReplyKeyboardStage(targetStage) && await TryRouteModuleReplyKb(chatId, userId, targetStage, oldBotMsgId, cleanMode, cancellationToken))
-                    return true;
+                // Module routing handled above before generic reply stage branch
 
                 // ── Phase 4: My Messages (from reply-kb → inline) ────
                 if (string.Equals(targetStage, "my_messages", StringComparison.OrdinalIgnoreCase) && _myMessagesHandler != null)
