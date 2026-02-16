@@ -113,6 +113,10 @@ public sealed class DynamicStageHandler : IUpdateHandler
         if (!context.IsCallbackQuery && !string.IsNullOrEmpty(data) && string.IsNullOrEmpty(cmd))
             return true;
 
+        // Contact or photo messages (for KYC flow — phone sharing, selfie upload)
+        if (!context.IsCallbackQuery && (context.HasContact || context.HasPhoto))
+            return true;
+
         return false;
     }
 
