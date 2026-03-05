@@ -11,6 +11,8 @@ public sealed class StartHandler : IUpdateHandler
     private readonly IUserMessageStateRepository? _msgStateRepo;
     private readonly IUserConversationStateStore _stateStore;
     private readonly BidStateHandler? _bidHandler;
+    private const string ServerMenuBtnFa = "🖥 مدیریت سرورها";
+    private const string ServerMenuBtnEn = "🖥 Server Management";
 
     public StartHandler(
         IResponseSender sender,
@@ -193,6 +195,11 @@ public sealed class StartHandler : IUpdateHandler
             if (rowTexts.Count > 0)
                 keyboard.Add(rowTexts);
         }
+
+        // Always expose server-ops entry in main menu for easy in-bot access.
+        if (string.Equals(stageKey, "main_menu", StringComparison.OrdinalIgnoreCase))
+            keyboard.Add(new[] { isFa ? ServerMenuBtnFa : ServerMenuBtnEn });
+
         return keyboard;
     }
 

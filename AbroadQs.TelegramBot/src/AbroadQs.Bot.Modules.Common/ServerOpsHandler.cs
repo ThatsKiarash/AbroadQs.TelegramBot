@@ -5,6 +5,7 @@ namespace AbroadQs.Bot.Modules.Common;
 public sealed class ServerOpsHandler : IUpdateHandler
 {
     private const string BtnMenu = "🖥 مدیریت سرورها";
+    private const string BtnMenuEn = "🖥 Server Management";
     private const string BtnList = "📋 لیست سرورها";
     private const string BtnAdd = "➕ افزودن سرور";
     private const string BtnConnect = "🔌 اتصال";
@@ -48,6 +49,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
             || t.StartsWith("/slipnet", StringComparison.OrdinalIgnoreCase)
             || t.StartsWith("/dnstt", StringComparison.OrdinalIgnoreCase)
             || t.Equals(BtnMenu, StringComparison.Ordinal)
+            || t.Equals(BtnMenuEn, StringComparison.Ordinal)
             || t.Equals(BtnList, StringComparison.Ordinal)
             || t.Equals(BtnAdd, StringComparison.Ordinal)
             || t.Equals(BtnConnect, StringComparison.Ordinal)
@@ -87,7 +89,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
         var parts = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var cmd = parts[0].ToLowerInvariant();
 
-        if (cmd == "/serverhelp" || text == BtnMenu)
+        if (cmd == "/serverhelp" || text == BtnMenu || text == BtnMenuEn)
         {
             await ShowMainMenuAsync(context.ChatId, cancellationToken).ConfigureAwait(false);
             return true;

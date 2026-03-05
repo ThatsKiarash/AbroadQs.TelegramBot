@@ -16,6 +16,9 @@ namespace AbroadQs.Bot.Modules.Common;
 /// </summary>
 public sealed class DynamicStageHandler : IUpdateHandler
 {
+    private const string ServerMenuBtnFa = "🖥 مدیریت سرورها";
+    private const string ServerMenuBtnEn = "🖥 Server Management";
+
     private readonly IResponseSender _sender;
     private readonly IBotStageRepository _stageRepo;
     private readonly IPermissionRepository _permRepo;
@@ -1415,6 +1418,9 @@ public sealed class DynamicStageHandler : IUpdateHandler
             if (rowTexts.Count > 0)
                 keyboard.Add(rowTexts);
         }
+
+        if (string.Equals(stageKey, "main_menu", StringComparison.OrdinalIgnoreCase))
+            keyboard.Add(new[] { isFa ? ServerMenuBtnFa : ServerMenuBtnEn });
 
         // Track current reply stage for back-button routing
         await _stateStore.SetReplyStageAsync(userId, stageKey, cancellationToken).ConfigureAwait(false);
