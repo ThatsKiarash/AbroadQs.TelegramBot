@@ -19,12 +19,13 @@ public sealed class OpenClawInstallerService
     public async Task<(bool Success, long JobId, string Message)> QueueAndRunAsync(
         int serverId,
         long actorTelegramUserId,
+        string jobType,
         CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
         var repo = scope.ServiceProvider.GetRequiredService<IRemoteServerRepository>();
         var jobId = await repo.CreateInstallerJobAsync(
-            new RemoteInstallerJobCreateDto(serverId, actorTelegramUserId, "openclaw_install", null), ct).ConfigureAwait(false);
+            new RemoteInstallerJobCreateDto(serverId, actorTelegramUserId, jobType, null), ct).ConfigureAwait(false);
 
         _ = Task.Run(async () =>
         {
@@ -47,7 +48,7 @@ public sealed class OpenClawInstallerService
                 }
 
                 var secret = runCrypto.Decrypt(server.EncryptedSecret, server.SecretNonce, server.SecretTag);
-                var script = BuildInstallScript();
+                var script = BuildInstallScript(jobType);
                 var result = await runSsh.RunOneOffAsync(
                     server.Host, server.Port, server.Username, secret, server.AuthType, script, 420, ct).ConfigureAwait(false);
 
@@ -61,8 +62,8 @@ public sealed class OpenClawInstallerService
                 await runRepo.AddAuditAsync(new RemoteServerAuditCreateDto(
                     serverId,
                     actorTelegramUserId,
-                    "openclaw_install",
-                    "openclaw_install",
+                    jobType,
+                    jobType,
                     status == "success",
                     result.ExitCode,
                     result.DurationMs,
@@ -72,7 +73,7 @@ public sealed class OpenClawInstallerService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "OpenClaw install failed for server {ServerId}", serverId);
+                _logger.LogError(ex, "{JobType} failed for server {ServerId}", jobType, serverId);
                 using var failScope = _scopeFactory.CreateScope();
                 var failRepo = failScope.ServiceProvider.GetRequiredService<IRemoteServerRepository>();
                 await failRepo.UpdateInstallerJobAsync(
@@ -80,11 +81,17 @@ public sealed class OpenClawInstallerService
             }
         }, ct);
 
-        return (true, jobId, $"OpenClaw installer job queued: {jobId}");
+        return (true, jobId, $"{jobType} installer job queued: {jobId}");
     }
 
-    private static string BuildInstallScript()
+    private static string BuildInstallScript(string jobType)
     {
+        if (string.Equals(jobType, "slipnet_install", StringComparison.OrdinalIgnoreCase))
+            return BuildSlipnetInstallScript();
+
+        if (string.Equals(jobType, "dnstt_install", StringComparison.OrdinalIgnoreCase))
+            return BuildDnsttInstallScript();
+
         var sb = new StringBuilder();
         sb.AppendLine("set -e");
         sb.AppendLine("echo '[1/5] Preflight checks' ");
@@ -109,6 +116,72 @@ public sealed class OpenClawInstallerService
         sb.AppendLine("docker compose -f ~/openclaw/docker-compose.yml up -d");
         sb.AppendLine("echo '[5/5] Health check' ");
         sb.AppendLine("docker ps --format 'table {{.Names}}\\t{{.Image}}\\t{{.Status}}' | head -n 10");
+        return sb.ToString();
+    }
+
+    private static string BuildSlipnetInstallScript()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("set -e");
+        sb.AppendLine("echo '[1/4] Preflight' ");
+        sb.AppendLine("uname -a || true");
+        sb.AppendLine("echo '[2/4] Ensure Docker' ");
+        sb.AppendLine("if ! command -v docker >/dev/null 2>&1; then curl -fsSL https://get.docker.com | sh; fi");
+        sb.AppendLine("echo '[3/4] Deploy Slipnet-like tunnel stack (client + watchtower)' ");
+        sb.AppendLine("mkdir -p ~/slipnet");
+        sb.AppendLine("cat > ~/slipnet/docker-compose.yml <<'EOF'");
+        sb.AppendLine("services:");
+        sb.AppendLine("  slipnet-client:");
+        sb.AppendLine("    image: ghcr.io/slippednet/client:latest");
+        sb.AppendLine("    restart: unless-stopped");
+        sb.AppendLine("    network_mode: host");
+        sb.AppendLine("    environment:");
+        sb.AppendLine("      - SLIPNET_TOKEN=change-me");
+        sb.AppendLine("  watchtower:");
+        sb.AppendLine("    image: containrrr/watchtower:latest");
+        sb.AppendLine("    restart: unless-stopped");
+        sb.AppendLine("    volumes:");
+        sb.AppendLine("      - /var/run/docker.sock:/var/run/docker.sock");
+        sb.AppendLine("    command: --interval 300");
+        sb.AppendLine("EOF");
+        sb.AppendLine("docker compose -f ~/slipnet/docker-compose.yml up -d");
+        sb.AppendLine("echo '[4/4] Status' ");
+        sb.AppendLine("docker ps --format 'table {{.Names}}\\t{{.Image}}\\t{{.Status}}' | head -n 10");
+        return sb.ToString();
+    }
+
+    private static string BuildDnsttInstallScript()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("set -e");
+        sb.AppendLine("echo '[1/5] Preflight' ");
+        sb.AppendLine("uname -a || true");
+        sb.AppendLine("echo '[2/5] Install dependencies' ");
+        sb.AppendLine("if command -v apt-get >/dev/null 2>&1; then apt-get update -y && apt-get install -y curl wget tar; fi");
+        sb.AppendLine("echo '[3/5] Download dnstt binaries' ");
+        sb.AppendLine("mkdir -p /usr/local/dnstt");
+        sb.AppendLine("cd /usr/local/dnstt");
+        sb.AppendLine("if [ ! -f dnstt-server ]; then");
+        sb.AppendLine("  wget -qO dnstt.tar.gz https://github.com/tladesignz/dnstt/releases/latest/download/dnstt-linux-amd64.tar.gz || true");
+        sb.AppendLine("  if [ -f dnstt.tar.gz ]; then tar -xzf dnstt.tar.gz || true; fi");
+        sb.AppendLine("fi");
+        sb.AppendLine("chmod +x /usr/local/dnstt/dnstt-server || true");
+        sb.AppendLine("echo '[4/5] Create systemd unit template' ");
+        sb.AppendLine("cat > /etc/systemd/system/dnstt.service <<'EOF'");
+        sb.AppendLine("[Unit]");
+        sb.AppendLine("Description=dnstt server");
+        sb.AppendLine("After=network.target");
+        sb.AppendLine("[Service]");
+        sb.AppendLine("Type=simple");
+        sb.AppendLine("ExecStart=/usr/local/dnstt/dnstt-server -udp :5300 -privkey-file /usr/local/dnstt/server.key example.com 127.0.0.1:8080");
+        sb.AppendLine("Restart=always");
+        sb.AppendLine("RestartSec=5");
+        sb.AppendLine("[Install]");
+        sb.AppendLine("WantedBy=multi-user.target");
+        sb.AppendLine("EOF");
+        sb.AppendLine("systemctl daemon-reload || true");
+        sb.AppendLine("echo '[5/5] Done (manual key/domain config required)' ");
+        sb.AppendLine("echo 'dnstt binary placed in /usr/local/dnstt; edit /etc/systemd/system/dnstt.service then systemctl enable --now dnstt'");
         return sb.ToString();
     }
 

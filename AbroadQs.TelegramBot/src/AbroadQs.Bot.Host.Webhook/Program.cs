@@ -2824,7 +2824,7 @@ app.MapPost("/api/admin/jobs/{serverId:int}/openclaw-install", async (int server
     if (installer == null) return Results.Json(new { detail = "Installer service not configured." }, statusCode: 500);
 
     var actorId = long.TryParse(ctx.Request.Query["actorUserId"], out var parsed) ? parsed : 0L;
-    var result = await installer.QueueAndRunAsync(serverId, actorId, ct).ConfigureAwait(false);
+    var result = await installer.QueueAndRunAsync(serverId, actorId, "openclaw_install", ct).ConfigureAwait(false);
     return Results.Json(new { result.Success, result.JobId, result.Message });
 }).WithName("AdminRunOpenClawInstall");
 

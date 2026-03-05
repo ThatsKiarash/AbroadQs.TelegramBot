@@ -173,7 +173,33 @@ public sealed class RemoteServerRuntimeService : IRemoteServerRuntimeService
         if (server is null || server.OwnerTelegramUserId != actorTelegramUserId)
             return new(false, "سرور پیدا نشد.");
 
-        var job = await _installer.QueueAndRunAsync(serverId, actorTelegramUserId, ct).ConfigureAwait(false);
+        var job = await _installer.QueueAndRunAsync(serverId, actorTelegramUserId, "openclaw_install", ct).ConfigureAwait(false);
+        return new(job.Success, job.Message, null, null, job.JobId);
+    }
+
+    public async Task<RuntimeActionResult> InstallSlipnetAsync(long actorTelegramUserId, int serverId, CancellationToken ct = default)
+    {
+        if (!_limiter.IsAllowed($"slipnet:{actorTelegramUserId}:{serverId}", TimeSpan.FromSeconds(10)))
+            return new(false, "درخواست نصب خیلی سریع تکرار شد.");
+
+        var server = await _repo.GetByIdAsync(serverId, ct).ConfigureAwait(false);
+        if (server is null || server.OwnerTelegramUserId != actorTelegramUserId)
+            return new(false, "سرور پیدا نشد.");
+
+        var job = await _installer.QueueAndRunAsync(serverId, actorTelegramUserId, "slipnet_install", ct).ConfigureAwait(false);
+        return new(job.Success, job.Message, null, null, job.JobId);
+    }
+
+    public async Task<RuntimeActionResult> InstallDnsttAsync(long actorTelegramUserId, int serverId, CancellationToken ct = default)
+    {
+        if (!_limiter.IsAllowed($"dnstt:{actorTelegramUserId}:{serverId}", TimeSpan.FromSeconds(10)))
+            return new(false, "درخواست نصب خیلی سریع تکرار شد.");
+
+        var server = await _repo.GetByIdAsync(serverId, ct).ConfigureAwait(false);
+        if (server is null || server.OwnerTelegramUserId != actorTelegramUserId)
+            return new(false, "سرور پیدا نشد.");
+
+        var job = await _installer.QueueAndRunAsync(serverId, actorTelegramUserId, "dnstt_install", ct).ConfigureAwait(false);
         return new(job.Success, job.Message, null, null, job.JobId);
     }
 

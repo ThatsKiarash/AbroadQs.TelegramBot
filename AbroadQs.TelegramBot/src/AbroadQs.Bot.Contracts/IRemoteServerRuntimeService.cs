@@ -17,6 +17,8 @@ public interface IRemoteServerRuntimeService
     Task<RuntimeActionResult> ExecuteCommandAsync(long actorTelegramUserId, int serverId, string commandText, CancellationToken ct = default);
     Task<RuntimeActionResult> DisconnectAsync(long actorTelegramUserId, int serverId, CancellationToken ct = default);
     Task<RuntimeActionResult> InstallOpenClawAsync(long actorTelegramUserId, int serverId, CancellationToken ct = default);
+    Task<RuntimeActionResult> InstallSlipnetAsync(long actorTelegramUserId, int serverId, CancellationToken ct = default);
+    Task<RuntimeActionResult> InstallDnsttAsync(long actorTelegramUserId, int serverId, CancellationToken ct = default);
     Task<RemoteInstallerJobDto?> GetInstallerJobAsync(long actorTelegramUserId, long jobId, CancellationToken ct = default);
 }
 
