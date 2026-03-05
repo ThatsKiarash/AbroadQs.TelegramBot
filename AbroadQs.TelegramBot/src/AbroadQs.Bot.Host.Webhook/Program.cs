@@ -2937,7 +2937,7 @@ BEGIN
         [Success] BIT NOT NULL,
         [ExitCode] INT NULL,
         [DurationMs] BIGINT NULL,
-        [OutputPreview] NVARCHAR(8000) NULL,
+        [OutputPreview] NVARCHAR(4000) NULL,
         [ErrorMessage] NVARCHAR(2000) NULL,
         [MetadataJson] NVARCHAR(4000) NULL,
         [CreatedAt] DATETIMEOFFSET NOT NULL
@@ -2954,9 +2954,9 @@ BEGIN
         [ActorTelegramUserId] BIGINT NOT NULL,
         [JobType] NVARCHAR(120) NOT NULL,
         [Status] NVARCHAR(40) NOT NULL,
-        [RequestJson] NVARCHAR(8000) NULL,
+        [RequestJson] NVARCHAR(4000) NULL,
         [LogText] NVARCHAR(MAX) NULL,
-        [ResultJson] NVARCHAR(8000) NULL,
+        [ResultJson] NVARCHAR(4000) NULL,
         [CreatedAt] DATETIMEOFFSET NOT NULL,
         [StartedAt] DATETIMEOFFSET NULL,
         [FinishedAt] DATETIMEOFFSET NULL
