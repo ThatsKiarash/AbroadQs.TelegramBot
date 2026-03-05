@@ -16,23 +16,33 @@ public sealed class ServerOpsHandler : IUpdateHandler
     private const string BtnOpenClaw = "📦 نصب OpenClaw";
     private const string BtnSlipnet = "🛰 نصب Slipnet";
     private const string BtnDnstt = "🌐 نصب DNSTT";
+    private const string BtnBackMain = "🔙 بازگشت به منوی اصلی";
     private const string BtnCancel = "❌ انصراف";
 
     private readonly IResponseSender _sender;
     private readonly IRemoteServerRepository _repo;
     private readonly IRemoteServerRuntimeService _runtime;
     private readonly IUserConversationStateStore _stateStore;
+    private readonly IBotStageRepository _stageRepo;
+    private readonly IPermissionRepository _permRepo;
+    private readonly ITelegramUserRepository _userRepo;
 
     public ServerOpsHandler(
         IResponseSender sender,
         IRemoteServerRepository repo,
         IRemoteServerRuntimeService runtime,
-        IUserConversationStateStore stateStore)
+        IUserConversationStateStore stateStore,
+        IBotStageRepository stageRepo,
+        IPermissionRepository permRepo,
+        ITelegramUserRepository userRepo)
     {
         _sender = sender;
         _repo = repo;
         _runtime = runtime;
         _stateStore = stateStore;
+        _stageRepo = stageRepo;
+        _permRepo = permRepo;
+        _userRepo = userRepo;
     }
 
     public string? Command => null;
@@ -60,6 +70,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
             || t.Equals(BtnOpenClaw, StringComparison.Ordinal)
             || t.Equals(BtnSlipnet, StringComparison.Ordinal)
             || t.Equals(BtnDnstt, StringComparison.Ordinal)
+            || t.Equals(BtnBackMain, StringComparison.Ordinal)
             || t.Equals(BtnCancel, StringComparison.Ordinal);
     }
 
@@ -192,6 +203,14 @@ public sealed class ServerOpsHandler : IUpdateHandler
             await _stateStore.ClearStateAsync(userId, cancellationToken).ConfigureAwait(false);
             await _stateStore.ClearAllFlowDataAsync(userId, cancellationToken).ConfigureAwait(false);
             await ShowMainMenuAsync(context.ChatId, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+
+        if (text == BtnBackMain)
+        {
+            await _stateStore.ClearStateAsync(userId, cancellationToken).ConfigureAwait(false);
+            await _stateStore.ClearAllFlowDataAsync(userId, cancellationToken).ConfigureAwait(false);
+            await ShowCoreMainMenuAsync(context.ChatId, userId, cancellationToken).ConfigureAwait(false);
             return true;
         }
 
@@ -480,6 +499,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
             {
                 new[] { BtnOpenClaw, BtnSlipnet },
                 new[] { BtnDnstt, BtnMenu },
+                new[] { BtnBackMain },
                 new[] { BtnCancel }
             },
             ct).ConfigureAwait(false);
@@ -495,9 +515,60 @@ public sealed class ServerOpsHandler : IUpdateHandler
                 new[] { BtnList, BtnAdd },
                 new[] { BtnConnect, BtnCommand },
                 new[] { BtnDisconnect, BtnDelete },
-                new[] { BtnInstallers }
+                new[] { BtnInstallers },
+                new[] { BtnBackMain }
             },
             ct).ConfigureAwait(false);
+    }
+
+    private async Task ShowCoreMainMenuAsync(long chatId, long userId, CancellationToken ct)
+    {
+        var user = await _userRepo.GetByTelegramUserIdAsync(userId, ct).ConfigureAwait(false);
+        var isFa = string.Equals(user?.PreferredLanguage ?? "fa", "fa", StringComparison.OrdinalIgnoreCase);
+
+        var stage = await _stageRepo.GetByKeyAsync("main_menu", ct).ConfigureAwait(false);
+        var text = stage is { IsEnabled: true }
+            ? (isFa ? (stage.TextFa ?? stage.TextEn ?? "منوی اصلی:") : (stage.TextEn ?? stage.TextFa ?? "Main menu:"))
+            : (isFa ? "منوی اصلی:" : "Main menu:");
+
+        var allButtons = await _stageRepo.GetButtonsAsync("main_menu", ct).ConfigureAwait(false);
+        var userPerms = await _permRepo.GetUserPermissionsAsync(userId, ct).ConfigureAwait(false);
+        var permSet = new HashSet<string>(userPerms, StringComparer.OrdinalIgnoreCase);
+
+        var keyboard = new List<IReadOnlyList<string>>();
+        foreach (var row in allButtons
+            .Where(b => b.IsEnabled)
+            .Where(b => string.IsNullOrEmpty(b.RequiredPermission) || permSet.Contains(b.RequiredPermission))
+            .GroupBy(b => b.Row)
+            .OrderBy(g => g.Key))
+        {
+            var rowTexts = new List<string>();
+            foreach (var btn in row.OrderBy(b => b.Column))
+                rowTexts.Add(isFa ? (btn.TextFa ?? btn.TextEn ?? "?") : (btn.TextEn ?? btn.TextFa ?? "?"));
+
+            if (rowTexts.Count > 0)
+                keyboard.Add(rowTexts);
+        }
+
+        var serverBtn = isFa ? BtnMenu : BtnMenuEn;
+        var settingsHint = isFa ? "تنظیم" : "setting";
+        var attached = false;
+        for (var i = 0; i < keyboard.Count; i++)
+        {
+            var row = keyboard[i].ToList();
+            if (!row.Any(c => c.Contains(settingsHint, StringComparison.OrdinalIgnoreCase)))
+                continue;
+            if (!row.Contains(serverBtn, StringComparer.Ordinal))
+                row.Add(serverBtn);
+            keyboard[i] = row;
+            attached = true;
+            break;
+        }
+        if (!attached)
+            keyboard.Add(new[] { serverBtn });
+
+        await _stateStore.SetReplyStageAsync(userId, "main_menu", ct).ConfigureAwait(false);
+        await _sender.SendTextMessageWithReplyKeyboardAsync(chatId, text, keyboard, ct).ConfigureAwait(false);
     }
 
     private async Task ShowServerPickerAsync(long chatId, long userId, string callbackPrefix, string title, CancellationToken ct)

@@ -1089,6 +1089,29 @@ public sealed class DynamicStageHandler : IUpdateHandler
     private static bool RequiresVerification(string stageKey) =>
         VerificationRequiredStages.Contains(stageKey);
 
+    private static List<IReadOnlyList<string>> AttachServerButtonNearSettings(List<IReadOnlyList<string>> keyboard, bool isFa)
+    {
+        var serverBtn = isFa ? ServerMenuBtnFa : ServerMenuBtnEn;
+        var settingsHint = isFa ? "تنظیم" : "setting";
+
+        if (keyboard.Any(r => r.Any(c => string.Equals(c, serverBtn, StringComparison.Ordinal))))
+            return keyboard;
+
+        for (var i = 0; i < keyboard.Count; i++)
+        {
+            var row = keyboard[i].ToList();
+            if (row.Any(c => c.Contains(settingsHint, StringComparison.OrdinalIgnoreCase)))
+            {
+                row.Add(serverBtn);
+                keyboard[i] = row;
+                return keyboard;
+            }
+        }
+
+        keyboard.Add(new[] { serverBtn });
+        return keyboard;
+    }
+
     // ═══════════════════════════════════════════════════════════════════
     //  Reply keyboard button handler
     // ═══════════════════════════════════════════════════════════════════
@@ -1420,7 +1443,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
         }
 
         if (string.Equals(stageKey, "main_menu", StringComparison.OrdinalIgnoreCase))
-            keyboard.Add(new[] { isFa ? ServerMenuBtnFa : ServerMenuBtnEn });
+            keyboard = AttachServerButtonNearSettings(keyboard, isFa);
 
         // Track current reply stage for back-button routing
         await _stateStore.SetReplyStageAsync(userId, stageKey, cancellationToken).ConfigureAwait(false);

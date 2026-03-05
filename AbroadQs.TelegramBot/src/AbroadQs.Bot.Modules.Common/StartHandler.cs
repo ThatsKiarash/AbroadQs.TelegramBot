@@ -196,10 +196,33 @@ public sealed class StartHandler : IUpdateHandler
                 keyboard.Add(rowTexts);
         }
 
-        // Always expose server-ops entry in main menu for easy in-bot access.
+        // Keep server button next to Settings in main menu.
         if (string.Equals(stageKey, "main_menu", StringComparison.OrdinalIgnoreCase))
-            keyboard.Add(new[] { isFa ? ServerMenuBtnFa : ServerMenuBtnEn });
+            keyboard = AttachServerButtonNearSettings(keyboard, isFa);
 
+        return keyboard;
+    }
+
+    private static List<IReadOnlyList<string>> AttachServerButtonNearSettings(List<IReadOnlyList<string>> keyboard, bool isFa)
+    {
+        var serverBtn = isFa ? ServerMenuBtnFa : ServerMenuBtnEn;
+        var settingsHint = isFa ? "تنظیم" : "setting";
+
+        if (keyboard.Any(r => r.Any(c => string.Equals(c, serverBtn, StringComparison.Ordinal))))
+            return keyboard;
+
+        for (var i = 0; i < keyboard.Count; i++)
+        {
+            var row = keyboard[i].ToList();
+            if (row.Any(c => c.Contains(settingsHint, StringComparison.OrdinalIgnoreCase)))
+            {
+                row.Add(serverBtn);
+                keyboard[i] = row;
+                return keyboard;
+            }
+        }
+
+        keyboard.Add(new[] { serverBtn });
         return keyboard;
     }
 
