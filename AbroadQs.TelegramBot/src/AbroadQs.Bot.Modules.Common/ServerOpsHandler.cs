@@ -4,20 +4,21 @@ namespace AbroadQs.Bot.Modules.Common;
 
 public sealed class ServerOpsHandler : IUpdateHandler
 {
-    private const string BtnMenu = "🖥 مدیریت سرورها";
-    private const string BtnMenuEn = "🖥 Server Management";
-    private const string BtnList = "📋 لیست سرورها";
-    private const string BtnAdd = "➕ افزودن سرور";
-    private const string BtnConnect = "🔌 اتصال";
-    private const string BtnCommand = "⌨️ اجرای دستور";
-    private const string BtnDisconnect = "⛔ قطع اتصال";
-    private const string BtnDelete = "🗑 حذف سرور";
-    private const string BtnInstallers = "⚙️ نصب ابزارها";
-    private const string BtnOpenClaw = "📦 نصب OpenClaw";
-    private const string BtnSlipnet = "🛰 نصب Slipnet";
-    private const string BtnDnstt = "🌐 نصب DNSTT";
-    private const string BtnBackMain = "🔙 بازگشت به منوی اصلی";
-    private const string BtnCancel = "❌ انصراف";
+    private const string BtnMenu = "مدیریت سرورها";
+    private const string BtnMenuEn = "Server Management";
+    private const string BtnList = "لیست سرورها";
+    private const string BtnAdd = "افزودن سرور";
+    private const string BtnConnect = "اتصال";
+    private const string BtnCommand = "اجرای دستور";
+    private const string BtnDisconnect = "قطع اتصال";
+    private const string BtnDelete = "حذف سرور";
+    private const string BtnInstallers = "نصب ابزارها";
+    private const string BtnOpenClaw = "نصب OpenClaw";
+    private const string BtnSlipnet = "نصب Slipnet";
+    private const string BtnDnstt = "نصب DNSTT";
+    private const string BtnBackMain = "بازگشت به منوی اصلی";
+    private const string BtnGuide = "راهنما";
+    private const string BtnCancel = "انصراف";
 
     private readonly IResponseSender _sender;
     private readonly IRemoteServerRepository _repo;
@@ -70,6 +71,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
             || t.Equals(BtnOpenClaw, StringComparison.Ordinal)
             || t.Equals(BtnSlipnet, StringComparison.Ordinal)
             || t.Equals(BtnDnstt, StringComparison.Ordinal)
+            || t.Equals(BtnGuide, StringComparison.Ordinal)
             || t.Equals(BtnBackMain, StringComparison.Ordinal)
             || t.Equals(BtnCancel, StringComparison.Ordinal);
     }
@@ -100,15 +102,16 @@ public sealed class ServerOpsHandler : IUpdateHandler
         var parts = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var cmd = parts[0].ToLowerInvariant();
 
-        if (cmd == "/serverhelp" || text == BtnMenu || text == BtnMenuEn)
+        if (cmd == "/serverhelp" || text == BtnMenu || text == BtnMenuEn || text == BtnGuide)
         {
             await ShowMainMenuAsync(context.ChatId, cancellationToken).ConfigureAwait(false);
+            await _sender.SendTextMessageAsync(context.ChatId, HelpText(), cancellationToken).ConfigureAwait(false);
             return true;
         }
 
         if (cmd == "/serveradd" || text == BtnAdd)
         {
-            if (parts.Length < 6 && cmd == "/serveradd")
+            if (parts.Length < 6 && (cmd == "/serveradd" || text == BtnAdd))
             {
                 await StartAddFlowAsync(context.ChatId, userId, cancellationToken).ConfigureAwait(false);
                 return true;
@@ -498,8 +501,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
             new List<IReadOnlyList<string>>
             {
                 new[] { BtnOpenClaw, BtnSlipnet },
-                new[] { BtnDnstt, BtnMenu },
-                new[] { BtnBackMain },
+                new[] { BtnDnstt, BtnBackMain },
                 new[] { BtnCancel }
             },
             ct).ConfigureAwait(false);
@@ -515,8 +517,8 @@ public sealed class ServerOpsHandler : IUpdateHandler
                 new[] { BtnList, BtnAdd },
                 new[] { BtnConnect, BtnCommand },
                 new[] { BtnDisconnect, BtnDelete },
-                new[] { BtnInstallers },
-                new[] { BtnBackMain }
+                new[] { BtnInstallers, BtnBackMain },
+                new[] { BtnGuide }
             },
             ct).ConfigureAwait(false);
     }
@@ -607,6 +609,15 @@ public sealed class ServerOpsHandler : IUpdateHandler
         /dnstt_install <serverId>
         /openclaw_status <jobId>
 
-        نکته: برای ذخیره امن سرور از API داشبورد ادمین استفاده کنید.
+        راهنمای افزودن سرور (مرحله‌ای):
+        1) افزودن سرور
+        2) نام سرور (مثال: vps-test)
+        3) Host/IP (مثال: 91.99.179.17)
+        4) Port (مثال: 2200)
+        5) Username (مثال: root)
+        6) Password
+
+        نمونه کامند مستقیم:
+        /serveradd vps-test 91.99.179.17 2200 root Kia135724!
         """;
 }

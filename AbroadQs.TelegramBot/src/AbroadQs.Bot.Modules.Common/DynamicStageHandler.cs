@@ -16,8 +16,8 @@ namespace AbroadQs.Bot.Modules.Common;
 /// </summary>
 public sealed class DynamicStageHandler : IUpdateHandler
 {
-    private const string ServerMenuBtnFa = "🖥 مدیریت سرورها";
-    private const string ServerMenuBtnEn = "🖥 Server Management";
+    private const string ServerMenuBtnFa = "مدیریت سرورها";
+    private const string ServerMenuBtnEn = "Server Management";
 
     private readonly IResponseSender _sender;
     private readonly IBotStageRepository _stageRepo;
