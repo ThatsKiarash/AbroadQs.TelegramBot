@@ -198,8 +198,17 @@ if (!string.IsNullOrWhiteSpace(connStr))
     using (var scope = app.Services.CreateScope())
     {
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        await db.Database.MigrateAsync().ConfigureAwait(false);
-        app.Logger.LogInformation("Database migrations applied.");
+        try
+        {
+            await db.Database.MigrateAsync().ConfigureAwait(false);
+            app.Logger.LogInformation("Database migrations applied.");
+        }
+        catch (Exception ex)
+        {
+            app.Logger.LogWarning(ex, "Migrate failed, fallback to EnsureCreated.");
+            await db.Database.EnsureCreatedAsync().ConfigureAwait(false);
+            app.Logger.LogInformation("Database EnsureCreated applied.");
+        }
 
         // Seed default stages, buttons, and permissions if not already present
         await SeedDefaultDataAsync(db).ConfigureAwait(false);
