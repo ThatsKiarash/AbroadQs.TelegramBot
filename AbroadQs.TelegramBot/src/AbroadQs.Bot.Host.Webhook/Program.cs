@@ -128,6 +128,7 @@ if (!string.IsNullOrWhiteSpace(connStr))
     builder.Services.AddScoped<IInternationalQuestionRepository, InternationalQuestionRepository>();
     builder.Services.AddScoped<ISponsorshipRepository, SponsorshipRepository>();
     builder.Services.AddScoped<ICryptoWalletRepository, CryptoWalletRepository>();
+    builder.Services.AddScoped<IRemoteServerRepository, RemoteServerRepository>();
     builder.Services.AddScoped<NavasanApiService>();
     builder.Services.AddHostedService<RateAutoRefreshService>();
 
@@ -166,7 +167,14 @@ else
     builder.Services.AddSingleton<IBotStageRepository, NoOpBotStageRepository>();
     builder.Services.AddSingleton<IPermissionRepository, NoOpPermissionRepository>();
     builder.Services.AddSingleton<IExchangeRepository, NoOpExchangeRepository>();
+    builder.Services.AddSingleton<IRemoteServerRepository, NoOpRemoteServerRepository>();
 }
+
+builder.Services.AddSingleton<SecretCryptoService>();
+builder.Services.AddSingleton<SshSessionManager>();
+builder.Services.AddSingleton<ActionRateLimiter>();
+builder.Services.AddSingleton<OpenClawInstallerService>();
+builder.Services.AddScoped<IRemoteServerRuntimeService, RemoteServerRuntimeService>();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -178,6 +186,7 @@ builder.Services.AddSingleton<UpdateLogService>();
 builder.Services.AddSingleton<BotStatusService>();
 
 var app = builder.Build();
+var adminApiKey = (builder.Configuration["Admin:ApiKey"] ?? Environment.GetEnvironmentVariable("ABROADQS_ADMIN_API_KEY") ?? "").Trim();
 
 // برای داشبورد: زمان آخرین ست Webhook
 var webhookSyncedAt = (DateTime?)null;
@@ -194,6 +203,7 @@ if (!string.IsNullOrWhiteSpace(connStr))
 
         // Seed default stages, buttons, and permissions if not already present
         await SeedDefaultDataAsync(db).ConfigureAwait(false);
+        await EnsureRemoteOpsTablesAsync(db).ConfigureAwait(false);
     }
 }
 
@@ -2637,6 +2647,178 @@ app.MapGet("/api/sponsorships", async (string? status, int page, HttpContext ctx
     return Results.Json(new { requests });
 }).WithName("ListSponsorships");
 
+// ── Remote Servers Admin API ──────────────────────────────────────
+app.MapGet("/api/admin/users", async (HttpContext ctx, CancellationToken ct) =>
+{
+    if (!IsAdminApiAuthorized(ctx, adminApiKey))
+        return Results.Json(new { detail = "Unauthorized" }, statusCode: 401);
+
+    using var scope = app.Services.CreateScope();
+    var userRepo = scope.ServiceProvider.GetService<ITelegramUserRepository>();
+    if (userRepo == null) return Results.Json(new { detail = "Users repository not configured." }, statusCode: 500);
+    var users = await userRepo.ListAllAsync(ct).ConfigureAwait(false);
+    return Results.Json(new { users });
+}).WithName("AdminUsers");
+
+app.MapGet("/api/admin/servers", async (HttpContext ctx, long? ownerUserId, CancellationToken ct) =>
+{
+    if (!IsAdminApiAuthorized(ctx, adminApiKey))
+        return Results.Json(new { detail = "Unauthorized" }, statusCode: 401);
+
+    using var scope = app.Services.CreateScope();
+    var repo = scope.ServiceProvider.GetService<IRemoteServerRepository>();
+    if (repo == null) return Results.Json(new { detail = "Remote server repository not configured." }, statusCode: 500);
+    var servers = await repo.ListAllAsync(ownerUserId, ct).ConfigureAwait(false);
+    return Results.Json(new { servers = servers.Select(s => new
+    {
+        s.Id,
+        s.OwnerTelegramUserId,
+        s.Name,
+        s.Host,
+        s.Port,
+        s.Username,
+        s.AuthType,
+        s.Tags,
+        s.Description,
+        s.IsActive,
+        s.LastConnectedAt,
+        s.CreatedAt,
+        s.UpdatedAt
+    }) });
+}).WithName("AdminServers");
+
+app.MapPost("/api/admin/servers", async (HttpContext ctx, CancellationToken ct) =>
+{
+    if (!IsAdminApiAuthorized(ctx, adminApiKey))
+        return Results.Json(new { detail = "Unauthorized" }, statusCode: 401);
+
+    var body = await ctx.Request.ReadFromJsonAsync<AdminCreateServerRequest>(ct).ConfigureAwait(false);
+    if (body == null || body.OwnerTelegramUserId <= 0 || string.IsNullOrWhiteSpace(body.Name) || string.IsNullOrWhiteSpace(body.Host) || string.IsNullOrWhiteSpace(body.Username) || string.IsNullOrWhiteSpace(body.Secret))
+        return Results.BadRequest(new { detail = "ownerTelegramUserId/name/host/username/secret required." });
+    if (body.Port is < 1 or > 65535)
+        return Results.BadRequest(new { detail = "port must be between 1 and 65535." });
+
+    using var scope = app.Services.CreateScope();
+    var runtime = scope.ServiceProvider.GetRequiredService<IRemoteServerRuntimeService>();
+    var result = await runtime.AddServerAsync(
+        body.OwnerTelegramUserId,
+        body.Name.Trim(),
+        body.Host.Trim(),
+        body.Port,
+        body.Username.Trim(),
+        body.Secret,
+        string.IsNullOrWhiteSpace(body.AuthType) ? "password" : body.AuthType.Trim(),
+        body.Tags,
+        body.Description,
+        ct).ConfigureAwait(false);
+
+    return result.Success
+        ? Results.Json(new { success = true, message = result.Message })
+        : Results.Json(new { detail = result.Message }, statusCode: 400);
+}).WithName("AdminCreateServer");
+
+app.MapPost("/api/admin/servers/{serverId:int}/reveal-secret", async (int serverId, HttpContext ctx, CancellationToken ct) =>
+{
+    if (!IsAdminApiAuthorized(ctx, adminApiKey))
+        return Results.Json(new { detail = "Unauthorized" }, statusCode: 401);
+
+    using var scope = app.Services.CreateScope();
+    var repo = scope.ServiceProvider.GetService<IRemoteServerRepository>();
+    var crypto = scope.ServiceProvider.GetService<SecretCryptoService>();
+    if (repo == null || crypto == null)
+        return Results.Json(new { detail = "Remote server services not configured." }, statusCode: 500);
+
+    var server = await repo.GetByIdAsync(serverId, ct).ConfigureAwait(false);
+    if (server == null) return Results.NotFound(new { detail = "Server not found." });
+
+    var revealed = crypto.Decrypt(server.EncryptedSecret, server.SecretNonce, server.SecretTag);
+    var actorId = long.TryParse(ctx.Request.Query["actorUserId"], out var parsed) ? parsed : 0L;
+    await repo.AddAuditAsync(new RemoteServerAuditCreateDto(
+        serverId,
+        actorId,
+        "secret_reveal",
+        null,
+        true,
+        null,
+        null,
+        null,
+        null,
+        null), ct).ConfigureAwait(false);
+
+    return Results.Json(new
+    {
+        server.Id,
+        server.Name,
+        server.Host,
+        server.Port,
+        server.Username,
+        server.AuthType,
+        secret = revealed
+    });
+}).WithName("AdminRevealServerSecret");
+
+app.MapGet("/api/admin/audits", async (HttpContext ctx, long? actorUserId, int? serverId, int take, CancellationToken ct) =>
+{
+    if (!IsAdminApiAuthorized(ctx, adminApiKey))
+        return Results.Json(new { detail = "Unauthorized" }, statusCode: 401);
+    using var scope = app.Services.CreateScope();
+    var repo = scope.ServiceProvider.GetService<IRemoteServerRepository>();
+    if (repo == null) return Results.Json(new { detail = "Remote server repository not configured." }, statusCode: 500);
+    var audits = await repo.ListAuditsAsync(actorUserId, serverId, take <= 0 ? 100 : take, ct).ConfigureAwait(false);
+    var safe = audits.Select(a => new
+    {
+        a.Id,
+        a.ServerId,
+        a.ActorTelegramUserId,
+        a.ActionType,
+        a.CommandText,
+        a.Success,
+        a.ExitCode,
+        a.DurationMs,
+        OutputPreview = RedactSensitive(a.OutputPreview),
+        ErrorMessage = RedactSensitive(a.ErrorMessage),
+        a.MetadataJson,
+        a.CreatedAt
+    });
+    return Results.Json(new { audits = safe });
+}).WithName("AdminServerAudits");
+
+app.MapGet("/api/admin/jobs", async (HttpContext ctx, long? actorUserId, int? serverId, int take, CancellationToken ct) =>
+{
+    if (!IsAdminApiAuthorized(ctx, adminApiKey))
+        return Results.Json(new { detail = "Unauthorized" }, statusCode: 401);
+    using var scope = app.Services.CreateScope();
+    var repo = scope.ServiceProvider.GetService<IRemoteServerRepository>();
+    if (repo == null) return Results.Json(new { detail = "Remote server repository not configured." }, statusCode: 500);
+    var jobs = await repo.ListInstallerJobsAsync(actorUserId, serverId, take <= 0 ? 100 : take, ct).ConfigureAwait(false);
+    return Results.Json(new { jobs });
+}).WithName("AdminInstallerJobs");
+
+app.MapGet("/api/admin/jobs/{jobId:long}", async (long jobId, HttpContext ctx, CancellationToken ct) =>
+{
+    if (!IsAdminApiAuthorized(ctx, adminApiKey))
+        return Results.Json(new { detail = "Unauthorized" }, statusCode: 401);
+    using var scope = app.Services.CreateScope();
+    var repo = scope.ServiceProvider.GetService<IRemoteServerRepository>();
+    if (repo == null) return Results.Json(new { detail = "Remote server repository not configured." }, statusCode: 500);
+    var job = await repo.GetInstallerJobAsync(jobId, ct).ConfigureAwait(false);
+    return job == null ? Results.NotFound(new { detail = "Job not found." }) : Results.Json(job);
+}).WithName("AdminInstallerJobById");
+
+app.MapPost("/api/admin/jobs/{serverId:int}/openclaw-install", async (int serverId, HttpContext ctx, CancellationToken ct) =>
+{
+    if (!IsAdminApiAuthorized(ctx, adminApiKey))
+        return Results.Json(new { detail = "Unauthorized" }, statusCode: 401);
+
+    using var scope = app.Services.CreateScope();
+    var installer = scope.ServiceProvider.GetService<OpenClawInstallerService>();
+    if (installer == null) return Results.Json(new { detail = "Installer service not configured." }, statusCode: 500);
+
+    var actorId = long.TryParse(ctx.Request.Query["actorUserId"], out var parsed) ? parsed : 0L;
+    var result = await installer.QueueAndRunAsync(serverId, actorId, ct).ConfigureAwait(false);
+    return Results.Json(new { result.Success, result.JobId, result.Message });
+}).WithName("AdminRunOpenClawInstall");
+
 app.MapGet("/", () => Results.Ok("AbroadQs Telegram Bot (Webhook) is running."))
     .WithName("Health");
 
@@ -2691,6 +2873,92 @@ static async Task SendMainMenuFromApi(IServiceProvider sp, ITelegramBotClient bo
     catch { /* swallow — best effort */ }
 }
 
+static bool IsAdminApiAuthorized(HttpContext ctx, string adminApiKey)
+{
+    if (string.IsNullOrWhiteSpace(adminApiKey))
+        return false;
+    if (!ctx.Request.Headers.TryGetValue("X-AbroadQs-Admin-Key", out var provided))
+        return false;
+    return string.Equals(provided.ToString(), adminApiKey, StringComparison.Ordinal);
+}
+
+static string? RedactSensitive(string? text)
+{
+    if (string.IsNullOrWhiteSpace(text)) return text;
+    var x = text.Replace("password", "***", StringComparison.OrdinalIgnoreCase);
+    x = x.Replace("token", "***", StringComparison.OrdinalIgnoreCase);
+    x = x.Replace("private key", "***", StringComparison.OrdinalIgnoreCase);
+    return x;
+}
+
+static async Task EnsureRemoteOpsTablesAsync(ApplicationDbContext db)
+{
+    const string sql = """
+IF OBJECT_ID(N'[RemoteServers]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [RemoteServers](
+        [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+        [OwnerTelegramUserId] BIGINT NOT NULL,
+        [Name] NVARCHAR(150) NOT NULL,
+        [Host] NVARCHAR(200) NOT NULL,
+        [Port] INT NOT NULL,
+        [Username] NVARCHAR(150) NOT NULL,
+        [AuthType] NVARCHAR(30) NOT NULL,
+        [EncryptedSecret] NVARCHAR(MAX) NOT NULL,
+        [SecretNonce] NVARCHAR(256) NOT NULL,
+        [SecretTag] NVARCHAR(256) NOT NULL,
+        [Tags] NVARCHAR(500) NULL,
+        [Description] NVARCHAR(1000) NULL,
+        [IsActive] BIT NOT NULL DEFAULT 1,
+        [LastConnectedAt] DATETIMEOFFSET NULL,
+        [CreatedAt] DATETIMEOFFSET NOT NULL,
+        [UpdatedAt] DATETIMEOFFSET NULL
+    );
+    CREATE INDEX [IX_RemoteServers_OwnerTelegramUserId] ON [RemoteServers]([OwnerTelegramUserId]);
+END;
+
+IF OBJECT_ID(N'[RemoteServerAudits]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [RemoteServerAudits](
+        [Id] BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+        [ServerId] INT NOT NULL,
+        [ActorTelegramUserId] BIGINT NOT NULL,
+        [ActionType] NVARCHAR(80) NOT NULL,
+        [CommandText] NVARCHAR(4000) NULL,
+        [Success] BIT NOT NULL,
+        [ExitCode] INT NULL,
+        [DurationMs] BIGINT NULL,
+        [OutputPreview] NVARCHAR(8000) NULL,
+        [ErrorMessage] NVARCHAR(2000) NULL,
+        [MetadataJson] NVARCHAR(4000) NULL,
+        [CreatedAt] DATETIMEOFFSET NOT NULL
+    );
+    CREATE INDEX [IX_RemoteServerAudits_ServerId] ON [RemoteServerAudits]([ServerId]);
+    CREATE INDEX [IX_RemoteServerAudits_ActorTelegramUserId] ON [RemoteServerAudits]([ActorTelegramUserId]);
+END;
+
+IF OBJECT_ID(N'[RemoteInstallerJobs]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [RemoteInstallerJobs](
+        [Id] BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+        [ServerId] INT NOT NULL,
+        [ActorTelegramUserId] BIGINT NOT NULL,
+        [JobType] NVARCHAR(120) NOT NULL,
+        [Status] NVARCHAR(40) NOT NULL,
+        [RequestJson] NVARCHAR(8000) NULL,
+        [LogText] NVARCHAR(MAX) NULL,
+        [ResultJson] NVARCHAR(8000) NULL,
+        [CreatedAt] DATETIMEOFFSET NOT NULL,
+        [StartedAt] DATETIMEOFFSET NULL,
+        [FinishedAt] DATETIMEOFFSET NULL
+    );
+    CREATE INDEX [IX_RemoteInstallerJobs_ServerId] ON [RemoteInstallerJobs]([ServerId]);
+    CREATE INDEX [IX_RemoteInstallerJobs_ActorTelegramUserId] ON [RemoteInstallerJobs]([ActorTelegramUserId]);
+END;
+""";
+    await db.Database.ExecuteSqlRawAsync(sql).ConfigureAwait(false);
+}
+
 app.Run();
 
 record SetWebhookRequest(string? Url);
@@ -2703,3 +2971,4 @@ record RejectRequest(string? Note);
 record GroupRejectRequest(string? Note);
 record SetChannelRequest(string? ChannelId);
 record SetFeeRequest(string? FeePercent);
+record AdminCreateServerRequest(long OwnerTelegramUserId, string Name, string Host, int Port, string Username, string Secret, string? AuthType, string? Tags, string? Description);

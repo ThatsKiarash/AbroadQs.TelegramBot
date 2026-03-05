@@ -45,6 +45,9 @@ public sealed class ApplicationDbContext : DbContext
     // Phase 8
     public DbSet<CryptoWalletEntity> CryptoWallets => Set<CryptoWalletEntity>();
     public DbSet<CurrencyPurchaseEntity> CurrencyPurchases => Set<CurrencyPurchaseEntity>();
+    public DbSet<RemoteServerEntity> RemoteServers => Set<RemoteServerEntity>();
+    public DbSet<RemoteServerAuditEntity> RemoteServerAudits => Set<RemoteServerAuditEntity>();
+    public DbSet<RemoteInstallerJobEntity> RemoteInstallerJobs => Set<RemoteInstallerJobEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -442,6 +445,59 @@ public sealed class ApplicationDbContext : DbContext
             e.Property(x => x.TxHash).HasMaxLength(128);
             e.HasIndex(x => x.TelegramUserId);
             e.HasIndex(x => x.Status);
+        });
+
+        modelBuilder.Entity<RemoteServerEntity>(e =>
+        {
+            e.ToTable("RemoteServers");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.OwnerTelegramUserId).IsRequired();
+            e.Property(x => x.Name).IsRequired().HasMaxLength(150);
+            e.Property(x => x.Host).IsRequired().HasMaxLength(200);
+            e.Property(x => x.Port).IsRequired();
+            e.Property(x => x.Username).IsRequired().HasMaxLength(150);
+            e.Property(x => x.AuthType).IsRequired().HasMaxLength(30);
+            e.Property(x => x.EncryptedSecret).IsRequired();
+            e.Property(x => x.SecretNonce).IsRequired().HasMaxLength(256);
+            e.Property(x => x.SecretTag).IsRequired().HasMaxLength(256);
+            e.Property(x => x.Tags).HasMaxLength(500);
+            e.Property(x => x.Description).HasMaxLength(1000);
+            e.HasIndex(x => x.OwnerTelegramUserId);
+            e.HasIndex(x => new { x.OwnerTelegramUserId, x.Name });
+            e.HasIndex(x => new { x.Host, x.Port, x.Username });
+        });
+
+        modelBuilder.Entity<RemoteServerAuditEntity>(e =>
+        {
+            e.ToTable("RemoteServerAudits");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.ServerId).IsRequired();
+            e.Property(x => x.ActorTelegramUserId).IsRequired();
+            e.Property(x => x.ActionType).IsRequired().HasMaxLength(80);
+            e.Property(x => x.CommandText).HasMaxLength(4000);
+            e.Property(x => x.OutputPreview).HasMaxLength(8000);
+            e.Property(x => x.ErrorMessage).HasMaxLength(2000);
+            e.Property(x => x.MetadataJson).HasMaxLength(4000);
+            e.HasIndex(x => x.ServerId);
+            e.HasIndex(x => x.ActorTelegramUserId);
+            e.HasIndex(x => x.CreatedAt);
+        });
+
+        modelBuilder.Entity<RemoteInstallerJobEntity>(e =>
+        {
+            e.ToTable("RemoteInstallerJobs");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.ServerId).IsRequired();
+            e.Property(x => x.ActorTelegramUserId).IsRequired();
+            e.Property(x => x.JobType).IsRequired().HasMaxLength(120);
+            e.Property(x => x.Status).IsRequired().HasMaxLength(40);
+            e.Property(x => x.RequestJson).HasMaxLength(8000);
+            e.Property(x => x.LogText).HasMaxLength(32000);
+            e.Property(x => x.ResultJson).HasMaxLength(8000);
+            e.HasIndex(x => x.ServerId);
+            e.HasIndex(x => x.ActorTelegramUserId);
+            e.HasIndex(x => x.Status);
+            e.HasIndex(x => x.CreatedAt);
         });
     }
 }

@@ -43,6 +43,7 @@ public static class CommonModuleExtensions
         services.AddScoped<IUpdateHandler, MyMessagesHandler>(sp => sp.GetRequiredService<MyMessagesHandler>());
         services.AddScoped<MyProposalsHandler>();                    // Phase 4: My Proposals
         services.AddScoped<IUpdateHandler, MyProposalsHandler>(sp => sp.GetRequiredService<MyProposalsHandler>());
+        services.AddScoped<IUpdateHandler, ServerOpsHandler>();      // SSH server operations + OpenClaw
         services.AddScoped<IUpdateHandler, DynamicStageHandler>();
         services.AddScoped<IUpdateHandler, UnknownCommandHandler>();
         return services;
