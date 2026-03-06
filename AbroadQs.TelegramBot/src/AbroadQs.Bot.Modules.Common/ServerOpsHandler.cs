@@ -84,11 +84,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
         if (context.IsCallbackQuery && t.StartsWith("srv_", StringComparison.OrdinalIgnoreCase))
             return true;
 
-        var normalized = NormalizeButtonText(t);
-        var isServerMenuText =
-            normalized == NormalizeButtonText(BtnMenu) ||
-            normalized == NormalizeButtonText(BtnMenuEn) ||
-            (normalized.Contains("مدیریت", StringComparison.Ordinal) && normalized.Contains("سرور", StringComparison.Ordinal));
+        var isServerMenuText = IsServerMenuEntryText(t);
 
         // For non-callback messages we must allow pass-through, because in srv_shell state
         // any arbitrary text (e.g. "ls -la", "docker ps") is a valid command.
@@ -149,6 +145,16 @@ public sealed class ServerOpsHandler : IUpdateHandler
             return true;
         }
 
+        // Allow entering server management from any transient state.
+        var isServerMenuTextEarly = IsServerMenuEntryText(text);
+        if (isServerMenuTextEarly)
+        {
+            await _stateStore.ClearStateAsync(userId, cancellationToken).ConfigureAwait(false);
+            await _stateStore.ClearAllFlowDataAsync(userId, cancellationToken).ConfigureAwait(false);
+            await ShowMainMenuAsync(context.ChatId, userId, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+
         var currentState = await _stateStore.GetStateAsync(userId, cancellationToken).ConfigureAwait(false);
         if (!string.IsNullOrWhiteSpace(currentState))
         {
@@ -158,11 +164,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
 
         var parts = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var cmd = parts[0].ToLowerInvariant();
-        var normalizedText = NormalizeButtonText(text);
-        var isServerMenuText =
-            normalizedText == NormalizeButtonText(BtnMenu) ||
-            normalizedText == NormalizeButtonText(BtnMenuEn) ||
-            (normalizedText.Contains("مدیریت", StringComparison.Ordinal) && normalizedText.Contains("سرور", StringComparison.Ordinal));
+        var isServerMenuText = IsServerMenuEntryText(text);
 
         if (cmd == "/serverhelp" || text == BtnGuide)
         {
@@ -767,8 +769,10 @@ public sealed class ServerOpsHandler : IUpdateHandler
                 if (MatchesButton(text, BtnDisconnect))
                 {
                     try { await _runtime.DisconnectAsync(userId, serverId.Value, ct).ConfigureAwait(false); } catch { }
-                    await _stateStore.ClearFlowDataAsync(userId, FlowLastAiMessageId, ct).ConfigureAwait(false);
-                    await ShowServerOperationsAsync(context.ChatId, userId, serverId.Value, ct).ConfigureAwait(false);
+                    await _stateStore.ClearStateAsync(userId, ct).ConfigureAwait(false);
+                    await _stateStore.ClearAllFlowDataAsync(userId, ct).ConfigureAwait(false);
+                    await _sender.SendTextMessageAsync(context.ChatId, "اتصال قطع شد.\nبرای شروع دوباره دکمه /start را بزن.", ct).ConfigureAwait(false);
+                    await ShowCoreMainMenuAsync(context.ChatId, userId, ct).ConfigureAwait(false);
                     return true;
                 }
 
@@ -808,7 +812,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
                 if (int.TryParse(aiMsgIdText, out var aiMsgId) && aiMsgId > 0)
                 {
                     try { await _sender.DeleteMessageAsync(context.ChatId, aiMsgId, ct).ConfigureAwait(false); } catch { }
-                    await _stateStore.ClearFlowDataAsync(userId, FlowLastAiMessageId, ct).ConfigureAwait(false);
+                    await _stateStore.SetFlowDataAsync(userId, FlowLastAiMessageId, "", ct).ConfigureAwait(false);
                 }
                 if (context.IncomingMessageId.HasValue)
                 {
@@ -1182,11 +1186,34 @@ public sealed class ServerOpsHandler : IUpdateHandler
 
     private async Task RunShellCommandWithProgressAsync(long chatId, long userId, int serverId, string command, CancellationToken ct)
     {
+        var progressStep = 1;
         var progress =
             $"در حال اجرای دستور روی سرور #{serverId}\n" +
             $"<b>دستور:</b>\n<code>{EscapeHtml(command)}</code>\n" +
-            $"{BuildProgressBar(1)}";
-        var result = await _runtime.ExecuteCommandAsync(userId, serverId, command, ct).ConfigureAwait(false);
+            $"{BuildProgressBar(progressStep)}";
+        await UpsertServerMessageAsync(chatId, userId, progress, null, ct).ConfigureAwait(false);
+
+        if (await TryRunShellCommandStreamingAsync(chatId, userId, serverId, command, ct).ConfigureAwait(false))
+            return;
+
+        var startedAt = DateTime.UtcNow;
+        var runTask = _runtime.ExecuteCommandAsync(userId, serverId, command, ct);
+        while (!runTask.IsCompleted)
+        {
+            await Task.WhenAny(runTask, Task.Delay(1700, ct)).ConfigureAwait(false);
+            if (runTask.IsCompleted) break;
+
+            progressStep = progressStep >= 6 ? 1 : progressStep + 1;
+            var elapsed = (int)(DateTime.UtcNow - startedAt).TotalSeconds;
+            var tickText =
+                $"در حال اجرای دستور روی سرور #{serverId}\n" +
+                $"<b>دستور:</b>\n<code>{EscapeHtml(command)}</code>\n" +
+                $"<b>زمان:</b> <code>{elapsed}s</code>\n" +
+                $"{BuildProgressBar(progressStep)}";
+            await UpsertServerMessageAsync(chatId, userId, tickText, null, ct).ConfigureAwait(false);
+        }
+
+        var result = await runTask.ConfigureAwait(false);
         var output = string.IsNullOrWhiteSpace(result.Output) ? "(no output)" : Limit(result.Output, 3000);
         await _stateStore.SetFlowDataAsync(userId, FlowLastCommand, command, ct).ConfigureAwait(false);
         await _stateStore.SetFlowDataAsync(userId, FlowLastOutput, output, ct).ConfigureAwait(false);
@@ -1197,9 +1224,98 @@ public sealed class ServerOpsHandler : IUpdateHandler
             $"<b>Exit:</b> <code>{result.ExitCode}</code>\n\n" +
             $"<b>دستور:</b>\n<code>{EscapeHtml(command)}</code>\n\n" +
             $"<b>خروجی:</b>\n<pre>{EscapeHtml(output)}</pre>";
-
-        await UpsertServerMessageAsync(chatId, userId, progress, null, ct).ConfigureAwait(false);
         await UpsertServerMessageWithInlineKeyboardAsync(chatId, userId, finalText, BuildShellAnalysisInlineKeyboard(), ct).ConfigureAwait(false);
+    }
+
+    private async Task<bool> TryRunShellCommandStreamingAsync(long chatId, long userId, int serverId, string command, CancellationToken ct)
+    {
+        var token = Guid.NewGuid().ToString("N")[..10];
+        var basePath = $"/tmp/abq_shell_{userId}_{serverId}_{token}";
+        var scriptPath = $"{basePath}.sh";
+        var logPath = $"{basePath}.log";
+        var exitPath = $"{basePath}.exit";
+        var cmdB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(command));
+
+        var launchCmd =
+            $"bash -lc 'rm -f \"{scriptPath}\" \"{logPath}\" \"{exitPath}\";" +
+            $" printf %s \"{cmdB64}\" | base64 -d > \"{scriptPath}\";" +
+            $" chmod +x \"{scriptPath}\";" +
+            $" nohup bash \"{scriptPath}\" > \"{logPath}\" 2>&1 & pid=$!;" +
+            $" (while kill -0 \"$pid\" 2>/dev/null; do sleep 1; done; wait \"$pid\"; echo $? > \"{exitPath}\"; rm -f \"{scriptPath}\") >/dev/null 2>&1 &" +
+            $" echo \"$pid\"'";
+
+        var launch = await _runtime.ExecuteCommandAsync(userId, serverId, launchCmd, ct).ConfigureAwait(false);
+        if (!launch.Success)
+            return false;
+
+        var lastTail = string.Empty;
+        int? exitCode = null;
+        var startedAt = DateTime.UtcNow;
+
+        for (var i = 0; i < 300; i++)
+        {
+            await Task.Delay(1800, ct).ConfigureAwait(false);
+            var pollCmd =
+                $"bash -lc 'status=running; [ -f \"{exitPath}\" ] && status=done;" +
+                $" code=$(cat \"{exitPath}\" 2>/dev/null || true);" +
+                $" echo \"__ABQ_STATUS__:$status\";" +
+                $" echo \"__ABQ_EXIT__:$code\";" +
+                $" tail -n 120 \"{logPath}\" 2>/dev/null || true'";
+
+            var poll = await _runtime.ExecuteCommandAsync(userId, serverId, pollCmd, ct).ConfigureAwait(false);
+            if (!poll.Success)
+                continue;
+
+            var raw = (poll.Output ?? string.Empty).Replace("\r", string.Empty, StringComparison.Ordinal);
+            var lines = raw.Split('\n');
+            var status = lines.FirstOrDefault(x => x.StartsWith("__ABQ_STATUS__:", StringComparison.Ordinal))?["__ABQ_STATUS__:".Length..].Trim() ?? "running";
+            var exitText = lines.FirstOrDefault(x => x.StartsWith("__ABQ_EXIT__:", StringComparison.Ordinal))?["__ABQ_EXIT__:".Length..].Trim() ?? "";
+            if (int.TryParse(exitText, out var parsedExit))
+                exitCode = parsedExit;
+
+            var tailLines = lines
+                .Where(x => !x.StartsWith("__ABQ_STATUS__:", StringComparison.Ordinal) && !x.StartsWith("__ABQ_EXIT__:", StringComparison.Ordinal))
+                .ToArray();
+            var tailText = string.Join('\n', tailLines).Trim();
+            if (string.IsNullOrWhiteSpace(tailText))
+                tailText = "(در حال اجرا...)";
+
+            var elapsed = (int)(DateTime.UtcNow - startedAt).TotalSeconds;
+            if (!string.Equals(tailText, lastTail, StringComparison.Ordinal) || i % 4 == 0)
+            {
+                var liveText =
+                    $"<b>در حال اجرای دستور</b>\n" +
+                    $"<b>Server:</b> <code>{serverId}</code>\n" +
+                    $"<b>زمان:</b> <code>{elapsed}s</code>\n\n" +
+                    $"<b>دستور:</b>\n<code>{EscapeHtml(command)}</code>\n\n" +
+                    $"<b>خروجی لحظه‌ای:</b>\n<pre>{EscapeHtml(Limit(tailText, 3000))}</pre>";
+                await UpsertServerMessageAsync(chatId, userId, liveText, null, ct).ConfigureAwait(false);
+                lastTail = tailText;
+            }
+
+            if (string.Equals(status, "done", StringComparison.OrdinalIgnoreCase))
+                break;
+        }
+
+        var finalRead = await _runtime.ExecuteCommandAsync(userId, serverId, $"bash -lc 'cat \"{logPath}\" 2>/dev/null || true'", ct).ConfigureAwait(false);
+        var finalOutputRaw = finalRead.Success ? (finalRead.Output ?? "") : (lastTail ?? "");
+        var finalOutput = string.IsNullOrWhiteSpace(finalOutputRaw) ? "(no output)" : Limit(finalOutputRaw.Replace("\r", string.Empty, StringComparison.Ordinal), 3000);
+        var finalExit = exitCode ?? finalRead.ExitCode ?? -1;
+
+        await _stateStore.SetFlowDataAsync(userId, FlowLastCommand, command, ct).ConfigureAwait(false);
+        await _stateStore.SetFlowDataAsync(userId, FlowLastOutput, finalOutput, ct).ConfigureAwait(false);
+        await _stateStore.SetFlowDataAsync(userId, FlowLastExitCode, finalExit.ToString(), ct).ConfigureAwait(false);
+
+        var finalText =
+            $"<b>نتیجه شل</b>\n" +
+            $"<b>Server:</b> <code>{serverId}</code>\n" +
+            $"<b>Exit:</b> <code>{finalExit}</code>\n\n" +
+            $"<b>دستور:</b>\n<code>{EscapeHtml(command)}</code>\n\n" +
+            $"<b>خروجی:</b>\n<pre>{EscapeHtml(finalOutput)}</pre>";
+        await UpsertServerMessageWithInlineKeyboardAsync(chatId, userId, finalText, BuildShellAnalysisInlineKeyboard(), ct).ConfigureAwait(false);
+
+        _ = _runtime.ExecuteCommandAsync(userId, serverId, $"bash -lc 'rm -f \"{scriptPath}\" \"{logPath}\" \"{exitPath}\"'", CancellationToken.None);
+        return true;
     }
 
     private async Task RunInstallerWithProgressAsync(long chatId, long userId, int serverId, string installerType, CancellationToken ct)
@@ -1581,6 +1697,23 @@ public sealed class ServerOpsHandler : IUpdateHandler
         return sb.ToString();
     }
 
+    private static bool IsServerMenuEntryText(string value)
+    {
+        var normalized = NormalizeButtonText(value);
+        if (string.IsNullOrWhiteSpace(normalized))
+            return false;
+
+        if (normalized == NormalizeButtonText(BtnMenu) || normalized == NormalizeButtonText(BtnMenuEn))
+            return true;
+
+        if (normalized.Contains("مدیریت", StringComparison.Ordinal) && normalized.Contains("سرور", StringComparison.Ordinal))
+            return true;
+
+        var lower = normalized.ToLowerInvariant();
+        return lower.Contains("server", StringComparison.Ordinal) &&
+               (lower.Contains("manage", StringComparison.Ordinal) || lower.Contains("menu", StringComparison.Ordinal));
+    }
+
     private static bool MatchesButton(string input, string button) =>
         NormalizeButtonText(input) == NormalizeButtonText(button);
 
@@ -1705,7 +1838,11 @@ public sealed class ServerOpsHandler : IUpdateHandler
             case "disconnect":
             {
                 var result = await _runtime.DisconnectAsync(userId, serverId, ct).ConfigureAwait(false);
-                await SendProgressResultAsync(chatId, userId, $"قطع اتصال سرور #{serverId}...", result.Message, BuildServerOperationsReplyKeyboard(), ct).ConfigureAwait(false);
+                var finalText = $"{result.Message}\n\nبرای شروع دوباره دکمه <b>/start</b> را بزن.";
+                await _stateStore.ClearStateAsync(userId, ct).ConfigureAwait(false);
+                await _stateStore.ClearAllFlowDataAsync(userId, ct).ConfigureAwait(false);
+                await SendProgressResultAsync(chatId, userId, $"قطع اتصال سرور #{serverId}...", finalText, null, ct).ConfigureAwait(false);
+                await ShowCoreMainMenuAsync(chatId, userId, ct).ConfigureAwait(false);
                 break;
             }
             case "delete":
