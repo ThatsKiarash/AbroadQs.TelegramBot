@@ -42,6 +42,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
     private readonly KycStateHandler? _kycHandler;
     private readonly BidStateHandler? _bidHandler;
     private readonly ProfileStateHandler? _profileHandler;
+    private readonly ServerOpsHandler? _serverOpsHandler;
 
     private const int TradesPageSize = 5;
 
@@ -66,7 +67,8 @@ public sealed class DynamicStageHandler : IUpdateHandler
         MyProposalsHandler? myProposalsHandler = null,
         KycStateHandler? kycHandler = null,
         BidStateHandler? bidHandler = null,
-        ProfileStateHandler? profileHandler = null)
+        ProfileStateHandler? profileHandler = null,
+        ServerOpsHandler? serverOpsHandler = null)
     {
         _sender = sender;
         _stageRepo = stageRepo;
@@ -89,6 +91,7 @@ public sealed class DynamicStageHandler : IUpdateHandler
         _kycHandler = kycHandler;
         _bidHandler = bidHandler;
         _profileHandler = profileHandler;
+        _serverOpsHandler = serverOpsHandler;
     }
 
     public string? Command => null;
@@ -508,6 +511,8 @@ public sealed class DynamicStageHandler : IUpdateHandler
             return await _currencyHandler.HandleAsync(context, ct).ConfigureAwait(false);
         if (state.StartsWith("awaiting_profile_") && _profileHandler != null)
             return await _profileHandler.HandleAsync(context, ct).ConfigureAwait(false);
+        if (state.StartsWith("srv_") && _serverOpsHandler != null)
+            return await _serverOpsHandler.HandleAsync(context, ct).ConfigureAwait(false);
         return false;
     }
 

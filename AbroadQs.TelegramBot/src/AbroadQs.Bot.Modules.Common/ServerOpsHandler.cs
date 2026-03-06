@@ -514,11 +514,11 @@ public sealed class ServerOpsHandler : IUpdateHandler
             "مدیریت سرورها:\nیک گزینه را انتخاب کن.",
             new List<IReadOnlyList<string>>
             {
-                new[] { BtnList, BtnAdd },
-                new[] { BtnConnect, BtnCommand },
-                new[] { BtnDisconnect, BtnDelete },
-                new[] { BtnInstallers, BtnBackMain },
-                new[] { BtnGuide }
+                new[] { BtnAdd },
+                new[] { BtnConnect, BtnList, BtnDisconnect },
+                new[] { BtnCommand, BtnInstallers },
+                new[] { BtnGuide, BtnDelete },
+                new[] { BtnBackMain }
             },
             ct).ConfigureAwait(false);
     }
