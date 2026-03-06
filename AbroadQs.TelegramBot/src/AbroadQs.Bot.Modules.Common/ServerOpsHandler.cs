@@ -22,6 +22,8 @@ public sealed class ServerOpsHandler : IUpdateHandler
     private const string BtnGuide = "راهنما";
     private const string BtnCancel = "انصراف";
     private const string BtnShellExit = "خروج از سرور";
+    private const string BtnBackServers = "بازگشت به لیست سرورها";
+    private const string BtnBackPrev = "بازگشت به منوی قبلی";
 
     private const string FlowShellServerId = "srv_shell_server_id";
     private const string FlowShellServerName = "srv_shell_server_name";
@@ -98,6 +100,8 @@ public sealed class ServerOpsHandler : IUpdateHandler
             || t.Equals(BtnAccessGuide, StringComparison.Ordinal)
             || t.Equals(BtnGuide, StringComparison.Ordinal)
             || t.Equals(BtnBackMain, StringComparison.Ordinal)
+            || t.Equals(BtnBackServers, StringComparison.Ordinal)
+            || t.Equals(BtnBackPrev, StringComparison.Ordinal)
             || t.Equals(BtnCancel, StringComparison.Ordinal);
     }
 
@@ -279,6 +283,12 @@ public sealed class ServerOpsHandler : IUpdateHandler
             await _stateStore.ClearStateAsync(userId, cancellationToken).ConfigureAwait(false);
             await _stateStore.ClearAllFlowDataAsync(userId, cancellationToken).ConfigureAwait(false);
             await ShowMainMenuAsync(context.ChatId, userId, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+
+        if (text == BtnBackServers)
+        {
+            await ShowServerListAsync(context.ChatId, userId, null, cancellationToken).ConfigureAwait(false);
             return true;
         }
 
@@ -548,6 +558,72 @@ public sealed class ServerOpsHandler : IUpdateHandler
 
         switch (state)
         {
+            case "srv_server_ops":
+            {
+                var serverId = await GetActiveShellServerIdAsync(userId, ct).ConfigureAwait(false);
+                if (serverId is null)
+                {
+                    await _stateStore.ClearStateAsync(userId, ct).ConfigureAwait(false);
+                    await ShowServerListAsync(context.ChatId, userId, "ابتدا یک سرور را انتخاب کن:", ct).ConfigureAwait(false);
+                    return true;
+                }
+
+                if (text == BtnBackServers || text == BtnBackPrev)
+                {
+                    await ShowServerListAsync(context.ChatId, userId, null, ct).ConfigureAwait(false);
+                    return true;
+                }
+
+                if (text == BtnConnect)
+                {
+                    var result = await _runtime.ConnectAsync(userId, serverId.Value, ct).ConfigureAwait(false);
+                    await SendProgressResultAsync(context.ChatId, userId, $"اتصال به سرور #{serverId.Value} در حال انجام است...", result.Message, BuildServerOperationsReplyKeyboard(), ct).ConfigureAwait(false);
+                    return true;
+                }
+
+                if (text == BtnDisconnect)
+                {
+                    var result = await _runtime.DisconnectAsync(userId, serverId.Value, ct).ConfigureAwait(false);
+                    await SendProgressResultAsync(context.ChatId, userId, $"قطع اتصال سرور #{serverId.Value}...", result.Message, BuildServerOperationsReplyKeyboard(), ct).ConfigureAwait(false);
+                    return true;
+                }
+
+                if (text == BtnCommand)
+                {
+                    await EnterShellModeAsync(context.ChatId, userId, serverId.Value, ct).ConfigureAwait(false);
+                    return true;
+                }
+
+                if (text == BtnInstallers)
+                {
+                    await ShowInstallerMenuAsync(context.ChatId, userId, serverId.Value, ct).ConfigureAwait(false);
+                    return true;
+                }
+
+                if (text == BtnInstallStatus)
+                {
+                    await ShowInstallerStatusAsync(context.ChatId, userId, serverId.Value, ct).ConfigureAwait(false);
+                    return true;
+                }
+
+                if (text == BtnAccessGuide)
+                {
+                    await ShowAccessGuideAsync(context.ChatId, userId, serverId.Value, ct).ConfigureAwait(false);
+                    return true;
+                }
+
+                if (text == BtnDelete)
+                {
+                    var ok = await _repo.DeleteAsync(serverId.Value, userId, ct).ConfigureAwait(false);
+                    await _stateStore.ClearStateAsync(userId, ct).ConfigureAwait(false);
+                    await _stateStore.ClearAllFlowDataAsync(userId, ct).ConfigureAwait(false);
+                    await UpsertServerMessageAsync(context.ChatId, userId, ok ? "سرور حذف شد." : "سرور پیدا نشد یا دسترسی نداری.", BuildMainServerReplyKeyboard(), ct).ConfigureAwait(false);
+                    await ShowServerListAsync(context.ChatId, userId, null, ct).ConfigureAwait(false);
+                    return true;
+                }
+
+                return true;
+            }
             case "srv_pick_server":
             {
                 if (!TryParseServerIdFromSelection(text, out var selectedId))
@@ -634,10 +710,10 @@ public sealed class ServerOpsHandler : IUpdateHandler
                     return true;
                 }
 
-                if (text == BtnBackMain)
+                if (text == BtnBackPrev)
                 {
-                    await ExitShellModeAsync(context.ChatId, userId, ct).ConfigureAwait(false);
-                    await ShowCoreMainMenuAsync(context.ChatId, userId, ct).ConfigureAwait(false);
+                    await _stateStore.ClearStateAsync(userId, ct).ConfigureAwait(false);
+                    await ShowServerOperationsAsync(context.ChatId, userId, serverId.Value, ct).ConfigureAwait(false);
                     return true;
                 }
 
@@ -715,7 +791,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
             {
                 new[] { BtnOpenClaw, BtnSlipnet },
                 new[] { BtnDnstt, BtnInstallStatus },
-                new[] { BtnAccessGuide, BtnShellExit },
+                new[] { BtnAccessGuide, BtnBackPrev },
                 new[] { BtnCancel }
             },
             ct).ConfigureAwait(false);
@@ -735,9 +811,8 @@ public sealed class ServerOpsHandler : IUpdateHandler
         new()
         {
             new[] { BtnAdd },
-            new[] { BtnConnect, BtnList, BtnDisconnect },
-            new[] { BtnCommand, BtnInstallers },
-            new[] { BtnGuide, BtnDelete },
+            new[] { BtnList },
+            new[] { BtnGuide },
             new[] { BtnBackMain }
         };
 
@@ -859,6 +934,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
             $"<code>{srv.Username}@{srv.Host}:{srv.Port}</code>\n\n" +
             "یک عملیات را انتخاب کن:";
         await _stateStore.SetFlowDataAsync(userId, FlowShellServerId, serverId.ToString(), ct).ConfigureAwait(false);
+        await _stateStore.SetStateAsync(userId, "srv_server_ops", ct).ConfigureAwait(false);
         await UpsertServerMessageAsync(chatId, userId, text, BuildServerOperationsReplyKeyboard(), ct).ConfigureAwait(false);
     }
 
@@ -868,7 +944,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
             new[] { BtnConnect, BtnCommand },
             new[] { BtnInstallers, BtnInstallStatus },
             new[] { BtnAccessGuide, BtnDisconnect },
-            new[] { BtnDelete, BtnList },
+            new[] { BtnDelete, BtnBackServers },
             new[] { BtnBackMain }
         };
 
@@ -1038,7 +1114,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
         {
             new[] { BtnDisconnect, BtnInstallers },
             new[] { BtnInstallStatus, BtnAccessGuide },
-            new[] { BtnShellExit, BtnBackMain }
+            new[] { BtnShellExit, BtnBackPrev }
         };
 
     private async Task ShowInstallerStatusAsync(long chatId, long userId, int serverId, CancellationToken ct)
