@@ -1328,19 +1328,70 @@ public sealed class ServerOpsHandler : IUpdateHandler
             $"Command:\n{command}\n\nExitCode:\n{exitCode}\n\nOutput:\n{output}";
 
         var promptB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(prompt));
-        var aiCmd =
-            "bash -lc '" +
-            "set -e; " +
-            "if ! command -v ollama >/dev/null 2>&1; then echo \"OLLAMA_NOT_FOUND\"; exit 0; fi; " +
-            $"PROMPT=$(echo \"{promptB64}\" | base64 -d); " +
-            $"ollama run {DefaultOllamaModel} \"$PROMPT\" 2>/dev/null | tail -n 120'";
-
+        var aiCmd = BuildOllamaAnalyzeCommand(promptB64);
         var run = await _runtime.ExecuteCommandAsync(userId, serverId, aiCmd, ct).ConfigureAwait(false);
-        if (!run.Success || string.IsNullOrWhiteSpace(run.Output))
-            return BuildFallbackAnalysis(command, output, exitCode);
-        if (run.Output.Contains("OLLAMA_NOT_FOUND", StringComparison.Ordinal))
-            return BuildFallbackAnalysis(command, output, exitCode);
-        return run.Output;
+        if (IsValidAiOutput(run.Output))
+            return run.Output!;
+
+        // Real AI first: if model/runtime is not available on target server, bootstrap it automatically and retry.
+        if (NeedsOllamaBootstrap(run.Output))
+        {
+            await Task.Delay(900, ct).ConfigureAwait(false); // respect runtime anti-spam guard
+            var ensured = await EnsureOllamaReadyOnServerAsync(userId, serverId, ct).ConfigureAwait(false);
+            if (!ensured.Success)
+                return $"تحلیل AI واقعی انجام نشد.\nجزئیات: {ensured.Message}";
+
+            await Task.Delay(900, ct).ConfigureAwait(false);
+            run = await _runtime.ExecuteCommandAsync(userId, serverId, aiCmd, ct).ConfigureAwait(false);
+            if (IsValidAiOutput(run.Output))
+                return run.Output!;
+        }
+
+        // Last-resort fallback if remote AI still fails.
+        return BuildFallbackAnalysis(command, output, exitCode);
+    }
+
+    private static string BuildOllamaAnalyzeCommand(string promptB64) =>
+        "bash -lc '" +
+        "set -e; " +
+        "if ! command -v ollama >/dev/null 2>&1; then echo \"OLLAMA_NOT_FOUND\"; exit 0; fi; " +
+        "systemctl is-active ollama >/dev/null 2>&1 || (systemctl enable --now ollama >/dev/null 2>&1 || true); " +
+        $"ollama list | grep -i \"{DefaultOllamaModel.Replace(":", "\\:", StringComparison.Ordinal)}\" >/dev/null 2>&1 || echo \"MODEL_MISSING\"; " +
+        $"PROMPT=$(echo \"{promptB64}\" | base64 -d); " +
+        $"ollama run {DefaultOllamaModel} \"$PROMPT\" 2>/dev/null | tail -n 120'";
+
+    private static bool NeedsOllamaBootstrap(string? output)
+    {
+        if (string.IsNullOrWhiteSpace(output)) return true;
+        return output.Contains("OLLAMA_NOT_FOUND", StringComparison.Ordinal)
+            || output.Contains("MODEL_MISSING", StringComparison.Ordinal)
+            || output.Contains("could not connect", StringComparison.OrdinalIgnoreCase)
+            || output.Contains("connection refused", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsValidAiOutput(string? output)
+    {
+        if (string.IsNullOrWhiteSpace(output)) return false;
+        if (output.Contains("OLLAMA_NOT_FOUND", StringComparison.Ordinal)) return false;
+        if (output.Contains("MODEL_MISSING", StringComparison.Ordinal)) return false;
+        return output.Trim().Length >= 30;
+    }
+
+    private async Task<(bool Success, string Message)> EnsureOllamaReadyOnServerAsync(long userId, int serverId, CancellationToken ct)
+    {
+        var script =
+            "bash -lc 'set -e; " +
+            "if ! command -v ollama >/dev/null 2>&1; then curl -fsSL https://ollama.com/install.sh | sh; fi; " +
+            "systemctl enable --now ollama || true; " +
+            $"ollama pull {DefaultOllamaModel}; " +
+            "echo READY'";
+
+        var run = await _runtime.ExecuteCommandAsync(userId, serverId, script, ct).ConfigureAwait(false);
+        if (!run.Success)
+            return (false, run.Message);
+        if (string.IsNullOrWhiteSpace(run.Output) || !run.Output.Contains("READY", StringComparison.Ordinal))
+            return (false, "bootstrap خروجی معتبر نداد.");
+        return (true, "ok");
     }
 
     private static string BuildFallbackAnalysis(string command, string output, int exitCode)

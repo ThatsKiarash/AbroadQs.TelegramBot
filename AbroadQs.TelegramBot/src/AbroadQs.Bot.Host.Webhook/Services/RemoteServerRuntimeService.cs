@@ -122,7 +122,8 @@ public sealed class RemoteServerRuntimeService : IRemoteServerRuntimeService
                 return new(false, $"جلسه SSH فعال نیست و اتصال خودکار شکست خورد: {conn.Error}");
         }
 
-        var exec = await _ssh.ExecuteCommandAsync(key, commandText, 60, ct).ConfigureAwait(false);
+        var timeoutSeconds = ResolveTimeoutSeconds(commandText);
+        var exec = await _ssh.ExecuteCommandAsync(key, commandText, timeoutSeconds, ct).ConfigureAwait(false);
         var output = $"{exec.StdOut}\n{exec.StdErr}".Trim();
         var preview = Truncate(Redact(output), 1800);
         var safeCommandText = SanitizeCommandText(commandText);
@@ -234,5 +235,20 @@ public sealed class RemoteServerRuntimeService : IRemoteServerRuntimeService
         }
 
         return commandText.Length <= 400 ? commandText : commandText[..400];
+    }
+
+    private static int ResolveTimeoutSeconds(string commandText)
+    {
+        if (string.IsNullOrWhiteSpace(commandText))
+            return 60;
+
+        if (commandText.Contains("ollama pull", StringComparison.OrdinalIgnoreCase)
+            || commandText.Contains("install.sh", StringComparison.OrdinalIgnoreCase))
+            return 900;
+
+        if (commandText.Contains("ollama run", StringComparison.OrdinalIgnoreCase))
+            return 240;
+
+        return 60;
     }
 }
