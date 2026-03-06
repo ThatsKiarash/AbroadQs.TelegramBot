@@ -752,29 +752,17 @@ public sealed class ServerOpsHandler : IUpdateHandler
                     return true;
                 }
 
-                if (text == BtnShellExit)
+                if (text == BtnShellExit || text == BtnBackPrev || text == BtnBackMain)
                 {
-                    await ExitShellModeAsync(context.ChatId, userId, ct).ConfigureAwait(false);
-                    return true;
-                }
-
-                if (text == BtnBackPrev)
-                {
-                    await _stateStore.ClearStateAsync(userId, ct).ConfigureAwait(false);
+                    try { await _runtime.DisconnectAsync(userId, serverId.Value, ct).ConfigureAwait(false); } catch { }
                     await ShowServerOperationsAsync(context.ChatId, userId, serverId.Value, ct).ConfigureAwait(false);
                     return true;
                 }
 
                 if (text == BtnDisconnect)
                 {
-                    var dis = await _runtime.DisconnectAsync(userId, serverId.Value, ct).ConfigureAwait(false);
-                    await SendProgressResultAsync(
-                        context.ChatId,
-                        userId,
-                        $"قطع اتصال سرور #{serverId.Value}...",
-                        dis.Message,
-                        BuildShellReplyKeyboard(),
-                        ct).ConfigureAwait(false);
+                    try { await _runtime.DisconnectAsync(userId, serverId.Value, ct).ConfigureAwait(false); } catch { }
+                    await ShowServerOperationsAsync(context.ChatId, userId, serverId.Value, ct).ConfigureAwait(false);
                     return true;
                 }
 
@@ -1302,20 +1290,31 @@ public sealed class ServerOpsHandler : IUpdateHandler
             $"{BuildProgressBar(2)}";
 
         if (callbackMessageId.HasValue)
-            await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, callbackMessageId.Value, progress, BuildShellAnalysisInlineKeyboard(), ct).ConfigureAwait(false);
+            await _sender.EditMessageTextAsync(chatId, callbackMessageId.Value, progress, ct).ConfigureAwait(false);
         else
-            await UpsertServerMessageWithInlineKeyboardAsync(chatId, userId, progress, BuildShellAnalysisInlineKeyboard(), ct).ConfigureAwait(false);
+            await UpsertServerMessageAsync(chatId, userId, progress, null, ct).ConfigureAwait(false);
 
-        var analysis = await AnalyzeCommandWithOllamaAsync(userId, serverId.Value, command, output, exitCode, ct).ConfigureAwait(false);
-        var finalText =
-            $"<b>تحلیل AI</b>\n" +
-            $"<b>دستور:</b> <code>{EscapeHtml(command)}</code>\n\n" +
-            $"<pre>{EscapeHtml(Limit(analysis, 3200))}</pre>";
+        // Run AI analysis in background so the bot remains responsive for all users.
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var analysis = await AnalyzeCommandWithOllamaAsync(userId, serverId.Value, command, output, exitCode, CancellationToken.None).ConfigureAwait(false);
+                var finalText =
+                    $"<b>تحلیل AI</b>\n" +
+                    $"<b>دستور:</b> <code>{EscapeHtml(command)}</code>\n\n" +
+                    $"<pre>{EscapeHtml(Limit(analysis, 3200))}</pre>";
 
-        if (callbackMessageId.HasValue)
-            await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, callbackMessageId.Value, finalText, BuildShellAnalysisInlineKeyboard(), ct).ConfigureAwait(false);
-        else
-            await UpsertServerMessageWithInlineKeyboardAsync(chatId, userId, finalText, BuildShellAnalysisInlineKeyboard(), ct).ConfigureAwait(false);
+                if (callbackMessageId.HasValue)
+                    await _sender.EditMessageTextAsync(chatId, callbackMessageId.Value, finalText, CancellationToken.None).ConfigureAwait(false);
+                else
+                    await _sender.SendTextMessageAsync(chatId, finalText, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Best-effort background analysis. Ignore failures to avoid impacting bot flow.
+            }
+        });
     }
 
     private async Task<string> AnalyzeCommandWithOllamaAsync(long userId, int serverId, string command, string output, int exitCode, CancellationToken ct)
@@ -1518,8 +1517,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
         new()
         {
             new[] { BtnDisconnect },
-            new[] { BtnInstallers, BtnCmdGuide, BtnBackPrev },
-            new[] { BtnBackMain, BtnShellExit }
+            new[] { BtnInstallers, BtnCmdGuide }
         };
 
     private async Task ShowInstallerStatusAsync(long chatId, long userId, int serverId, CancellationToken ct)
