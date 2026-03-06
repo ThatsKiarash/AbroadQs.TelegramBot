@@ -582,7 +582,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
 
     private async Task<bool> HandleStateAsync(BotUpdateContext context, long userId, string state, string text, CancellationToken ct)
     {
-        if (text == BtnBackMain)
+        if (MatchesButton(text, BtnBackMain))
         {
             await _stateStore.ClearStateAsync(userId, ct).ConfigureAwait(false);
             await _stateStore.ClearAllFlowDataAsync(userId, ct).ConfigureAwait(false);
@@ -590,7 +590,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
             return true;
         }
 
-        if (text == BtnCancel)
+        if (MatchesButton(text, BtnCancel))
         {
             await _stateStore.ClearStateAsync(userId, ct).ConfigureAwait(false);
             await _stateStore.ClearAllFlowDataAsync(userId, ct).ConfigureAwait(false);
@@ -752,46 +752,46 @@ public sealed class ServerOpsHandler : IUpdateHandler
                     return true;
                 }
 
-                if (text == BtnShellExit || text == BtnBackPrev || text == BtnBackMain)
+                if (MatchesButton(text, BtnShellExit) || MatchesButton(text, BtnBackPrev) || MatchesButton(text, BtnBackMain))
                 {
                     try { await _runtime.DisconnectAsync(userId, serverId.Value, ct).ConfigureAwait(false); } catch { }
                     await ShowServerOperationsAsync(context.ChatId, userId, serverId.Value, ct).ConfigureAwait(false);
                     return true;
                 }
 
-                if (text == BtnDisconnect)
+                if (MatchesButton(text, BtnDisconnect))
                 {
                     try { await _runtime.DisconnectAsync(userId, serverId.Value, ct).ConfigureAwait(false); } catch { }
                     await ShowServerOperationsAsync(context.ChatId, userId, serverId.Value, ct).ConfigureAwait(false);
                     return true;
                 }
 
-                if (text == BtnInstallers)
+                if (MatchesButton(text, BtnInstallers))
                 {
                     await ShowInstallerMenuAsync(context.ChatId, userId, serverId.Value, "srv_shell", ct).ConfigureAwait(false);
                     return true;
                 }
 
-                if (text == BtnOpenClaw || text == BtnSlipnet || text == BtnDnstt)
+                if (MatchesButton(text, BtnOpenClaw) || MatchesButton(text, BtnSlipnet) || MatchesButton(text, BtnDnstt))
                 {
-                    var tool = text == BtnOpenClaw ? "openclaw" : text == BtnSlipnet ? "slipnet" : "dnstt";
+                    var tool = MatchesButton(text, BtnOpenClaw) ? "openclaw" : MatchesButton(text, BtnSlipnet) ? "slipnet" : "dnstt";
                     await RunInstallerWithProgressAsync(context.ChatId, userId, serverId.Value, tool, ct).ConfigureAwait(false);
                     return true;
                 }
 
-                if (text == BtnInstallStatus)
+                if (MatchesButton(text, BtnInstallStatus))
                 {
                     await ShowInstallerStatusAsync(context.ChatId, userId, serverId.Value, ct).ConfigureAwait(false);
                     return true;
                 }
 
-                if (text == BtnAccessGuide)
+                if (MatchesButton(text, BtnAccessGuide))
                 {
                     await ShowAccessGuideAsync(context.ChatId, userId, serverId.Value, ct).ConfigureAwait(false);
                     return true;
                 }
 
-                if (text == BtnCmdGuide)
+                if (MatchesButton(text, BtnCmdGuide))
                 {
                     await ShowCommandGuideAsync(context.ChatId, userId, serverId.Value, ct).ConfigureAwait(false);
                     return true;
@@ -1294,27 +1294,15 @@ public sealed class ServerOpsHandler : IUpdateHandler
         else
             await UpsertServerMessageAsync(chatId, userId, progress, null, ct).ConfigureAwait(false);
 
-        // Run AI analysis in background so the bot remains responsive for all users.
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                var analysis = await AnalyzeCommandWithOllamaAsync(userId, serverId.Value, command, output, exitCode, CancellationToken.None).ConfigureAwait(false);
-                var finalText =
-                    $"<b>تحلیل AI</b>\n" +
-                    $"<b>دستور:</b> <code>{EscapeHtml(command)}</code>\n\n" +
-                    $"<pre>{EscapeHtml(Limit(analysis, 3200))}</pre>";
-
-                if (callbackMessageId.HasValue)
-                    await _sender.EditMessageTextAsync(chatId, callbackMessageId.Value, finalText, CancellationToken.None).ConfigureAwait(false);
-                else
-                    await _sender.SendTextMessageAsync(chatId, finalText, CancellationToken.None).ConfigureAwait(false);
-            }
-            catch
-            {
-                // Best-effort background analysis. Ignore failures to avoid impacting bot flow.
-            }
-        });
+        var analysis = await AnalyzeCommandWithOllamaAsync(userId, serverId.Value, command, output, exitCode, ct).ConfigureAwait(false);
+        var finalAiText =
+            $"<b>تحلیل AI</b>\n" +
+            $"<b>دستور:</b> <code>{EscapeHtml(command)}</code>\n\n" +
+            $"<pre>{EscapeHtml(Limit(analysis, 3200))}</pre>";
+        if (callbackMessageId.HasValue)
+            await _sender.EditMessageTextAsync(chatId, callbackMessageId.Value, finalAiText, ct).ConfigureAwait(false);
+        else
+            await _sender.SendTextMessageAsync(chatId, finalAiText, ct).ConfigureAwait(false);
     }
 
     private async Task<string> AnalyzeCommandWithOllamaAsync(long userId, int serverId, string command, string output, int exitCode, CancellationToken ct)
@@ -1512,6 +1500,9 @@ public sealed class ServerOpsHandler : IUpdateHandler
             .Trim()
             .Replace("‌", "", StringComparison.Ordinal) // ZWNJ
             .Replace(" ", "", StringComparison.Ordinal);
+
+    private static bool MatchesButton(string input, string button) =>
+        NormalizeButtonText(input) == NormalizeButtonText(button);
 
     private static bool IsButtonText(string actual, string expected) =>
         NormalizeButtonText(actual) == NormalizeButtonText(expected);
