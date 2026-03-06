@@ -37,6 +37,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
     private const string FlowJobDnstt = "srv_job_dnstt";
     private const string FlowLastCommand = "srv_last_command";
     private const string FlowLastOutput = "srv_last_output";
+    private const string FlowLastExitCode = "srv_last_exit_code";
     private const string FlowToolsReturnState = "srv_tools_return_state";
     private const string DefaultOllamaModel = "qwen2.5:0.5b";
 
@@ -1189,6 +1190,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
         var output = string.IsNullOrWhiteSpace(result.Output) ? "(no output)" : Limit(result.Output, 3000);
         await _stateStore.SetFlowDataAsync(userId, FlowLastCommand, command, ct).ConfigureAwait(false);
         await _stateStore.SetFlowDataAsync(userId, FlowLastOutput, output, ct).ConfigureAwait(false);
+        await _stateStore.SetFlowDataAsync(userId, FlowLastExitCode, (result.ExitCode ?? -1).ToString(), ct).ConfigureAwait(false);
         var finalText =
             $"<b>نتیجه شل</b>\n" +
             $"<b>Server:</b> <code>{serverId}</code>\n" +
@@ -1286,6 +1288,8 @@ public sealed class ServerOpsHandler : IUpdateHandler
 
         var command = await _stateStore.GetFlowDataAsync(userId, FlowLastCommand, ct).ConfigureAwait(false) ?? "";
         var output = await _stateStore.GetFlowDataAsync(userId, FlowLastOutput, ct).ConfigureAwait(false) ?? "";
+        var exitText = await _stateStore.GetFlowDataAsync(userId, FlowLastExitCode, ct).ConfigureAwait(false);
+        _ = int.TryParse(exitText, out var exitCode);
         if (string.IsNullOrWhiteSpace(command))
         {
             await UpsertServerMessageAsync(chatId, userId, "فعلا خروجی ثبت‌شده‌ای برای تحلیل نداریم. یک دستور بزن و دوباره تحلیل کن.", BuildShellReplyKeyboard(), ct).ConfigureAwait(false);
@@ -1302,7 +1306,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
         else
             await UpsertServerMessageWithInlineKeyboardAsync(chatId, userId, progress, BuildShellAnalysisInlineKeyboard(), ct).ConfigureAwait(false);
 
-        var analysis = await AnalyzeCommandWithOllamaAsync(userId, serverId.Value, command, output, ct).ConfigureAwait(false);
+        var analysis = await AnalyzeCommandWithOllamaAsync(userId, serverId.Value, command, output, exitCode, ct).ConfigureAwait(false);
         var finalText =
             $"<b>تحلیل AI</b>\n" +
             $"<b>دستور:</b> <code>{EscapeHtml(command)}</code>\n\n" +
@@ -1314,14 +1318,14 @@ public sealed class ServerOpsHandler : IUpdateHandler
             await UpsertServerMessageWithInlineKeyboardAsync(chatId, userId, finalText, BuildShellAnalysisInlineKeyboard(), ct).ConfigureAwait(false);
     }
 
-    private async Task<string> AnalyzeCommandWithOllamaAsync(long userId, int serverId, string command, string output, CancellationToken ct)
+    private async Task<string> AnalyzeCommandWithOllamaAsync(long userId, int serverId, string command, string output, int exitCode, CancellationToken ct)
     {
         var prompt =
             "You are a Linux SRE assistant.\n" +
             "Analyze the command result and respond in Persian.\n" +
             "Return concise bullets with:\n" +
             "1) What happened\n2) Is it successful\n3) What command should be run next\n4) Risks or warnings.\n\n" +
-            $"Command:\n{command}\n\nOutput:\n{output}";
+            $"Command:\n{command}\n\nExitCode:\n{exitCode}\n\nOutput:\n{output}";
 
         var promptB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(prompt));
         var aiCmd =
@@ -1333,10 +1337,40 @@ public sealed class ServerOpsHandler : IUpdateHandler
 
         var run = await _runtime.ExecuteCommandAsync(userId, serverId, aiCmd, ct).ConfigureAwait(false);
         if (!run.Success || string.IsNullOrWhiteSpace(run.Output))
-            return "تحلیل AI در دسترس نیست. ابتدا از منوی ابزارها گزینه Ollama را نصب/فعال کن.";
+            return BuildFallbackAnalysis(command, output, exitCode);
         if (run.Output.Contains("OLLAMA_NOT_FOUND", StringComparison.Ordinal))
-            return "روی این سرور Ollama فعال نیست. از منوی ابزارها گزینه Ollama را اجرا کن.";
+            return BuildFallbackAnalysis(command, output, exitCode);
         return run.Output;
+    }
+
+    private static string BuildFallbackAnalysis(string command, string output, int exitCode)
+    {
+        var safeOutput = (output ?? "").ToLowerInvariant();
+        var success = exitCode == 0;
+
+        var next = "برای جزئیات بیشتر، همین دستور را با گزینه verbose یا log اجرا کن.";
+        if (safeOutput.Contains("no such file", StringComparison.Ordinal)
+            || safeOutput.Contains("not found", StringComparison.Ordinal))
+            next = "مسیر/نام را بررسی کن. پیشنهاد: <code>pwd</code> و <code>ls -la</code>.";
+        else if (safeOutput.Contains("permission denied", StringComparison.Ordinal))
+            next = "مشکل دسترسی است. پیشنهاد: <code>id</code> و در صورت نیاز <code>sudo -l</code>.";
+        else if (safeOutput.Contains("connection refused", StringComparison.Ordinal)
+              || safeOutput.Contains("timed out", StringComparison.Ordinal))
+            next = "شبکه/سرویس مشکل دارد. پیشنهاد: <code>ss -tulpen</code> و <code>systemctl status &lt;service&gt;</code>.";
+        else if (command.Contains("docker", StringComparison.OrdinalIgnoreCase))
+            next = "برای بررسی دقیق‌تر کانتینر: <code>docker ps -a</code> و <code>docker logs --tail 120 &lt;container&gt;</code>.";
+
+        var status = success ? "موفق" : "ناموفق";
+        var risk = success
+            ? "ریسک فوری دیده نشد؛ خروجی را از نظر مصرف منابع هم چک کن."
+            : "قبل از اجرای دستور بعدی علت خطا را رفع کن تا از خطاهای زنجیره‌ای جلوگیری شود.";
+
+        return
+            $"- وضعیت اجرا: <b>{status}</b> (ExitCode={exitCode})\n" +
+            $"- دستور اجراشده: <code>{EscapeHtml(command)}</code>\n" +
+            $"- برداشت: خروجی بررسی شد و نتیجه اولیه استخراج شد.\n" +
+            $"- دستور پیشنهادی بعدی: {next}\n" +
+            $"- هشدار: {risk}";
     }
 
     private async Task InstallOllamaAndWireOpenClawAsync(long chatId, long userId, int serverId, CancellationToken ct)
