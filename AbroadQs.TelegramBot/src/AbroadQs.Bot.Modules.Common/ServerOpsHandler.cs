@@ -1148,10 +1148,9 @@ public sealed class ServerOpsHandler : IUpdateHandler
         if (await TryEditLastBotMessageAsync(chatId, userId, text, ct).ConfigureAwait(false))
             return;
 
-        if (keyboard != null)
-            await _sender.SendTextMessageWithReplyKeyboardAsync(chatId, text, keyboard, ct).ConfigureAwait(false);
-        else
-            await _sender.SendTextMessageAsync(chatId, text, ct).ConfigureAwait(false);
+        // Send plain text so this message stays editable later.
+        // Reply keyboard is already applied via UpdateReplyKeyboardSilentAsync above.
+        await _sender.SendTextMessageAsync(chatId, text, ct).ConfigureAwait(false);
     }
 
     private async Task<bool> TryEditLastBotMessageAsync(long chatId, long userId, string text, CancellationToken ct)
