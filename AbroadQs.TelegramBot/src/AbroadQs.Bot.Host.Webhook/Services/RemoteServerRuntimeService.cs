@@ -125,11 +125,12 @@ public sealed class RemoteServerRuntimeService : IRemoteServerRuntimeService
         var exec = await _ssh.ExecuteCommandAsync(key, commandText, 60, ct).ConfigureAwait(false);
         var output = $"{exec.StdOut}\n{exec.StdErr}".Trim();
         var preview = Truncate(Redact(output), 1800);
+        var safeCommandText = SanitizeCommandText(commandText);
         await _repo.AddAuditAsync(new RemoteServerAuditCreateDto(
             serverId,
             actorTelegramUserId,
             "command",
-            commandText,
+            safeCommandText,
             exec.Success,
             exec.ExitCode,
             exec.DurationMs,
@@ -221,5 +222,17 @@ public sealed class RemoteServerRuntimeService : IRemoteServerRuntimeService
         var x = text.Replace("password", "***", StringComparison.OrdinalIgnoreCase);
         x = x.Replace("token", "***", StringComparison.OrdinalIgnoreCase);
         return x;
+    }
+
+    private static string SanitizeCommandText(string commandText)
+    {
+        if (commandText.Contains("--token", StringComparison.OrdinalIgnoreCase)
+            || commandText.Contains("token ", StringComparison.OrdinalIgnoreCase)
+            || commandText.Contains("token=", StringComparison.OrdinalIgnoreCase))
+        {
+            return "[REDACTED: sensitive command]";
+        }
+
+        return commandText.Length <= 400 ? commandText : commandText[..400];
     }
 }
