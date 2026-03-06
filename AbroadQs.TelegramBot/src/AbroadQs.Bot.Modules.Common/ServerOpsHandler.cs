@@ -132,10 +132,16 @@ public sealed class ServerOpsHandler : IUpdateHandler
             normalizedText == NormalizeButtonText(BtnMenuEn) ||
             (normalizedText.Contains("مدیریت", StringComparison.Ordinal) && normalizedText.Contains("سرور", StringComparison.Ordinal));
 
-        if (cmd == "/serverhelp" || isServerMenuText || text == BtnGuide)
+        if (cmd == "/serverhelp" || text == BtnGuide)
         {
             await ShowMainMenuAsync(context.ChatId, userId, cancellationToken).ConfigureAwait(false);
             await UpsertServerMessageAsync(context.ChatId, userId, HelpText(), null, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+
+        if (isServerMenuText)
+        {
+            await ShowMainMenuAsync(context.ChatId, userId, cancellationToken).ConfigureAwait(false);
             return true;
         }
 
@@ -1165,9 +1171,10 @@ public sealed class ServerOpsHandler : IUpdateHandler
         if (await TryEditLastBotMessageAsync(chatId, userId, text, ct).ConfigureAwait(false))
             return;
 
-        // Send plain text so this message stays editable later.
-        // Reply keyboard is already applied via UpdateReplyKeyboardSilentAsync above.
-        await _sender.SendTextMessageAsync(chatId, text, ct).ConfigureAwait(false);
+        if (keyboard != null)
+            await _sender.SendTextMessageWithReplyKeyboardAsync(chatId, text, keyboard, ct).ConfigureAwait(false);
+        else
+            await _sender.SendTextMessageAsync(chatId, text, ct).ConfigureAwait(false);
     }
 
     private async Task<bool> TryEditLastBotMessageAsync(long chatId, long userId, string text, CancellationToken ct)
