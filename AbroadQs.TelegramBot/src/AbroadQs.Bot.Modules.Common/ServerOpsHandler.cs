@@ -680,6 +680,10 @@ public sealed class ServerOpsHandler : IUpdateHandler
                 }
 
                 // In shell mode: any non-button text is treated as an SSH command.
+                if (context.IncomingMessageId.HasValue)
+                {
+                    try { await _sender.DeleteMessageAsync(context.ChatId, context.IncomingMessageId.Value, ct).ConfigureAwait(false); } catch { }
+                }
                 await RunShellCommandWithProgressAsync(context.ChatId, userId, serverId.Value, text, ct).ConfigureAwait(false);
                 return true;
             }
@@ -917,6 +921,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
         var output = string.IsNullOrWhiteSpace(result.Output) ? "(no output)" : Limit(result.Output, 3000);
         var finalText =
             $"<b>نتیجه دستور</b>\n" +
+            $"<b>دستور:</b> <code>{EscapeHtml(command)}</code>\n" +
             $"Server: <code>{serverId}</code>\n" +
             $"ExitCode: <code>{result.ExitCode}</code>\n\n" +
             $"<pre>{EscapeHtml(output)}</pre>";
