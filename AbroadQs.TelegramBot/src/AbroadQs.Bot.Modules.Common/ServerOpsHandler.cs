@@ -127,6 +127,16 @@ public sealed class ServerOpsHandler : IUpdateHandler
 
         var userId = context.UserId.Value;
         var text = context.MessageText!.Trim();
+        var rawParts = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var rawCmd = rawParts.Length > 0 ? rawParts[0].ToLowerInvariant() : "";
+
+        // Global hard command: always allow exiting terminal mode before any state-specific handling.
+        if (rawCmd == "/endterminal")
+        {
+            await ExitShellModeAsync(context.ChatId, userId, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+
         if (context.IsCallbackQuery)
         {
             await HandleCallbackAsync(context, userId, text, cancellationToken).ConfigureAwait(false);
