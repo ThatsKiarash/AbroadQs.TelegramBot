@@ -113,7 +113,8 @@ public sealed class OpenClawInstallerService
         sb.AppendLine("    ports:");
         sb.AppendLine("      - \"3000:3000\"");
         sb.AppendLine("EOF");
-        sb.AppendLine("docker compose -f ~/openclaw/docker-compose.yml up -d");
+        sb.AppendLine("cd ~/openclaw");
+        sb.AppendLine("docker compose up -d");
         sb.AppendLine("echo '[5/5] Health check' ");
         sb.AppendLine("docker ps --format 'table {{.Names}}\\t{{.Image}}\\t{{.Status}}' | head -n 10");
         return sb.ToString();
@@ -144,7 +145,8 @@ public sealed class OpenClawInstallerService
         sb.AppendLine("      - /var/run/docker.sock:/var/run/docker.sock");
         sb.AppendLine("    command: --interval 300");
         sb.AppendLine("EOF");
-        sb.AppendLine("docker compose -f ~/slipnet/docker-compose.yml up -d");
+        sb.AppendLine("cd ~/slipnet");
+        sb.AppendLine("docker compose up -d");
         sb.AppendLine("echo '[4/4] Status' ");
         sb.AppendLine("docker ps --format 'table {{.Names}}\\t{{.Image}}\\t{{.Status}}' | head -n 10");
         return sb.ToString();
