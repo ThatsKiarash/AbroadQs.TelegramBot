@@ -19,6 +19,10 @@ public sealed class ServerOpsHandler : IUpdateHandler
     private const string BtnBackMain = "بازگشت به منوی اصلی";
     private const string BtnGuide = "راهنما";
     private const string BtnCancel = "انصراف";
+    private const string BtnShellExit = "خروج از سرور";
+
+    private const string FlowShellServerId = "srv_shell_server_id";
+    private const string FlowShellServerName = "srv_shell_server_name";
 
     private readonly IResponseSender _sender;
     private readonly IRemoteServerRepository _repo;
@@ -142,62 +146,73 @@ public sealed class ServerOpsHandler : IUpdateHandler
 
         if (cmd == "/serverlist" || text == BtnList)
         {
-            var list = await _repo.ListByOwnerAsync(userId, cancellationToken).ConfigureAwait(false);
-            if (list.Count == 0)
-            {
-                await _sender.SendTextMessageAsync(context.ChatId, "هنوز سروری ثبت نکردی. /serverhelp", cancellationToken).ConfigureAwait(false);
-                return true;
-            }
-            var lines = list.Select(s => $"{s.Id}) {s.Name} - {s.Username}@{s.Host}:{s.Port}");
-            await _sender.SendTextMessageAsync(context.ChatId, "سرورهای شما:\n" + string.Join('\n', lines), cancellationToken).ConfigureAwait(false);
+            await ShowServerListInlineAsync(context.ChatId, userId, null, cancellationToken).ConfigureAwait(false);
             return true;
         }
 
         if (text == BtnConnect)
         {
-            await ShowServerPickerAsync(context.ChatId, userId, "srv_connect", "یک سرور برای اتصال انتخاب کن:", cancellationToken).ConfigureAwait(false);
+            await ShowServerListInlineAsync(context.ChatId, userId, "یک سرور را انتخاب کن تا پنل عملیاتش باز شود:", cancellationToken).ConfigureAwait(false);
             return true;
         }
 
         if (text == BtnCommand)
         {
-            await ShowServerPickerAsync(context.ChatId, userId, "srv_cmd", "سرور مقصد برای اجرای دستور را انتخاب کن:", cancellationToken).ConfigureAwait(false);
+            await ShowServerListInlineAsync(context.ChatId, userId, "یک سرور را انتخاب کن و سپس وارد ترمینال شو:", cancellationToken).ConfigureAwait(false);
             return true;
         }
 
         if (text == BtnDisconnect)
         {
-            await ShowServerPickerAsync(context.ChatId, userId, "srv_disconnect", "یک سرور برای قطع اتصال انتخاب کن:", cancellationToken).ConfigureAwait(false);
+            await ShowServerListInlineAsync(context.ChatId, userId, "سرور موردنظر برای عملیات را انتخاب کن:", cancellationToken).ConfigureAwait(false);
             return true;
         }
 
         if (text == BtnDelete)
         {
-            await ShowServerPickerAsync(context.ChatId, userId, "srv_del", "یک سرور برای حذف انتخاب کن:", cancellationToken).ConfigureAwait(false);
+            await ShowServerListInlineAsync(context.ChatId, userId, "سرور موردنظر برای حذف را انتخاب کن:", cancellationToken).ConfigureAwait(false);
             return true;
         }
 
         if (text == BtnInstallers)
         {
-            await ShowInstallerMenuAsync(context.ChatId, cancellationToken).ConfigureAwait(false);
+            await ShowServerListInlineAsync(context.ChatId, userId, "سرور هدف برای نصب ابزار را انتخاب کن:", cancellationToken).ConfigureAwait(false);
             return true;
         }
 
         if (text == BtnOpenClaw)
         {
-            await ShowServerPickerAsync(context.ChatId, userId, "srv_install:openclaw", "سرور هدف برای نصب OpenClaw:", cancellationToken).ConfigureAwait(false);
+            var serverId = await GetActiveShellServerIdAsync(userId, cancellationToken).ConfigureAwait(false);
+            if (serverId is null)
+            {
+                await ShowServerListInlineAsync(context.ChatId, userId, "ابتدا یک سرور را انتخاب کن:", cancellationToken).ConfigureAwait(false);
+                return true;
+            }
+            await RunInstallerWithProgressAsync(context.ChatId, userId, serverId.Value, "openclaw", cancellationToken).ConfigureAwait(false);
             return true;
         }
 
         if (text == BtnSlipnet)
         {
-            await ShowServerPickerAsync(context.ChatId, userId, "srv_install:slipnet", "سرور هدف برای نصب Slipnet:", cancellationToken).ConfigureAwait(false);
+            var serverId = await GetActiveShellServerIdAsync(userId, cancellationToken).ConfigureAwait(false);
+            if (serverId is null)
+            {
+                await ShowServerListInlineAsync(context.ChatId, userId, "ابتدا یک سرور را انتخاب کن:", cancellationToken).ConfigureAwait(false);
+                return true;
+            }
+            await RunInstallerWithProgressAsync(context.ChatId, userId, serverId.Value, "slipnet", cancellationToken).ConfigureAwait(false);
             return true;
         }
 
         if (text == BtnDnstt)
         {
-            await ShowServerPickerAsync(context.ChatId, userId, "srv_install:dnstt", "سرور هدف برای نصب DNSTT:", cancellationToken).ConfigureAwait(false);
+            var serverId = await GetActiveShellServerIdAsync(userId, cancellationToken).ConfigureAwait(false);
+            if (serverId is null)
+            {
+                await ShowServerListInlineAsync(context.ChatId, userId, "ابتدا یک سرور را انتخاب کن:", cancellationToken).ConfigureAwait(false);
+                return true;
+            }
+            await RunInstallerWithProgressAsync(context.ChatId, userId, serverId.Value, "dnstt", cancellationToken).ConfigureAwait(false);
             return true;
         }
 
@@ -206,6 +221,12 @@ public sealed class ServerOpsHandler : IUpdateHandler
             await _stateStore.ClearStateAsync(userId, cancellationToken).ConfigureAwait(false);
             await _stateStore.ClearAllFlowDataAsync(userId, cancellationToken).ConfigureAwait(false);
             await ShowMainMenuAsync(context.ChatId, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+
+        if (text == BtnShellExit)
+        {
+            await ExitShellModeAsync(context.ChatId, userId, cancellationToken).ConfigureAwait(false);
             return true;
         }
 
@@ -343,12 +364,52 @@ public sealed class ServerOpsHandler : IUpdateHandler
             return;
         }
 
+        if (callback == "srv_list")
+        {
+            await ShowServerListInlineAsync(context.ChatId, userId, null, ct).ConfigureAwait(false);
+            return;
+        }
+
+        if (callback.StartsWith("srv_focus:", StringComparison.Ordinal))
+        {
+            if (int.TryParse(callback["srv_focus:".Length..], out var serverId))
+                await ShowServerOperationsInlineAsync(context.ChatId, userId, serverId, context.CallbackMessageId, ct).ConfigureAwait(false);
+            return;
+        }
+
+        if (callback.StartsWith("srv_shell:", StringComparison.Ordinal))
+        {
+            if (int.TryParse(callback["srv_shell:".Length..], out var serverId))
+                await EnterShellModeAsync(context.ChatId, userId, serverId, ct).ConfigureAwait(false);
+            return;
+        }
+
+        if (callback.StartsWith("srv_shell_exit:", StringComparison.Ordinal))
+        {
+            await ExitShellModeAsync(context.ChatId, userId, ct).ConfigureAwait(false);
+            return;
+        }
+
+        if (callback == "srv_back_main")
+        {
+            await _stateStore.ClearStateAsync(userId, ct).ConfigureAwait(false);
+            await _stateStore.ClearAllFlowDataAsync(userId, ct).ConfigureAwait(false);
+            await ShowCoreMainMenuAsync(context.ChatId, userId, ct).ConfigureAwait(false);
+            return;
+        }
+
         if (callback.StartsWith("srv_connect:", StringComparison.Ordinal))
         {
             if (int.TryParse(callback["srv_connect:".Length..], out var serverId))
             {
                 var result = await _runtime.ConnectAsync(userId, serverId, ct).ConfigureAwait(false);
-                await _sender.SendTextMessageAsync(context.ChatId, result.Message, ct).ConfigureAwait(false);
+                await SendProgressResultAsync(
+                    context.ChatId,
+                    $"اتصال به سرور #{serverId} در حال انجام است...",
+                    $"{result.Message}",
+                    BuildServerOperationsKeyboard(serverId),
+                    ct).ConfigureAwait(false);
+                await ShowServerOperationsInlineAsync(context.ChatId, userId, serverId, null, ct).ConfigureAwait(false);
             }
             return;
         }
@@ -358,7 +419,12 @@ public sealed class ServerOpsHandler : IUpdateHandler
             if (int.TryParse(callback["srv_disconnect:".Length..], out var serverId))
             {
                 var result = await _runtime.DisconnectAsync(userId, serverId, ct).ConfigureAwait(false);
-                await _sender.SendTextMessageAsync(context.ChatId, result.Message, ct).ConfigureAwait(false);
+                await SendProgressResultAsync(
+                    context.ChatId,
+                    $"قطع اتصال سرور #{serverId}...",
+                    result.Message,
+                    BuildServerOperationsKeyboard(serverId),
+                    ct).ConfigureAwait(false);
             }
             return;
         }
@@ -369,6 +435,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
             {
                 var ok = await _repo.DeleteAsync(serverId, userId, ct).ConfigureAwait(false);
                 await _sender.SendTextMessageAsync(context.ChatId, ok ? "سرور حذف شد." : "سرور پیدا نشد یا دسترسی نداری.", ct).ConfigureAwait(false);
+                await ShowServerListInlineAsync(context.ChatId, userId, null, ct).ConfigureAwait(false);
             }
             return;
         }
@@ -377,14 +444,15 @@ public sealed class ServerOpsHandler : IUpdateHandler
         {
             if (int.TryParse(callback["srv_cmd:".Length..], out var serverId))
             {
-                await _stateStore.SetFlowDataAsync(userId, "srv_cmd_server_id", serverId.ToString(), ct).ConfigureAwait(false);
-                await _stateStore.SetStateAsync(userId, "srv_cmd_text", ct).ConfigureAwait(false);
-                await _sender.SendTextMessageWithReplyKeyboardAsync(
-                    context.ChatId,
-                    $"دستور را برای سرور #{serverId} بفرست.",
-                    new List<IReadOnlyList<string>> { new[] { BtnCancel } },
-                    ct).ConfigureAwait(false);
+                await EnterShellModeAsync(context.ChatId, userId, serverId, ct).ConfigureAwait(false);
             }
+            return;
+        }
+
+        if (callback.StartsWith("srv_install_menu:", StringComparison.Ordinal))
+        {
+            if (int.TryParse(callback["srv_install_menu:".Length..], out var serverId))
+                await ShowInstallerMenuInlineAsync(context.ChatId, serverId, context.CallbackMessageId, ct).ConfigureAwait(false);
             return;
         }
 
@@ -393,16 +461,9 @@ public sealed class ServerOpsHandler : IUpdateHandler
             var parts = callback.Split(':', StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length == 3 && int.TryParse(parts[2], out var serverId))
             {
-                RuntimeActionResult result = parts[1] switch
-                {
-                    "openclaw" => await _runtime.InstallOpenClawAsync(userId, serverId, ct).ConfigureAwait(false),
-                    "slipnet" => await _runtime.InstallSlipnetAsync(userId, serverId, ct).ConfigureAwait(false),
-                    "dnstt" => await _runtime.InstallDnsttAsync(userId, serverId, ct).ConfigureAwait(false),
-                    _ => new RuntimeActionResult(false, "Installer نامعتبر است.")
-                };
-
-                await _sender.SendTextMessageAsync(context.ChatId, $"{result.Message}\nJobId: {result.JobId}", ct).ConfigureAwait(false);
+                await RunInstallerWithProgressAsync(context.ChatId, userId, serverId, parts[1], ct).ConfigureAwait(false);
             }
+            return;
         }
     }
 
@@ -477,6 +538,57 @@ public sealed class ServerOpsHandler : IUpdateHandler
                 await _sender.RemoveReplyKeyboardSilentAsync(context.ChatId, ct).ConfigureAwait(false);
                 return true;
             }
+            case "srv_shell":
+            {
+                var serverId = await GetActiveShellServerIdAsync(userId, ct).ConfigureAwait(false);
+                if (serverId is null)
+                {
+                    await ExitShellModeAsync(context.ChatId, userId, ct).ConfigureAwait(false);
+                    return true;
+                }
+
+                if (text == BtnShellExit)
+                {
+                    await ExitShellModeAsync(context.ChatId, userId, ct).ConfigureAwait(false);
+                    return true;
+                }
+
+                if (text == BtnBackMain)
+                {
+                    await ExitShellModeAsync(context.ChatId, userId, ct).ConfigureAwait(false);
+                    await ShowCoreMainMenuAsync(context.ChatId, userId, ct).ConfigureAwait(false);
+                    return true;
+                }
+
+                if (text == BtnDisconnect)
+                {
+                    var dis = await _runtime.DisconnectAsync(userId, serverId.Value, ct).ConfigureAwait(false);
+                    await SendProgressResultAsync(
+                        context.ChatId,
+                        $"قطع اتصال سرور #{serverId.Value}...",
+                        dis.Message,
+                        BuildShellKeyboard(serverId.Value),
+                        ct).ConfigureAwait(false);
+                    return true;
+                }
+
+                if (text == BtnInstallers)
+                {
+                    await ShowInstallerMenuInlineAsync(context.ChatId, serverId.Value, null, ct).ConfigureAwait(false);
+                    return true;
+                }
+
+                if (text == BtnOpenClaw || text == BtnSlipnet || text == BtnDnstt)
+                {
+                    var tool = text == BtnOpenClaw ? "openclaw" : text == BtnSlipnet ? "slipnet" : "dnstt";
+                    await RunInstallerWithProgressAsync(context.ChatId, userId, serverId.Value, tool, ct).ConfigureAwait(false);
+                    return true;
+                }
+
+                // In shell mode: any non-button text is treated as an SSH command.
+                await RunShellCommandWithProgressAsync(context.ChatId, userId, serverId.Value, text, ct).ConfigureAwait(false);
+                return true;
+            }
             default:
                 return false;
         }
@@ -501,7 +613,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
             new List<IReadOnlyList<string>>
             {
                 new[] { BtnOpenClaw, BtnSlipnet },
-                new[] { BtnDnstt, BtnBackMain },
+                new[] { BtnDnstt, BtnShellExit },
                 new[] { BtnCancel }
             },
             ct).ConfigureAwait(false);
@@ -590,16 +702,306 @@ public sealed class ServerOpsHandler : IUpdateHandler
                 new InlineButton($"{srv.Name} ({srv.Host}:{srv.Port})", $"{callbackPrefix}:{srv.Id}")
             });
         }
-        keyboard.Add(new[] { new InlineButton("🔙 بازگشت", "srv_menu") });
+        keyboard.Add(new[] { new InlineButton("بازگشت", "srv_menu") });
         await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, title, keyboard, ct).ConfigureAwait(false);
     }
 
+    private async Task ShowServerListInlineAsync(long chatId, long userId, string? title, CancellationToken ct)
+    {
+        var list = await _repo.ListByOwnerAsync(userId, ct).ConfigureAwait(false);
+        if (list.Count == 0)
+        {
+            await _sender.SendTextMessageAsync(chatId, "هنوز سروری ثبت نکردی. از «افزودن سرور» استفاده کن.", ct).ConfigureAwait(false);
+            return;
+        }
+
+        var keyboard = new List<IReadOnlyList<InlineButton>>();
+        foreach (var srv in list.Take(20))
+            keyboard.Add(new[] { new InlineButton($"{srv.Name} ({srv.Host}:{srv.Port})", $"srv_focus:{srv.Id}") });
+
+        keyboard.Add(new[] { new InlineButton("بازگشت به مدیریت سرورها", "srv_menu") });
+        keyboard.Add(new[] { new InlineButton("بازگشت به منوی اصلی", "srv_back_main") });
+
+        var txt = title ?? "لیست سرورها:\nیک سرور را انتخاب کن تا عملیاتش باز شود.";
+        await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, txt, keyboard, ct).ConfigureAwait(false);
+    }
+
+    private async Task ShowServerOperationsInlineAsync(long chatId, long userId, int serverId, int? editMessageId, CancellationToken ct)
+    {
+        var list = await _repo.ListByOwnerAsync(userId, ct).ConfigureAwait(false);
+        var srv = list.FirstOrDefault(x => x.Id == serverId);
+        if (srv is null)
+        {
+            await _sender.SendTextMessageAsync(chatId, "سرور پیدا نشد یا دسترسی نداری.", ct).ConfigureAwait(false);
+            return;
+        }
+
+        var text =
+            $"<b>{srv.Name}</b>\n" +
+            $"<code>{srv.Username}@{srv.Host}:{srv.Port}</code>\n\n" +
+            "یک عملیات را انتخاب کن:";
+
+        await EditOrSendInlineAsync(chatId, text, BuildServerOperationsKeyboard(serverId), editMessageId, ct).ConfigureAwait(false);
+    }
+
+    private static List<IReadOnlyList<InlineButton>> BuildServerOperationsKeyboard(int serverId) =>
+        new()
+        {
+            new[] { new InlineButton("اتصال", $"srv_connect:{serverId}"), new InlineButton("ورود به ترمینال", $"srv_shell:{serverId}") },
+            new[] { new InlineButton("نصب ابزارها", $"srv_install_menu:{serverId}") },
+            new[] { new InlineButton("قطع اتصال", $"srv_disconnect:{serverId}"), new InlineButton("حذف سرور", $"srv_del:{serverId}") },
+            new[] { new InlineButton("بازگشت به لیست سرورها", "srv_list") },
+            new[] { new InlineButton("بازگشت به منوی اصلی", "srv_back_main") }
+        };
+
+    private static List<IReadOnlyList<InlineButton>> BuildShellKeyboard(int serverId) =>
+        new()
+        {
+            new[] { new InlineButton("قطع اتصال", $"srv_disconnect:{serverId}"), new InlineButton("نصب ابزارها", $"srv_install_menu:{serverId}") },
+            new[] { new InlineButton("خروج از سرور", $"srv_shell_exit:{serverId}"), new InlineButton("بازگشت به منوی اصلی", "srv_back_main") }
+        };
+
+    private async Task ShowInstallerMenuInlineAsync(long chatId, int serverId, int? editMessageId, CancellationToken ct)
+    {
+        var text = $"نصب ابزار روی سرور #{serverId}\nیک گزینه را انتخاب کن:";
+        var keyboard = new List<IReadOnlyList<InlineButton>>
+        {
+            new[] { new InlineButton("نصب OpenClaw", $"srv_install:openclaw:{serverId}") },
+            new[] { new InlineButton("نصب Slipnet", $"srv_install:slipnet:{serverId}") },
+            new[] { new InlineButton("نصب DNSTT", $"srv_install:dnstt:{serverId}") },
+            new[] { new InlineButton("بازگشت به عملیات سرور", $"srv_focus:{serverId}") }
+        };
+        await EditOrSendInlineAsync(chatId, text, keyboard, editMessageId, ct).ConfigureAwait(false);
+    }
+
+    private async Task EnterShellModeAsync(long chatId, long userId, int serverId, CancellationToken ct)
+    {
+        var connect = await _runtime.ConnectAsync(userId, serverId, ct).ConfigureAwait(false);
+        if (!connect.Success)
+        {
+            await _sender.SendTextMessageAsync(chatId, connect.Message, ct).ConfigureAwait(false);
+            return;
+        }
+
+        var list = await _repo.ListByOwnerAsync(userId, ct).ConfigureAwait(false);
+        var srv = list.FirstOrDefault(x => x.Id == serverId);
+        var srvName = srv?.Name ?? $"#{serverId}";
+        await _stateStore.SetFlowDataAsync(userId, FlowShellServerId, serverId.ToString(), ct).ConfigureAwait(false);
+        await _stateStore.SetFlowDataAsync(userId, FlowShellServerName, srvName, ct).ConfigureAwait(false);
+        await _stateStore.SetStateAsync(userId, "srv_shell", ct).ConfigureAwait(false);
+
+        var text =
+            $"ورود به ترمینال سرور <b>{srvName}</b> انجام شد.\n" +
+            "از این لحظه هر متنی که بفرستی، به عنوان دستور SSH اجرا می‌شود.\n\n" +
+            "نمونه: <code>ls -la</code> یا <code>docker ps</code>";
+
+        await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, text, BuildShellKeyboard(serverId), ct).ConfigureAwait(false);
+    }
+
+    private async Task ExitShellModeAsync(long chatId, long userId, CancellationToken ct)
+    {
+        var serverId = await GetActiveShellServerIdAsync(userId, ct).ConfigureAwait(false);
+        if (serverId.HasValue)
+        {
+            try { await _runtime.DisconnectAsync(userId, serverId.Value, ct).ConfigureAwait(false); } catch { }
+        }
+
+        await _stateStore.ClearStateAsync(userId, ct).ConfigureAwait(false);
+        await _stateStore.ClearAllFlowDataAsync(userId, ct).ConfigureAwait(false);
+        await ShowMainMenuAsync(chatId, ct).ConfigureAwait(false);
+    }
+
+    private async Task<int?> GetActiveShellServerIdAsync(long userId, CancellationToken ct)
+    {
+        var id = await _stateStore.GetFlowDataAsync(userId, FlowShellServerId, ct).ConfigureAwait(false);
+        return int.TryParse(id, out var serverId) ? serverId : null;
+    }
+
+    private async Task RunShellCommandWithProgressAsync(long chatId, long userId, int serverId, string command, CancellationToken ct)
+    {
+        var progress = $"در حال اجرای دستور روی سرور #{serverId}\n<code>{EscapeHtml(command)}</code>\n{BuildProgressBar(1)}";
+        var result = await _runtime.ExecuteCommandAsync(userId, serverId, command, ct).ConfigureAwait(false);
+        var output = string.IsNullOrWhiteSpace(result.Output) ? "(no output)" : Limit(result.Output, 3000);
+        var finalText =
+            $"<b>نتیجه دستور</b>\n" +
+            $"Server: <code>{serverId}</code>\n" +
+            $"ExitCode: <code>{result.ExitCode}</code>\n\n" +
+            $"<pre>{EscapeHtml(output)}</pre>";
+
+        await SendProgressResultAsync(chatId, progress, finalText, BuildShellKeyboard(serverId), ct).ConfigureAwait(false);
+    }
+
+    private async Task RunInstallerWithProgressAsync(long chatId, long userId, int serverId, string installerType, CancellationToken ct)
+    {
+        var friendly = installerType.ToLowerInvariant() switch
+        {
+            "openclaw" => "OpenClaw",
+            "slipnet" => "Slipnet",
+            "dnstt" => "DNSTT",
+            _ => installerType
+        };
+
+        var startText = $"شروع نصب {friendly} روی سرور #{serverId}\n{BuildProgressBar(1)}";
+        var loadingId = await _sender.SendLoadingWithRemoveReplyKbAsync(chatId, ct).ConfigureAwait(false);
+
+        async Task EditOrSendAsync(string text)
+        {
+            if (loadingId.HasValue)
+            {
+                try
+                {
+                    await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, loadingId.Value, text, BuildShellKeyboard(serverId), ct).ConfigureAwait(false);
+                    return;
+                }
+                catch { }
+            }
+            await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, text, BuildShellKeyboard(serverId), ct).ConfigureAwait(false);
+        }
+
+        await EditOrSendAsync(startText).ConfigureAwait(false);
+
+        RuntimeActionResult start = installerType.ToLowerInvariant() switch
+        {
+            "openclaw" => await _runtime.InstallOpenClawAsync(userId, serverId, ct).ConfigureAwait(false),
+            "slipnet" => await _runtime.InstallSlipnetAsync(userId, serverId, ct).ConfigureAwait(false),
+            "dnstt" => await _runtime.InstallDnsttAsync(userId, serverId, ct).ConfigureAwait(false),
+            _ => new RuntimeActionResult(false, "Installer نامعتبر است.")
+        };
+
+        if (!start.Success || start.JobId is null)
+        {
+            await EditOrSendAsync($"شروع نصب {friendly} ناموفق بود:\n{start.Message}").ConfigureAwait(false);
+            return;
+        }
+
+        await EditOrSendAsync($"نصب {friendly} شروع شد.\nJobId: <code>{start.JobId}</code>\nدر حال بررسی وضعیت...\n{BuildProgressBar(2)}").ConfigureAwait(false);
+
+        string? lastStatus = null;
+        for (var i = 0; i < 24; i++)
+        {
+            await Task.Delay(2500, ct).ConfigureAwait(false);
+            var job = await _runtime.GetInstallerJobAsync(userId, start.JobId.Value, ct).ConfigureAwait(false);
+            if (job is null) continue;
+
+            var status = job.Status ?? "unknown";
+            var progress = status.Equals("completed", StringComparison.OrdinalIgnoreCase) ? BuildProgressBar(6)
+                : status.Equals("failed", StringComparison.OrdinalIgnoreCase) ? BuildProgressBar(6)
+                : BuildProgressBar(Math.Min(5, 2 + (i / 5)));
+
+            var logTail = Limit(job.LogText ?? "", 1200);
+            var body =
+                $"Installer: <b>{friendly}</b>\n" +
+                $"Server: <code>{serverId}</code>\n" +
+                $"JobId: <code>{job.Id}</code>\n" +
+                $"Status: <b>{EscapeHtml(status)}</b>\n" +
+                $"{progress}\n\n" +
+                $"<pre>{EscapeHtml(string.IsNullOrWhiteSpace(logTail) ? "(no logs yet)" : logTail)}</pre>";
+
+            if (!string.Equals(lastStatus, status, StringComparison.OrdinalIgnoreCase) || i % 4 == 0)
+                await EditOrSendAsync(body).ConfigureAwait(false);
+
+            lastStatus = status;
+            if (status.Equals("completed", StringComparison.OrdinalIgnoreCase) || status.Equals("failed", StringComparison.OrdinalIgnoreCase))
+                break;
+        }
+    }
+
+    private async Task SendProgressResultAsync(
+        long chatId,
+        string progressText,
+        string finalText,
+        IReadOnlyList<IReadOnlyList<InlineButton>> keyboard,
+        CancellationToken ct)
+    {
+        var loadingId = await _sender.SendLoadingWithRemoveReplyKbAsync(chatId, ct).ConfigureAwait(false);
+        if (loadingId.HasValue)
+        {
+            try
+            {
+                await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, loadingId.Value, progressText, keyboard, ct).ConfigureAwait(false);
+                await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, loadingId.Value, finalText, keyboard, ct).ConfigureAwait(false);
+                return;
+            }
+            catch { }
+        }
+
+        await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, finalText, keyboard, ct).ConfigureAwait(false);
+    }
+
+    private async Task EditOrSendInlineAsync(long chatId, string text, IReadOnlyList<IReadOnlyList<InlineButton>> keyboard, int? editMessageId, CancellationToken ct)
+    {
+        if (editMessageId.HasValue)
+        {
+            try
+            {
+                await _sender.EditMessageTextWithInlineKeyboardAsync(chatId, editMessageId.Value, text, keyboard, ct).ConfigureAwait(false);
+                return;
+            }
+            catch { }
+        }
+        await _sender.SendTextMessageWithInlineKeyboardAsync(chatId, text, keyboard, ct).ConfigureAwait(false);
+    }
+
+    private static string BuildProgressBar(int step)
+    {
+        var safe = Math.Clamp(step, 0, 6);
+        return $"[{new string('■', safe)}{new string('□', 6 - safe)}]";
+    }
+
+    private static string EscapeHtml(string value) =>
+        value
+            .Replace("&", "&amp;", StringComparison.Ordinal)
+            .Replace("<", "&lt;", StringComparison.Ordinal)
+            .Replace(">", "&gt;", StringComparison.Ordinal);
+
+    private static string Limit(string value, int max) =>
+        value.Length <= max ? value : value[..max] + "\n... (truncated)";
+
     private static string HelpText() =>
         """
-        <b>SSH / Server Commands</b>
-        /ssh (نمایش منوی دکمه‌ای)
-        /serverlist
-        /serveradd (شروع مرحله‌ای)
+        <b>راهنمای کامل مدیریت سرورها (SSH داخل ربات)</b>
+
+        1) ورود به بخش سرورها:
+        - از منوی اصلی: «مدیریت سرورها»
+        - یا دستور: /ssh
+
+        2) افزودن سرور (مرحله‌ای):
+        - «افزودن سرور» را بزن
+        - به ترتیب وارد کن: Name -> Host/IP -> Port -> Username -> Password
+        - مثال:
+          Name: vps-iran
+          Host: 91.99.179.17
+          Port: 2200
+          Username: root
+          Password: ********
+
+        3) کار با سرور از لیست:
+        - «لیست سرورها» را بزن
+        - روی سرور مورد نظر کلیک کن
+        - پنل عملیات همان سرور باز می‌شود:
+          اتصال | ورود به ترمینال | نصب ابزارها | قطع اتصال | حذف سرور
+
+        4) حالت ترمینال (شبیه SSH/PuTTY):
+        - در پنل سرور، «ورود به ترمینال» را بزن
+        - از آن لحظه، هر متنی که بفرستی به‌عنوان دستور SSH اجرا می‌شود
+        - جواب دستور با ادیت پیام و همراه وضعیت پردازش نمایش داده می‌شود
+        - دکمه‌های زیر خروجی:
+          قطع اتصال | نصب ابزارها | خروج از سرور | بازگشت به منوی اصلی
+
+        5) نصب ابزارها:
+        - از پنل سرور یا داخل ترمینال: «نصب ابزارها»
+        - ابزارها:
+          نصب OpenClaw
+          نصب Slipnet
+          نصب DNSTT
+        - وضعیت نصب مرحله‌به‌مرحله با همان پیام (edit) بروزرسانی می‌شود
+
+        6) خروج:
+        - «خروج از سرور» -> بازگشت به مدیریت سرورها
+        - «بازگشت به منوی اصلی» -> بازگشت به main menu
+
+        7) دستورات مستقیم (اختیاری):
+        /serveradd <name> <host> <port> <username> <password>
         /serverconnect <serverId>
         /servercmd <serverId> <command>
         /serverdisconnect <serverId>
@@ -608,16 +1010,5 @@ public sealed class ServerOpsHandler : IUpdateHandler
         /slipnet_install <serverId>
         /dnstt_install <serverId>
         /openclaw_status <jobId>
-
-        راهنمای افزودن سرور (مرحله‌ای):
-        1) افزودن سرور
-        2) نام سرور (مثال: vps-test)
-        3) Host/IP (مثال: 91.99.179.17)
-        4) Port (مثال: 2200)
-        5) Username (مثال: root)
-        6) Password
-
-        نمونه کامند مستقیم:
-        /serveradd vps-test 91.99.179.17 2200 root Kia135724!
         """;
 }
