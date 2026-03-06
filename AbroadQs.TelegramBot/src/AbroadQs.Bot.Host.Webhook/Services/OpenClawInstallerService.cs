@@ -29,6 +29,8 @@ public sealed class OpenClawInstallerService
 
         _ = Task.Run(async () =>
         {
+            using var backgroundCts = new CancellationTokenSource(TimeSpan.FromMinutes(30));
+            var backgroundCt = backgroundCts.Token;
             try
             {
                 using var runScope = _scopeFactory.CreateScope();
@@ -37,27 +39,27 @@ public sealed class OpenClawInstallerService
                 var runSsh = runScope.ServiceProvider.GetRequiredService<SshSessionManager>();
 
                 await runRepo.UpdateInstallerJobAsync(
-                    new RemoteInstallerJobUpdateDto(jobId, "running", null, null, DateTimeOffset.UtcNow, null), ct).ConfigureAwait(false);
+                    new RemoteInstallerJobUpdateDto(jobId, "running", null, null, DateTimeOffset.UtcNow, null), backgroundCt).ConfigureAwait(false);
 
-                var server = await runRepo.GetByIdAsync(serverId, ct).ConfigureAwait(false);
+                var server = await runRepo.GetByIdAsync(serverId, backgroundCt).ConfigureAwait(false);
                 if (server is null)
                 {
                     await runRepo.UpdateInstallerJobAsync(
-                        new RemoteInstallerJobUpdateDto(jobId, "failed", "Server not found.", null, null, DateTimeOffset.UtcNow), ct).ConfigureAwait(false);
+                        new RemoteInstallerJobUpdateDto(jobId, "failed", "Server not found.", null, null, DateTimeOffset.UtcNow), backgroundCt).ConfigureAwait(false);
                     return;
                 }
 
                 var secret = runCrypto.Decrypt(server.EncryptedSecret, server.SecretNonce, server.SecretTag);
                 var script = BuildInstallScript(jobType);
                 var result = await runSsh.RunOneOffAsync(
-                    server.Host, server.Port, server.Username, secret, server.AuthType, script, 420, ct).ConfigureAwait(false);
+                    server.Host, server.Port, server.Username, secret, server.AuthType, script, 1200, backgroundCt).ConfigureAwait(false);
 
                 var log = Redact($"{result.StdOut}\n{result.StdErr}");
                 var status = result.Success && result.ExitCode.GetValueOrDefault(1) == 0 ? "success" : "failed";
                 var json = $"{{\"exitCode\":{result.ExitCode?.ToString() ?? "null"},\"durationMs\":{result.DurationMs}}}";
 
                 await runRepo.UpdateInstallerJobAsync(
-                    new RemoteInstallerJobUpdateDto(jobId, status, Truncate(log, 30000), json, null, DateTimeOffset.UtcNow), ct).ConfigureAwait(false);
+                    new RemoteInstallerJobUpdateDto(jobId, status, Truncate(log, 30000), json, null, DateTimeOffset.UtcNow), backgroundCt).ConfigureAwait(false);
 
                 await runRepo.AddAuditAsync(new RemoteServerAuditCreateDto(
                     serverId,
@@ -69,7 +71,7 @@ public sealed class OpenClawInstallerService
                     result.DurationMs,
                     Truncate(log, 2000),
                     result.Error,
-                    json), ct).ConfigureAwait(false);
+                    json), backgroundCt).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -77,9 +79,9 @@ public sealed class OpenClawInstallerService
                 using var failScope = _scopeFactory.CreateScope();
                 var failRepo = failScope.ServiceProvider.GetRequiredService<IRemoteServerRepository>();
                 await failRepo.UpdateInstallerJobAsync(
-                    new RemoteInstallerJobUpdateDto(jobId, "failed", Truncate(ex.ToString(), 30000), null, null, DateTimeOffset.UtcNow), ct).ConfigureAwait(false);
+                    new RemoteInstallerJobUpdateDto(jobId, "failed", Truncate(ex.ToString(), 30000), null, null, DateTimeOffset.UtcNow), CancellationToken.None).ConfigureAwait(false);
             }
-        }, ct);
+        });
 
         return (true, jobId, $"{jobType} installer job queued: {jobId}");
     }
