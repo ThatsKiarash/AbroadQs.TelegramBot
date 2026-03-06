@@ -1332,7 +1332,14 @@ public sealed class ServerOpsHandler : IUpdateHandler
             }
             catch
             {
-                // best-effort background task
+                try
+                {
+                    await _sender.SendTextMessageAsync(chatId, "تحلیل AI با خطا مواجه شد. دوباره تلاش کن.", CancellationToken.None).ConfigureAwait(false);
+                }
+                catch
+                {
+                    // best-effort background task
+                }
             }
         });
     }
