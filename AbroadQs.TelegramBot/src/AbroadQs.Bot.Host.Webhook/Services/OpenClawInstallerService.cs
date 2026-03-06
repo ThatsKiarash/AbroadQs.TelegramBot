@@ -99,15 +99,11 @@ public sealed class OpenClawInstallerService
         sb.AppendLine("id || true");
         sb.AppendLine("echo '[2/5] Ensure Docker' ");
         sb.AppendLine("if ! command -v docker >/dev/null 2>&1; then curl -fsSL https://get.docker.com | sh; fi");
-        sb.AppendLine("echo '[3/5] Ensure Docker Compose plugin' ");
-        sb.AppendLine("if ! docker compose version >/dev/null 2>&1; then");
-        sb.AppendLine("  (apt-get update -y && apt-get install -y docker-compose-plugin) || true");
-        sb.AppendLine("fi");
-        sb.AppendLine("echo '[4/5] Deploy OpenClaw container' ");
+        sb.AppendLine("echo '[3/5] Deploy OpenClaw container' ");
         sb.AppendLine("docker rm -f openclaw >/dev/null 2>&1 || true");
-        sb.AppendLine("docker pull ghcr.io/openclawai/openclaw:latest || true");
-        sb.AppendLine("docker run -d --name openclaw --restart unless-stopped -p 3000:3000 ghcr.io/openclawai/openclaw:latest");
-        sb.AppendLine("echo '[5/5] Health check' ");
+        sb.AppendLine("docker pull ghcr.io/openclaw/openclaw:latest || true");
+        sb.AppendLine("docker run -d --name openclaw --restart unless-stopped -p 18789:18789 ghcr.io/openclaw/openclaw:latest");
+        sb.AppendLine("echo '[4/5] Health check' ");
         sb.AppendLine("docker ps --format 'table {{.Names}}\\t{{.Image}}\\t{{.Status}}' | head -n 10");
         return sb.ToString();
     }
@@ -122,9 +118,9 @@ public sealed class OpenClawInstallerService
         sb.AppendLine("if ! command -v docker >/dev/null 2>&1; then curl -fsSL https://get.docker.com | sh; fi");
         sb.AppendLine("echo '[3/4] Deploy Slipnet-like tunnel stack (client + watchtower)' ");
         sb.AppendLine("docker rm -f slipnet-client watchtower >/dev/null 2>&1 || true");
-        sb.AppendLine("docker pull ghcr.io/slippednet/client:latest || true");
+        sb.AppendLine("docker pull ghcr.io/endpositive/slipstream-client:latest || true");
         sb.AppendLine("docker pull containrrr/watchtower:latest || true");
-        sb.AppendLine("docker run -d --name slipnet-client --restart unless-stopped --network host -e SLIPNET_TOKEN=change-me ghcr.io/slippednet/client:latest");
+        sb.AppendLine("docker run -d --name slipnet-client --restart unless-stopped --network host ghcr.io/endpositive/slipstream-client:latest");
         sb.AppendLine("docker run -d --name watchtower --restart unless-stopped -v /var/run/docker.sock:/var/run/docker.sock containrrr/watchtower:latest --interval 300");
         sb.AppendLine("echo '[4/4] Status' ");
         sb.AppendLine("docker ps --format 'table {{.Names}}\\t{{.Image}}\\t{{.Status}}' | head -n 10");
