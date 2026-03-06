@@ -814,7 +814,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
                     return true;
                 }
 
-                if (text == BtnBackPrev)
+                if (IsButtonText(text, BtnBackPrev) || IsButtonText(text, BtnBackMain))
                 {
                     var returnState = await _stateStore.GetFlowDataAsync(userId, FlowToolsReturnState, ct).ConfigureAwait(false);
                     if (string.Equals(returnState, "srv_server_ops", StringComparison.Ordinal))
@@ -830,38 +830,38 @@ public sealed class ServerOpsHandler : IUpdateHandler
                     return true;
                 }
 
-                if (text == BtnOpenClaw || text == BtnSlipnet || text == BtnDnstt)
+                if (IsButtonText(text, BtnOpenClaw) || IsButtonText(text, BtnSlipnet) || IsButtonText(text, BtnDnstt))
                 {
-                    var tool = text == BtnOpenClaw ? "openclaw" : text == BtnSlipnet ? "slipnet" : "dnstt";
+                    var tool = IsButtonText(text, BtnOpenClaw) ? "openclaw" : IsButtonText(text, BtnSlipnet) ? "slipnet" : "dnstt";
                     await RunInstallerWithProgressAsync(context.ChatId, userId, serverId.Value, tool, ct).ConfigureAwait(false);
                     return true;
                 }
 
-                if (text == BtnInstallStatus)
+                if (IsButtonText(text, BtnInstallStatus))
                 {
                     await ShowInstallerStatusAsync(context.ChatId, userId, serverId.Value, ct).ConfigureAwait(false);
                     return true;
                 }
 
-                if (text == BtnAccessGuide)
+                if (IsButtonText(text, BtnAccessGuide))
                 {
                     await ShowAccessGuideAsync(context.ChatId, userId, serverId.Value, ct).ConfigureAwait(false);
                     return true;
                 }
 
-                if (text == BtnCmdGuide)
+                if (IsButtonText(text, BtnCmdGuide))
                 {
                     await ShowCommandGuideAsync(context.ChatId, userId, serverId.Value, ct).ConfigureAwait(false);
                     return true;
                 }
 
-                if (text == BtnOllama)
+                if (IsButtonText(text, BtnOllama))
                 {
                     await InstallOllamaAndWireOpenClawAsync(context.ChatId, userId, serverId.Value, ct).ConfigureAwait(false);
                     return true;
                 }
 
-                if (text == BtnCloudflare)
+                if (IsButtonText(text, BtnCloudflare))
                 {
                     await _stateStore.SetStateAsync(userId, "srv_cf_token", ct).ConfigureAwait(false);
                     await UpsertServerMessageAsync(context.ChatId, userId, "توکن Cloudflare Tunnel را ارسال کن.\n(با <b>انصراف</b> می‌توانی خارج شوی)", BuildCloudflareTokenKeyboard(), ct).ConfigureAwait(false);
@@ -1512,6 +1512,9 @@ public sealed class ServerOpsHandler : IUpdateHandler
             .Trim()
             .Replace("‌", "", StringComparison.Ordinal) // ZWNJ
             .Replace(" ", "", StringComparison.Ordinal);
+
+    private static bool IsButtonText(string actual, string expected) =>
+        NormalizeButtonText(actual) == NormalizeButtonText(expected);
 
     private static List<IReadOnlyList<string>> BuildShellReplyKeyboard() =>
         new()
