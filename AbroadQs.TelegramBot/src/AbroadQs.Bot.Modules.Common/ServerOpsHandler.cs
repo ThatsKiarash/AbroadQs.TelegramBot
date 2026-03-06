@@ -38,6 +38,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
     private const string FlowLastCommand = "srv_last_command";
     private const string FlowLastOutput = "srv_last_output";
     private const string FlowToolsReturnState = "srv_tools_return_state";
+    private const string DefaultOllamaModel = "qwen2.5:0.5b";
 
     private readonly IResponseSender _sender;
     private readonly IRemoteServerRepository _repo;
@@ -1312,7 +1313,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
             "set -e; " +
             "if ! command -v ollama >/dev/null 2>&1; then echo \"OLLAMA_NOT_FOUND\"; exit 0; fi; " +
             $"PROMPT=$(echo \"{promptB64}\" | base64 -d); " +
-            "ollama run tinyllama \"$PROMPT\" 2>/dev/null | tail -n 120'";
+            $"ollama run {DefaultOllamaModel} \"$PROMPT\" 2>/dev/null | tail -n 120'";
 
         var run = await _runtime.ExecuteCommandAsync(userId, serverId, aiCmd, ct).ConfigureAwait(false);
         if (!run.Success || string.IsNullOrWhiteSpace(run.Output))
@@ -1329,13 +1330,13 @@ public sealed class ServerOpsHandler : IUpdateHandler
             "echo \"[1/5] Install Ollama\"; " +
             "curl -fsSL https://ollama.com/install.sh | sh; " +
             "systemctl enable --now ollama || true; " +
-            "echo \"[2/5] Pull tiny model\"; " +
-            "ollama pull tinyllama || true; " +
+            "echo \"[2/5] Pull lightweight model\"; " +
+            $"ollama pull {DefaultOllamaModel} || true; " +
             "echo \"[3/5] Recreate OpenClaw with local Ollama\"; " +
             "docker rm -f openclaw >/dev/null 2>&1 || true; " +
             "docker pull ghcr.io/openclaw/openclaw:latest || true; " +
             "docker run -d --name openclaw --restart unless-stopped --network host " +
-            "-e OLLAMA_BASE_URL=http://127.0.0.1:11434 -e OLLAMA_MODEL=tinyllama " +
+            $"-e OLLAMA_BASE_URL=http://127.0.0.1:11434 -e OLLAMA_MODEL={DefaultOllamaModel} " +
             "ghcr.io/openclaw/openclaw:latest; " +
             "echo \"[4/5] Health\"; " +
             "systemctl is-active ollama || true; " +
