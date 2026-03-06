@@ -39,6 +39,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
     private const string FlowLastCommand = "srv_last_command";
     private const string FlowLastOutput = "srv_last_output";
     private const string FlowLastExitCode = "srv_last_exit_code";
+    private const string FlowLastAiMessageId = "srv_last_ai_message_id";
     private const string FlowToolsReturnState = "srv_tools_return_state";
     private const string DefaultOllamaModel = "qwen2.5:0.5b";
 
@@ -766,6 +767,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
                 if (MatchesButton(text, BtnDisconnect))
                 {
                     try { await _runtime.DisconnectAsync(userId, serverId.Value, ct).ConfigureAwait(false); } catch { }
+                    await _stateStore.ClearFlowDataAsync(userId, FlowLastAiMessageId, ct).ConfigureAwait(false);
                     await ShowServerOperationsAsync(context.ChatId, userId, serverId.Value, ct).ConfigureAwait(false);
                     return true;
                 }
@@ -802,6 +804,12 @@ public sealed class ServerOpsHandler : IUpdateHandler
                 }
 
                 // In shell mode: any non-button text is treated as an SSH command.
+                var aiMsgIdText = await _stateStore.GetFlowDataAsync(userId, FlowLastAiMessageId, ct).ConfigureAwait(false);
+                if (int.TryParse(aiMsgIdText, out var aiMsgId) && aiMsgId > 0)
+                {
+                    try { await _sender.DeleteMessageAsync(context.ChatId, aiMsgId, ct).ConfigureAwait(false); } catch { }
+                    await _stateStore.ClearFlowDataAsync(userId, FlowLastAiMessageId, ct).ConfigureAwait(false);
+                }
                 if (context.IncomingMessageId.HasValue)
                 {
                     try { await _sender.DeleteMessageAsync(context.ChatId, context.IncomingMessageId.Value, ct).ConfigureAwait(false); } catch { }
@@ -1314,11 +1322,15 @@ public sealed class ServerOpsHandler : IUpdateHandler
             {
                 var runtime = _runtime;
                 var sender = _sender;
+                var stateStore = _stateStore;
+                var msgStateRepo = _msgStateRepo;
                 using var scope = _scopeFactory?.CreateScope();
                 if (scope != null)
                 {
                     runtime = scope.ServiceProvider.GetRequiredService<IRemoteServerRuntimeService>();
                     sender = scope.ServiceProvider.GetRequiredService<IResponseSender>();
+                    stateStore = scope.ServiceProvider.GetRequiredService<IUserConversationStateStore>();
+                    msgStateRepo = scope.ServiceProvider.GetService<IUserMessageStateRepository>();
                 }
 
                 var analysis = await AnalyzeCommandWithOllamaAsync(runtime, userId, serverId.Value, command, output, exitCode, CancellationToken.None).ConfigureAwait(false);
@@ -1329,18 +1341,18 @@ public sealed class ServerOpsHandler : IUpdateHandler
 
                 if (callbackMessageId.HasValue)
                 {
-                    try
-                    {
-                        await sender.EditMessageTextAsync(chatId, callbackMessageId.Value, finalAiText, CancellationToken.None).ConfigureAwait(false);
-                    }
-                    catch
-                    {
-                        await sender.SendTextMessageAsync(chatId, finalAiText, CancellationToken.None).ConfigureAwait(false);
-                    }
+                    await sender.SendTextMessageAsync(chatId, finalAiText, CancellationToken.None).ConfigureAwait(false);
                 }
                 else
                 {
                     await sender.SendTextMessageAsync(chatId, finalAiText, CancellationToken.None).ConfigureAwait(false);
+                }
+
+                if (msgStateRepo != null)
+                {
+                    var st = await msgStateRepo.GetUserMessageStateAsync(userId, CancellationToken.None).ConfigureAwait(false);
+                    if (st?.LastBotTelegramMessageId is > 0 and <= int.MaxValue)
+                        await stateStore.SetFlowDataAsync(userId, FlowLastAiMessageId, st.LastBotTelegramMessageId.Value.ToString(), CancellationToken.None).ConfigureAwait(false);
                 }
             }
             catch
