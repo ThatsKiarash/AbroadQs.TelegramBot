@@ -789,9 +789,8 @@ public sealed class ServerOpsHandler : IUpdateHandler
             $"نصب ابزار روی سرور #{serverId}\nیکی از Installerها را انتخاب کن:",
             new List<IReadOnlyList<string>>
             {
-                new[] { BtnOpenClaw, BtnSlipnet },
-                new[] { BtnDnstt, BtnInstallStatus },
-                new[] { BtnAccessGuide, BtnBackPrev },
+                new[] { BtnOpenClaw, BtnSlipnet, BtnDnstt },
+                new[] { BtnInstallStatus, BtnAccessGuide, BtnBackPrev },
                 new[] { BtnCancel }
             },
             ct).ConfigureAwait(false);
@@ -810,9 +809,40 @@ public sealed class ServerOpsHandler : IUpdateHandler
     private static List<IReadOnlyList<string>> BuildMainServerReplyKeyboard() =>
         new()
         {
-            new[] { BtnAdd },
-            new[] { BtnList },
-            new[] { BtnGuide },
+            new[] { BtnList, BtnAdd },
+            new[] { BtnGuide, BtnBackMain },
+        };
+
+    private static List<IReadOnlyList<string>> BuildServerPickerNavigationKeyboard() =>
+        new()
+        {
+            new[] { BtnCancel, BtnBackMain }
+        };
+
+    private static List<IReadOnlyList<string>> BuildGridRows(IReadOnlyList<string> items, int columns)
+    {
+        var rows = new List<IReadOnlyList<string>>();
+        if (items.Count == 0 || columns <= 0) return rows;
+        for (var i = 0; i < items.Count; i += columns)
+            rows.Add(items.Skip(i).Take(columns).ToArray());
+        return rows;
+    }
+
+    private static string TruncateText(string text, int maxLen)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length <= maxLen) return text;
+        return text[..maxLen] + "…";
+    }
+
+    private static string BuildServerPickerButtonLabel(int serverId, string name) =>
+        $"#{serverId} {TruncateText(name, 14)}";
+
+    private static string BuildServerListLine(int serverId, string name, string host, int port) =>
+        $"• #{serverId} — {name} ({host}:{port})";
+
+    private static List<IReadOnlyList<string>> BuildMainServerReplyKeyboardLegacy() =>
+        new()
+        {
             new[] { BtnBackMain }
         };
 
@@ -882,14 +912,15 @@ public sealed class ServerOpsHandler : IUpdateHandler
             return;
         }
 
-        var keyboard = new List<IReadOnlyList<string>>();
-        var details = new List<string>();
-        foreach (var srv in list.Take(15))
-        {
-            keyboard.Add(new[] { BuildServerSelectionLabel(srv.Id, srv.Name, srv.Host, srv.Port) });
-            details.Add($"• #{srv.Id} — {srv.Name} ({srv.Host}:{srv.Port})");
-        }
-        keyboard.Add(new[] { BtnCancel, BtnBackMain });
+        var pickButtons = list.Take(15)
+            .Select(srv => BuildServerPickerButtonLabel(srv.Id, srv.Name))
+            .ToList();
+        var keyboard = BuildGridRows(pickButtons, 3);
+        keyboard.AddRange(BuildServerPickerNavigationKeyboard());
+
+        var details = list.Take(15)
+            .Select(srv => BuildServerListLine(srv.Id, srv.Name, srv.Host, srv.Port))
+            .ToList();
         var text = $"{title}\n\n{string.Join('\n', details)}";
         await UpsertServerMessageAsync(chatId, userId, text, keyboard, ct).ConfigureAwait(false);
     }
@@ -903,15 +934,15 @@ public sealed class ServerOpsHandler : IUpdateHandler
             return;
         }
 
-        var keyboard = new List<IReadOnlyList<string>>();
-        var details = new List<string>();
-        foreach (var srv in list.Take(20))
-        {
-            keyboard.Add(new[] { BuildServerSelectionLabel(srv.Id, srv.Name, srv.Host, srv.Port) });
-            details.Add($"• #{srv.Id} — {srv.Name} ({srv.Host}:{srv.Port})");
-        }
+        var pickButtons = list.Take(18)
+            .Select(srv => BuildServerPickerButtonLabel(srv.Id, srv.Name))
+            .ToList();
+        var keyboard = BuildGridRows(pickButtons, 3);
+        keyboard.AddRange(BuildServerPickerNavigationKeyboard());
 
-        keyboard.Add(new[] { BtnCancel, BtnBackMain });
+        var details = list.Take(18)
+            .Select(srv => BuildServerListLine(srv.Id, srv.Name, srv.Host, srv.Port))
+            .ToList();
 
         var txt = (title ?? "لیست سرورها:\nیک سرور را انتخاب کن تا عملیاتش باز شود.") + "\n\n" + string.Join('\n', details);
         await _stateStore.SetStateAsync(userId, "srv_pick_server", ct).ConfigureAwait(false);
@@ -941,9 +972,8 @@ public sealed class ServerOpsHandler : IUpdateHandler
     private static List<IReadOnlyList<string>> BuildServerOperationsReplyKeyboard() =>
         new()
         {
-            new[] { BtnConnect, BtnCommand },
-            new[] { BtnInstallers, BtnInstallStatus },
-            new[] { BtnAccessGuide, BtnDisconnect },
+            new[] { BtnConnect, BtnDisconnect, BtnCommand },
+            new[] { BtnInstallers, BtnInstallStatus, BtnAccessGuide },
             new[] { BtnDelete, BtnBackServers },
             new[] { BtnBackMain }
         };
@@ -1112,9 +1142,8 @@ public sealed class ServerOpsHandler : IUpdateHandler
     private static List<IReadOnlyList<string>> BuildShellReplyKeyboard() =>
         new()
         {
-            new[] { BtnDisconnect, BtnInstallers },
-            new[] { BtnInstallStatus, BtnAccessGuide },
-            new[] { BtnShellExit, BtnBackPrev }
+            new[] { BtnDisconnect, BtnInstallers, BtnInstallStatus },
+            new[] { BtnAccessGuide, BtnShellExit, BtnBackPrev }
         };
 
     private async Task ShowInstallerStatusAsync(long chatId, long userId, int serverId, CancellationToken ct)
@@ -1222,7 +1251,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
     }
 
     private static string BuildServerSelectionLabel(int serverId, string name, string host, int port) =>
-        $"🖥 {name} (#{serverId}) {host}:{port}";
+        $"#{serverId} {name}";
 
     private static bool TryParseServerIdFromSelection(string text, out int serverId)
     {
