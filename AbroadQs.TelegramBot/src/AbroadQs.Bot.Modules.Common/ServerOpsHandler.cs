@@ -1,4 +1,5 @@
 using AbroadQs.Bot.Contracts;
+using Microsoft.Extensions.DependencyInjection;
 using System.Text;
 
 namespace AbroadQs.Bot.Modules.Common;
@@ -49,6 +50,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
     private readonly IPermissionRepository _permRepo;
     private readonly ITelegramUserRepository _userRepo;
     private readonly IUserMessageStateRepository? _msgStateRepo;
+    private readonly IServiceScopeFactory? _scopeFactory;
 
     public ServerOpsHandler(
         IResponseSender sender,
@@ -58,7 +60,8 @@ public sealed class ServerOpsHandler : IUpdateHandler
         IBotStageRepository stageRepo,
         IPermissionRepository permRepo,
         ITelegramUserRepository userRepo,
-        IUserMessageStateRepository? msgStateRepo = null)
+        IUserMessageStateRepository? msgStateRepo = null,
+        IServiceScopeFactory? scopeFactory = null)
     {
         _sender = sender;
         _repo = repo;
@@ -68,6 +71,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
         _permRepo = permRepo;
         _userRepo = userRepo;
         _msgStateRepo = msgStateRepo;
+        _scopeFactory = scopeFactory;
     }
 
     public string? Command => null;
@@ -1308,7 +1312,16 @@ public sealed class ServerOpsHandler : IUpdateHandler
         {
             try
             {
-                var analysis = await AnalyzeCommandWithOllamaAsync(userId, serverId.Value, command, output, exitCode, CancellationToken.None).ConfigureAwait(false);
+                var runtime = _runtime;
+                var sender = _sender;
+                using var scope = _scopeFactory?.CreateScope();
+                if (scope != null)
+                {
+                    runtime = scope.ServiceProvider.GetRequiredService<IRemoteServerRuntimeService>();
+                    sender = scope.ServiceProvider.GetRequiredService<IResponseSender>();
+                }
+
+                var analysis = await AnalyzeCommandWithOllamaAsync(runtime, userId, serverId.Value, command, output, exitCode, CancellationToken.None).ConfigureAwait(false);
                 var finalAiText =
                     $"<b>تحلیل AI</b>\n" +
                     $"<b>دستور:</b> <code>{EscapeHtml(command)}</code>\n\n" +
@@ -1318,16 +1331,16 @@ public sealed class ServerOpsHandler : IUpdateHandler
                 {
                     try
                     {
-                        await _sender.EditMessageTextAsync(chatId, callbackMessageId.Value, finalAiText, CancellationToken.None).ConfigureAwait(false);
+                        await sender.EditMessageTextAsync(chatId, callbackMessageId.Value, finalAiText, CancellationToken.None).ConfigureAwait(false);
                     }
                     catch
                     {
-                        await _sender.SendTextMessageAsync(chatId, finalAiText, CancellationToken.None).ConfigureAwait(false);
+                        await sender.SendTextMessageAsync(chatId, finalAiText, CancellationToken.None).ConfigureAwait(false);
                     }
                 }
                 else
                 {
-                    await _sender.SendTextMessageAsync(chatId, finalAiText, CancellationToken.None).ConfigureAwait(false);
+                    await sender.SendTextMessageAsync(chatId, finalAiText, CancellationToken.None).ConfigureAwait(false);
                 }
             }
             catch
@@ -1344,7 +1357,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
         });
     }
 
-    private async Task<string> AnalyzeCommandWithOllamaAsync(long userId, int serverId, string command, string output, int exitCode, CancellationToken ct)
+    private async Task<string> AnalyzeCommandWithOllamaAsync(IRemoteServerRuntimeService runtime, long userId, int serverId, string command, string output, int exitCode, CancellationToken ct)
     {
         var prompt =
             "You are a Linux SRE assistant.\n" +
@@ -1355,7 +1368,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
 
         var promptB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(prompt));
         var aiCmd = BuildOllamaAnalyzeCommand(promptB64);
-        var run = await _runtime.ExecuteCommandAsync(userId, serverId, aiCmd, ct).ConfigureAwait(false);
+        var run = await runtime.ExecuteCommandAsync(userId, serverId, aiCmd, ct).ConfigureAwait(false);
         if (IsValidAiOutput(run.Output))
             return run.Output!;
 
@@ -1363,12 +1376,12 @@ public sealed class ServerOpsHandler : IUpdateHandler
         if (NeedsOllamaBootstrap(run.Output))
         {
             await Task.Delay(900, ct).ConfigureAwait(false); // respect runtime anti-spam guard
-            var ensured = await EnsureOllamaReadyOnServerAsync(userId, serverId, ct).ConfigureAwait(false);
+            var ensured = await EnsureOllamaReadyOnServerAsync(runtime, userId, serverId, ct).ConfigureAwait(false);
             if (!ensured.Success)
                 return $"تحلیل AI واقعی انجام نشد.\nجزئیات: {ensured.Message}";
 
             await Task.Delay(900, ct).ConfigureAwait(false);
-            run = await _runtime.ExecuteCommandAsync(userId, serverId, aiCmd, ct).ConfigureAwait(false);
+            run = await runtime.ExecuteCommandAsync(userId, serverId, aiCmd, ct).ConfigureAwait(false);
             if (IsValidAiOutput(run.Output))
                 return run.Output!;
         }
@@ -1403,7 +1416,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
         return output.Trim().Length >= 30;
     }
 
-    private async Task<(bool Success, string Message)> EnsureOllamaReadyOnServerAsync(long userId, int serverId, CancellationToken ct)
+    private async Task<(bool Success, string Message)> EnsureOllamaReadyOnServerAsync(IRemoteServerRuntimeService runtime, long userId, int serverId, CancellationToken ct)
     {
         var script =
             "bash -lc 'set -e; " +
@@ -1412,7 +1425,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
             $"ollama pull {DefaultOllamaModel}; " +
             "echo READY'";
 
-        var run = await _runtime.ExecuteCommandAsync(userId, serverId, script, ct).ConfigureAwait(false);
+        var run = await runtime.ExecuteCommandAsync(userId, serverId, script, ct).ConfigureAwait(false);
         if (!run.Success)
             return (false, run.Message);
         if (string.IsNullOrWhiteSpace(run.Output) || !run.Output.Contains("READY", StringComparison.Ordinal))

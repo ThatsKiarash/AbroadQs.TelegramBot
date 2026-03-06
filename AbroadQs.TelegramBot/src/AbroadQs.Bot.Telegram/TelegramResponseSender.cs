@@ -343,8 +343,8 @@ public sealed class TelegramResponseSender : IResponseSender
         }
     }
 
-    // Invisible placeholder character for phantom messages (Braille Pattern Blank — renders invisible but accepted by Telegram API)
-    private const string InvisibleChar = "\u2800";
+    // Use a visible dot as safest non-empty text across Telegram clients (immediately deleted).
+    private const string InvisibleChar = ".";
 
     public async Task RemoveReplyKeyboardSilentAsync(long chatId, CancellationToken cancellationToken = default)
     {
