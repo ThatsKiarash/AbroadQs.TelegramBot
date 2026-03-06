@@ -439,6 +439,12 @@ public sealed class ServerOpsHandler : IUpdateHandler
             return true;
         }
 
+        if (cmd == "/endterminal")
+        {
+            await ExitShellModeAsync(context.ChatId, userId, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+
         return false;
     }
 
