@@ -246,7 +246,7 @@ public sealed class TelegramResponseSender : IResponseSender
             // Send phantom message to set the new keyboard
             var result = await _client.SendMessage(
                 new ChatId(chatId),
-                "\u200B", // zero-width space
+                InvisibleChar, // Telegram rejects empty/ZWSP text in some clients
                 replyMarkup: markup,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 

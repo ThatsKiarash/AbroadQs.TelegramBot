@@ -610,57 +610,57 @@ public sealed class ServerOpsHandler : IUpdateHandler
                     return true;
                 }
 
-                if (text == BtnBackServers || text == BtnBackPrev)
+                if (MatchesButton(text, BtnBackServers) || MatchesButton(text, BtnBackPrev))
                 {
                     await ShowServerListAsync(context.ChatId, userId, null, ct).ConfigureAwait(false);
                     return true;
                 }
 
-                if (text == BtnConnect)
+                if (MatchesButton(text, BtnConnect))
                 {
                     var result = await _runtime.ConnectAsync(userId, serverId.Value, ct).ConfigureAwait(false);
                     await SendProgressResultAsync(context.ChatId, userId, $"اتصال به سرور #{serverId.Value} در حال انجام است...", result.Message, BuildServerOperationsReplyKeyboard(), ct).ConfigureAwait(false);
                     return true;
                 }
 
-                if (text == BtnDisconnect)
+                if (MatchesButton(text, BtnDisconnect))
                 {
                     var result = await _runtime.DisconnectAsync(userId, serverId.Value, ct).ConfigureAwait(false);
                     await SendProgressResultAsync(context.ChatId, userId, $"قطع اتصال سرور #{serverId.Value}...", result.Message, BuildServerOperationsReplyKeyboard(), ct).ConfigureAwait(false);
                     return true;
                 }
 
-                if (text == BtnCommand)
+                if (MatchesButton(text, BtnCommand))
                 {
                     await EnterShellModeAsync(context.ChatId, userId, serverId.Value, ct).ConfigureAwait(false);
                     return true;
                 }
 
-                if (text == BtnInstallers)
+                if (MatchesButton(text, BtnInstallers))
                 {
                     await ShowInstallerMenuAsync(context.ChatId, userId, serverId.Value, "srv_server_ops", ct).ConfigureAwait(false);
                     return true;
                 }
 
-                if (text == BtnInstallStatus)
+                if (MatchesButton(text, BtnInstallStatus))
                 {
                     await ShowInstallerStatusAsync(context.ChatId, userId, serverId.Value, ct).ConfigureAwait(false);
                     return true;
                 }
 
-                if (text == BtnAccessGuide)
+                if (MatchesButton(text, BtnAccessGuide))
                 {
                     await ShowAccessGuideAsync(context.ChatId, userId, serverId.Value, ct).ConfigureAwait(false);
                     return true;
                 }
 
-                if (text == BtnCmdGuide)
+                if (MatchesButton(text, BtnCmdGuide))
                 {
                     await ShowCommandGuideAsync(context.ChatId, userId, serverId.Value, ct).ConfigureAwait(false);
                     return true;
                 }
 
-                if (text == BtnDelete)
+                if (MatchesButton(text, BtnDelete))
                 {
                     var ok = await _repo.DeleteAsync(serverId.Value, userId, ct).ConfigureAwait(false);
                     await _stateStore.ClearStateAsync(userId, ct).ConfigureAwait(false);
@@ -1290,19 +1290,51 @@ public sealed class ServerOpsHandler : IUpdateHandler
             $"{BuildProgressBar(2)}";
 
         if (callbackMessageId.HasValue)
-            await _sender.EditMessageTextAsync(chatId, callbackMessageId.Value, progress, ct).ConfigureAwait(false);
+        {
+            try
+            {
+                await _sender.EditMessageTextAsync(chatId, callbackMessageId.Value, progress, ct).ConfigureAwait(false);
+            }
+            catch
+            {
+                await _sender.SendTextMessageAsync(chatId, progress, ct).ConfigureAwait(false);
+            }
+        }
         else
             await UpsertServerMessageAsync(chatId, userId, progress, null, ct).ConfigureAwait(false);
 
-        var analysis = await AnalyzeCommandWithOllamaAsync(userId, serverId.Value, command, output, exitCode, ct).ConfigureAwait(false);
-        var finalAiText =
-            $"<b>تحلیل AI</b>\n" +
-            $"<b>دستور:</b> <code>{EscapeHtml(command)}</code>\n\n" +
-            $"<pre>{EscapeHtml(Limit(analysis, 3200))}</pre>";
-        if (callbackMessageId.HasValue)
-            await _sender.EditMessageTextAsync(chatId, callbackMessageId.Value, finalAiText, ct).ConfigureAwait(false);
-        else
-            await _sender.SendTextMessageAsync(chatId, finalAiText, ct).ConfigureAwait(false);
+        // Run analysis in background so bot stays responsive for everyone.
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var analysis = await AnalyzeCommandWithOllamaAsync(userId, serverId.Value, command, output, exitCode, CancellationToken.None).ConfigureAwait(false);
+                var finalAiText =
+                    $"<b>تحلیل AI</b>\n" +
+                    $"<b>دستور:</b> <code>{EscapeHtml(command)}</code>\n\n" +
+                    $"<pre>{EscapeHtml(Limit(analysis, 3200))}</pre>";
+
+                if (callbackMessageId.HasValue)
+                {
+                    try
+                    {
+                        await _sender.EditMessageTextAsync(chatId, callbackMessageId.Value, finalAiText, CancellationToken.None).ConfigureAwait(false);
+                    }
+                    catch
+                    {
+                        await _sender.SendTextMessageAsync(chatId, finalAiText, CancellationToken.None).ConfigureAwait(false);
+                    }
+                }
+                else
+                {
+                    await _sender.SendTextMessageAsync(chatId, finalAiText, CancellationToken.None).ConfigureAwait(false);
+                }
+            }
+            catch
+            {
+                // best-effort background task
+            }
+        });
     }
 
     private async Task<string> AnalyzeCommandWithOllamaAsync(long userId, int serverId, string command, string output, int exitCode, CancellationToken ct)
@@ -1495,11 +1527,27 @@ public sealed class ServerOpsHandler : IUpdateHandler
     private static string Limit(string value, int max) =>
         value.Length <= max ? value : value[..max] + "\n... (truncated)";
 
-    private static string NormalizeButtonText(string value) =>
-        value
-            .Trim()
-            .Replace("‌", "", StringComparison.Ordinal) // ZWNJ
-            .Replace(" ", "", StringComparison.Ordinal);
+    private static string NormalizeButtonText(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+        var sb = new StringBuilder(value.Length);
+        foreach (var ch in value.Trim())
+        {
+            if (char.IsWhiteSpace(ch)
+                || ch is '\u200c' or '\u200d' or '\u200e' or '\u200f'
+                or '\u202a' or '\u202b' or '\u202c' or '\u202d' or '\u202e'
+                or '\u2066' or '\u2067' or '\u2068' or '\u2069')
+                continue;
+
+            if (ch == 'ي') { sb.Append('ی'); continue; }
+            if (ch == 'ك') { sb.Append('ک'); continue; }
+            if (ch == 'ة') { sb.Append('ه'); continue; }
+            if (ch == 'ـ') { continue; }
+
+            sb.Append(ch);
+        }
+        return sb.ToString();
+    }
 
     private static bool MatchesButton(string input, string button) =>
         NormalizeButtonText(input) == NormalizeButtonText(button);
