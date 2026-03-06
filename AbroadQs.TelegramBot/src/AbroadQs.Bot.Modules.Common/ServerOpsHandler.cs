@@ -1,4 +1,5 @@
 using AbroadQs.Bot.Contracts;
+using System.Text;
 
 namespace AbroadQs.Bot.Modules.Common;
 
@@ -628,7 +629,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
             {
                 if (!TryParseServerIdFromSelection(text, out var selectedId))
                 {
-                    await UpsertServerMessageAsync(context.ChatId, userId, "انتخاب نامعتبر است. یکی از سرورها را از دکمه‌ها انتخاب کن.", BuildMainServerReplyKeyboard(), ct).ConfigureAwait(false);
+                    await ShowServerPickerAsync(context.ChatId, userId, "انتخاب نامعتبر است. یکی از سرورها را از دکمه‌ها انتخاب کن:", ct).ConfigureAwait(false);
                     return true;
                 }
 
@@ -1256,6 +1257,27 @@ public sealed class ServerOpsHandler : IUpdateHandler
     private static bool TryParseServerIdFromSelection(string text, out int serverId)
     {
         serverId = 0;
+        if (string.IsNullOrWhiteSpace(text)) return false;
+
+        text = NormalizeIdParsingText(text);
+        if (string.IsNullOrWhiteSpace(text)) return false;
+
+        // New compact picker format: "#12 server-name"
+        // Parse hashtag-number anywhere in text to tolerate RTL marks/spacing.
+        var hashIndex = text.IndexOf('#');
+        if (hashIndex >= 0)
+        {
+            var i = hashIndex + 1;
+            while (i < text.Length && char.IsWhiteSpace(text[i])) i++;
+            var from = i;
+            while (i < text.Length && char.IsDigit(text[i])) i++;
+            if (i > from && int.TryParse(text[from..i], out var hashId) && hashId > 0)
+            {
+                serverId = hashId;
+                return true;
+            }
+        }
+
         if (int.TryParse(text, out var directId) && directId > 0)
         {
             serverId = directId;
@@ -1264,10 +1286,37 @@ public sealed class ServerOpsHandler : IUpdateHandler
 
         var markerIndex = text.IndexOf("(#", StringComparison.Ordinal);
         if (markerIndex < 0) return false;
-        var from = markerIndex + 2;
-        var to = text.IndexOf(')', from);
-        if (to <= from) return false;
-        return int.TryParse(text[from..to], out serverId) && serverId > 0;
+        var legacyFrom = markerIndex + 2;
+        var to = text.IndexOf(')', legacyFrom);
+        if (to <= legacyFrom) return false;
+        return int.TryParse(text[legacyFrom..to], out serverId) && serverId > 0;
+    }
+
+    private static string NormalizeIdParsingText(string value)
+    {
+        var sb = new StringBuilder(value.Length);
+        foreach (var ch in value.Trim())
+        {
+            // Remove common RTL/invisible marks that may exist in Telegram reply text.
+            if (ch is '\u200c' or '\u200d' or '\u200e' or '\u200f' or '\u202a' or '\u202b' or '\u202c' or '\u202d' or '\u202e' or '\u2066' or '\u2067' or '\u2068' or '\u2069')
+                continue;
+
+            if (ch >= '\u06f0' && ch <= '\u06f9') // Persian digits
+            {
+                sb.Append((char)('0' + (ch - '\u06f0')));
+                continue;
+            }
+
+            if (ch >= '\u0660' && ch <= '\u0669') // Arabic-Indic digits
+            {
+                sb.Append((char)('0' + (ch - '\u0660')));
+                continue;
+            }
+
+            sb.Append(ch);
+        }
+
+        return sb.ToString();
     }
 
     private async Task UpsertServerMessageAsync(
