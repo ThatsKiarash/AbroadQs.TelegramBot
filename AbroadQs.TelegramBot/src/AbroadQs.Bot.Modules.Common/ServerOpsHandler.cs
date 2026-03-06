@@ -66,6 +66,13 @@ public sealed class ServerOpsHandler : IUpdateHandler
         if (string.IsNullOrWhiteSpace(t)) return false;
         if (context.IsCallbackQuery && t.StartsWith("srv_", StringComparison.OrdinalIgnoreCase))
             return true;
+
+        var normalized = NormalizeButtonText(t);
+        var isServerMenuText =
+            normalized == NormalizeButtonText(BtnMenu) ||
+            normalized == NormalizeButtonText(BtnMenuEn) ||
+            (normalized.Contains("مدیریت", StringComparison.Ordinal) && normalized.Contains("سرور", StringComparison.Ordinal));
+
         // For non-callback messages we must allow pass-through, because in srv_shell state
         // any arbitrary text (e.g. "ls -la", "docker ps") is a valid command.
         if (!context.IsCallbackQuery)
@@ -76,8 +83,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
             || t.StartsWith("/openclaw", StringComparison.OrdinalIgnoreCase)
             || t.StartsWith("/slipnet", StringComparison.OrdinalIgnoreCase)
             || t.StartsWith("/dnstt", StringComparison.OrdinalIgnoreCase)
-            || t.Equals(BtnMenu, StringComparison.Ordinal)
-            || t.Equals(BtnMenuEn, StringComparison.Ordinal)
+            || isServerMenuText
             || t.Equals(BtnList, StringComparison.Ordinal)
             || t.Equals(BtnAdd, StringComparison.Ordinal)
             || t.Equals(BtnConnect, StringComparison.Ordinal)
@@ -120,8 +126,13 @@ public sealed class ServerOpsHandler : IUpdateHandler
 
         var parts = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var cmd = parts[0].ToLowerInvariant();
+        var normalizedText = NormalizeButtonText(text);
+        var isServerMenuText =
+            normalizedText == NormalizeButtonText(BtnMenu) ||
+            normalizedText == NormalizeButtonText(BtnMenuEn) ||
+            (normalizedText.Contains("مدیریت", StringComparison.Ordinal) && normalizedText.Contains("سرور", StringComparison.Ordinal));
 
-        if (cmd == "/serverhelp" || text == BtnMenu || text == BtnMenuEn || text == BtnGuide)
+        if (cmd == "/serverhelp" || isServerMenuText || text == BtnGuide)
         {
             await ShowMainMenuAsync(context.ChatId, userId, cancellationToken).ConfigureAwait(false);
             await UpsertServerMessageAsync(context.ChatId, userId, HelpText(), null, cancellationToken).ConfigureAwait(false);
@@ -1002,6 +1013,12 @@ public sealed class ServerOpsHandler : IUpdateHandler
 
     private static string Limit(string value, int max) =>
         value.Length <= max ? value : value[..max] + "\n... (truncated)";
+
+    private static string NormalizeButtonText(string value) =>
+        value
+            .Trim()
+            .Replace("‌", "", StringComparison.Ordinal) // ZWNJ
+            .Replace(" ", "", StringComparison.Ordinal);
 
     private static List<IReadOnlyList<string>> BuildShellReplyKeyboard() =>
         new()
