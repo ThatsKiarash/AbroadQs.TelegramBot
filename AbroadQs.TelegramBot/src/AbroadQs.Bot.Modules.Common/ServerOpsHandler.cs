@@ -921,7 +921,9 @@ public sealed class ServerOpsHandler : IUpdateHandler
             $"ExitCode: <code>{result.ExitCode}</code>\n\n" +
             $"<pre>{EscapeHtml(output)}</pre>";
 
-        await SendProgressResultAsync(chatId, userId, progress, finalText, BuildShellReplyKeyboard(), ct).ConfigureAwait(false);
+        // For shell command responses, do not send keyboard with progress/result messages.
+        // Keyboard is already present in chat; this keeps a single editable response message.
+        await SendProgressResultAsync(chatId, userId, progress, finalText, null, ct).ConfigureAwait(false);
     }
 
     private async Task RunInstallerWithProgressAsync(long chatId, long userId, int serverId, string installerType, CancellationToken ct)
@@ -998,7 +1000,7 @@ public sealed class ServerOpsHandler : IUpdateHandler
         long userId,
         string progressText,
         string finalText,
-        IReadOnlyList<IReadOnlyList<string>> keyboard,
+        IReadOnlyList<IReadOnlyList<string>>? keyboard,
         CancellationToken ct)
     {
         await UpsertServerMessageAsync(chatId, userId, progressText, keyboard, ct).ConfigureAwait(false);
