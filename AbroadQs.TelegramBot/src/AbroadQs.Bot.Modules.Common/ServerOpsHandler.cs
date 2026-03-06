@@ -513,6 +513,14 @@ public sealed class ServerOpsHandler : IUpdateHandler
 
     private async Task<bool> HandleStateAsync(BotUpdateContext context, long userId, string state, string text, CancellationToken ct)
     {
+        if (text == BtnBackMain)
+        {
+            await _stateStore.ClearStateAsync(userId, ct).ConfigureAwait(false);
+            await _stateStore.ClearAllFlowDataAsync(userId, ct).ConfigureAwait(false);
+            await ShowCoreMainMenuAsync(context.ChatId, userId, ct).ConfigureAwait(false);
+            return true;
+        }
+
         if (text == BtnCancel)
         {
             await _stateStore.ClearStateAsync(userId, ct).ConfigureAwait(false);
