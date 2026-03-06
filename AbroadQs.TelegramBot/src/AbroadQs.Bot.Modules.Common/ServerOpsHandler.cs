@@ -66,6 +66,11 @@ public sealed class ServerOpsHandler : IUpdateHandler
         if (string.IsNullOrWhiteSpace(t)) return false;
         if (context.IsCallbackQuery && t.StartsWith("srv_", StringComparison.OrdinalIgnoreCase))
             return true;
+        // For non-callback messages we must allow pass-through, because in srv_shell state
+        // any arbitrary text (e.g. "ls -la", "docker ps") is a valid command.
+        if (!context.IsCallbackQuery)
+            return true;
+
         return t.StartsWith("/server", StringComparison.OrdinalIgnoreCase)
             || t.StartsWith("/ssh", StringComparison.OrdinalIgnoreCase)
             || t.StartsWith("/openclaw", StringComparison.OrdinalIgnoreCase)
